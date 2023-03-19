@@ -7,6 +7,14 @@ import (
 	"os"
 )
 
+// uitils.h
+type gptVocab struct {
+	id       int
+	token    string
+	token2id map[string]int
+	id2token map[int]string
+}
+
 /*
 #include "ggml.h"
 
@@ -111,21 +119,21 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 	defer data.Close()
 	reader := bufio.NewReader(data)
 
-	var magic []byte
-	magic = make([]byte, 4)
+	//var magic []byte
+	magic := make([]byte, 4)
 	if _, err := reader.Read(magic); err != nil {
 		return err
 	}
 
-	var magicInt int32
-	magicInt = int32(magic[3])<<24 | int32(magic[2])<<16 | int32(magic[1])<<8 | int32(magic[0])
+	//var magicInt int32
+	magicInt := int32(magic[3])<<24 | int32(magic[2])<<16 | int32(magic[1])<<8 | int32(magic[0])
 	if magicInt != 0x67676d6c {
 		fmt.Printf("\n[llamaModelLoad] Invalid model file '%s' (bad magic)", fileName)
 		return nil
 	}
 
-	var buf []byte // std::vector<char> f_buf(1024*1024);
-	buf = make([]byte, 1024*1024)
+	//var buf []byte // std::vector<char> f_buf(1024*1024);
+	buf := make([]byte, 1024*1024)
 	if _, err := reader.Read(buf); err != nil {
 		fmt.Printf("\n[llamaModelLoad] Error '%w'", err)
 		return nil
@@ -839,7 +847,9 @@ func main() {
 
 	//var params gptParams//gpt_params params;
 	////params.model = "models/llama-7B/ggml-model.bin";
-	modelName := "models/llama-7B/ggml-model.bin"
+
+	//modelName := "./models/7B/ggml-model.bin"
+	modelName := "./LLaMA/7B/ggml-model.bin"
 
 	////if (gpt_params_parse(argc, argv, params) == false) {
 	////    return 1;
