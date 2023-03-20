@@ -14,8 +14,21 @@ const (
 	GGML_MAX_OPT      = 4
 )
 
+type Type uint8
+
+const (
+	TYPE_Q4_0 Type = iota
+	TYPE_Q4_1
+	TYPE_I8
+	TYPE_I16
+	TYPE_I32
+	TYPE_F16
+	TYPE_F32
+	TYPE_COUNT
+)
+
 // available tensor operations
-type op uint32
+type op uint8
 
 const (
 	OP_NONE op = iota
@@ -63,7 +76,7 @@ const (
 // n-dimensional tensor
 type Tensor struct {
 	//enum ggml_type type;
-	Type uint32 // FIXME
+	Type Type // FIXME
 
 	Dims uint32
 	ne   [GGML_MAX_DIMS]uint32 // number of elements
@@ -99,8 +112,8 @@ type State struct {
 }
 
 type ContextContainer struct {
-	Used    bool
-	context Context
+	Used bool
+	Ctx  Context
 }
 
 // global state
@@ -145,23 +158,24 @@ type Context struct {
 }
 
 // ggml_new_tensor
-func NewTensor(ctx *Context, typ uint32, dims uint32, ne []uint32) *Tensor {
+func NewTensor(ctx *Context, typ Type, dims uint32, ne uint32) *Tensor {
 	return NewTensorImpl(ctx, typ, dims, ne, nil)
 }
 
 // ggml_new_tensor_1d
-func NewTensor1D(ctx *Context, typ uint32, ne0 []uint32) *Tensor {
+func NewTensor1D(ctx *Context, typ Type, ne0 uint32) *Tensor {
 	return NewTensor(ctx, typ, 1, ne0)
 }
 
 // ggml_new_tensor_2d
-func NewTensor2d(ctx *Context, typ uint32, ne0, ne1 []uint32) *Tensor {
-	ne := [][]uint32{ne0, ne1}
-	return NewTensor(ctx, typ, 2, ne)
+func NewTensor2D(ctx *Context, typ Type, ne0, ne1 uint32) *Tensor {
+	//ne := []uint32{ne0, ne1}
+	//return NewTensor(ctx, typ, 2, ne)
+	return NewTensor(ctx, typ, 2, ne0) // FIXME
 }
 
 // ggml_new_tensor_impl
-func NewTensorImpl(ctx *Context, typ uint32, dims uint32, ne [][]uint32, data []byte) *Tensor {
+func NewTensorImpl(ctx *Context, typ Type, dims uint32, ne uint32, data []byte) *Tensor {
 	// always insert objects at the end of the context's memory pool
 	////struct ggml_object * obj_cur = ctx->objects_end;
 
@@ -193,11 +207,11 @@ func NewTensorImpl(ctx *Context, typ uint32, dims uint32, ne [][]uint32, data []
 		////return NULL;
 		////}
 
-		obj_new = &Object{
-			Offs: cur_end + GGML_OBJECT_SIZE,
-			Size: 0, // FIXME size_needed,
-			Next: nil,
-		}
+		////objNew := &Object{
+		//Offs: cur_end + GGML_OBJECT_SIZE,
+		////Size: 0, // FIXME size_needed,
+		////Next: nil,
+		////}
 
 	} else {
 
@@ -228,14 +242,14 @@ func NewTensorImpl(ctx *Context, typ uint32, dims uint32, ne [][]uint32, data []
 	////ctx->scratch.offs += size_needed;
 	////}
 
-	if objCur != nil {
-		objCur.Next = objNew
-	} else {
-		// this is the first object in this context
-		ctx.ObjectsBegin = objNew
-	}
+	//if objCur != nil {
+	//	objCur.Next = objNew
+	//} else {
+	// this is the first object in this context
+	//	ctx.ObjectsBegin = objNew
+	//}
 
-	ctx.objectsEnd = objNew
+	//ctx.ObjectsEnd = objNew
 
 	//printf("%s: inserted new object at %zu, size = %zu\n", __func__, cur_end, obj_new->size);
 
@@ -250,20 +264,20 @@ func NewTensorImpl(ctx *Context, typ uint32, dims uint32, ne [][]uint32, data []
 	result := &Tensor{
 		Type:       typ,
 		Dims:       dims,
-		ne:         {1, 1, 1, 1},
-		nb:         {0, 0, 0, 0},
+		ne:         [4]uint32{1, 1, 1, 1},
+		nb:         [4]uint32{0, 0, 0, 0},
 		Op:         OP_NONE,
 		isParam:    false,
 		grad:       nil,
 		src0:       nil,
 		src1:       nil,
-		opt:        {nil},
+		opt:        [4]*Tensor{nil, nil, nil, nil},
 		n_tasks:    0,
 		perfRuns:   0,
 		perfCycles: 0,
 		perfTime:   0,
 		data:       data,
-		pad:        {0},
+		////pad:        {0},
 	}
 
 	////ggml_assert_aligned(result->data);
@@ -2827,7 +2841,7 @@ func Init(params InitParams) *Context {
 	for i := uint32(0); i < GGML_MAX_CONTEXTS; i++ {
 		if !gState.Contexts[i].Used {
 			gState.Contexts[i].Used = true
-			ctx = &gState.Contexts[i].context
+			ctx = &gState.Contexts[i].Ctx
 
 			////GGML_PRINT_DEBUG("%s: found unused context %d\n", __func__, i)
 			break

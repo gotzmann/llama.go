@@ -239,7 +239,8 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 	// for the big tensors, we have the option to store the data in 16-bit floats or quantized
 	// in order to save memory and also to speed up the computation
-	////ggml_type wtype = GGML_TYPE_COUNT;
+	wtype := ml.TYPE_COUNT
+
 	////switch (model.hparams.f16) {
 	//// case 0: wtype = GGML_TYPE_F32;  break;
 	////case 1: wtype = GGML_TYPE_F16;  break;
@@ -253,9 +254,10 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 	////        }
 	////}
 
-	////const ggml_type wtype2 = GGML_TYPE_F32;
+	////wtype2 := ml.TYPE_F32
 
 	////auto & ctx = model.ctx;
+	ctx := model.ctx
 
 	// FIXME Context size calculations - do we need this ??
 	//{
@@ -311,14 +313,14 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 		embd := hparamsEmbd
 		layers := hparamsLayers
-		ctxSize := hparamsCtx
+		//ctxSize := hparamsCtx
 		vocabSize := hparamsVocabSize
 
-		model.layers.resize(layers)
+		////model.layers.resize(layers)
 
 		model.tokEmbeddings = ml.NewTensor2D(ctx, wtype, embd, vocabSize)
 
-		model.norm = ml.NewTensor1D(ctx, GGML_TYPE_F32, embd)
+		model.norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embd)
 		model.output = ml.NewTensor2D(ctx, wtype, embd, vocabSize)
 
 		// map by name
@@ -330,14 +332,14 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 		for i := uint32(0); i < layers; i++ {
 			//auto & layer = model.layers[i];
 
-			model.layers[i].attentionNorm = ml.NewTensor_1d(ctx, GGML_TYPE_F32, embd)
+			model.layers[i].attentionNorm = ml.NewTensor1D(ctx, ml.TYPE_F32, embd)
 
 			model.layers[i].wq = ml.NewTensor2D(ctx, wtype, embd, embd)
 			model.layers[i].wk = ml.NewTensor2D(ctx, wtype, embd, embd)
 			model.layers[i].wv = ml.NewTensor2D(ctx, wtype, embd, embd)
 			model.layers[i].wo = ml.NewTensor2D(ctx, wtype, embd, embd)
 
-			model.layers[i].ffn_norm = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, embd)
+			model.layers[i].ffn_norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embd)
 
 			model.layers[i].w1 = ml.NewTensor2D(ctx, wtype, embd, n_ff)
 			model.layers[i].w2 = ml.NewTensor2D(ctx, wtype, n_ff, embd)
@@ -348,8 +350,8 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 			model.tensors[fmt.Sprintf("layers.%d.attention.wq.weight", i)] = model.layers[i].wq
 			model.tensors[fmt.Sprintf("layers.%d.attention.wk.weight", i)] = model.layers[i].wk
-			model.tensors[fmt.Sprintf("layers.%d.attention.wv.weight"), i] = model.layers[i].wv
-			model.tensors[fmt.Sprintf("layers.%d.attention.wo.weight"), i] = model.layers[i].wo
+			model.tensors[fmt.Sprintf("layers.%d.attention.wv.weight", i)] = model.layers[i].wv
+			model.tensors[fmt.Sprintf("layers.%d.attention.wo.weight", i)] = model.layers[i].wo
 
 			model.tensors[fmt.Sprintf("layers.%d.ffn_norm.weight", i)] = model.layers[i].ffn_norm
 
