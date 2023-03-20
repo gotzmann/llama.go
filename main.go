@@ -57,14 +57,14 @@ var (
 	}
 
 	// default hparams (LLaMA 7B)
-	paramsVocabSize = uint32(32000)
-	hparamsCtx      = uint32(512) // this is provided as user input?
-	hparamsEmbd     = uint32(4096)
-	hparamsMult     = uint32(256)
-	hparamsHeads    = uint32(32)
-	hparamsLayers   = uint32(32)
-	hparamsRot      = uint32(64)
-	hparamsF16      = uint32(1)
+	hparamsVocabSize = uint32(32000)
+	hparamsCtx       = uint32(512) // this is provided as user input?
+	hparamsEmbd      = uint32(4096)
+	hparamsMult      = uint32(256)
+	hparamsHeads     = uint32(32)
+	hparamsLayers    = uint32(32)
+	hparamsRot       = uint32(64)
+	hparamsF16       = uint32(1)
 )
 
 type llamaLayer struct {
@@ -171,13 +171,13 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 	// load hparams
 	{
-		paramsVocabSize = readInt(reader) // vocab_size
-		hparamsEmbd = readInt(reader)     // dim
-		hparamsMult = readInt(reader)     // multiple_of
-		hparamsHeads = readInt(reader)    // n_heads
-		hparamsLayers = readInt(reader)   // n_layers
-		hparamsRot = readInt(reader)      // rot = dim // n_heads [obsolete]
-		hparamsF16 = readInt(reader)      // ftype
+		hparamsVocabSize = readInt(reader) // vocab_size
+		hparamsEmbd = readInt(reader)      // dim
+		hparamsMult = readInt(reader)      // multiple_of
+		hparamsHeads = readInt(reader)     // n_heads
+		hparamsLayers = readInt(reader)    // n_layers
+		hparamsRot = readInt(reader)       // rot = dim // n_heads [obsolete]
+		hparamsF16 = readInt(reader)       // ftype
 
 		hparamsCtx = n_ctx
 
@@ -186,7 +186,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 		//n_parts = LLAMA_N_PARTS.at(hparams.n_embd);
 		n_parts = llamaParts[hparamsEmbd]
 
-		fmt.Printf("\nn_vocab = %d", paramsVocabSize)
+		fmt.Printf("\nn_vocab = %d", hparamsVocabSize)
 		fmt.Printf("\nn_ctx   = %d", hparamsCtx)
 		fmt.Printf("\nn_embd  = %d", hparamsEmbd)
 		fmt.Printf("\nn_mult  = %d", hparamsMult)
@@ -201,7 +201,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 	// load vocab
 	{
 
-		for i := uint32(0); i < paramsVocabSize; i++ {
+		for i := uint32(0); i < hparamsVocabSize; i++ {
 			len := readInt(reader)
 			word := make([]byte, len)
 			if count, err := io.ReadFull(reader, word); err != nil || count != int(len) {
@@ -218,68 +218,65 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 			vocab.id2token[i] = string(word)
 		}
 	}
+
+	// for the big tensors, we have the option to store the data in 16-bit floats or quantized
+	// in order to save memory and also to speed up the computation
+	////ggml_type wtype = GGML_TYPE_COUNT;
+	////switch (model.hparams.f16) {
+	//// case 0: wtype = GGML_TYPE_F32;  break;
+	////case 1: wtype = GGML_TYPE_F16;  break;
+	////case 2: wtype = GGML_TYPE_Q4_0; break;
+	////case 3: wtype = GGML_TYPE_Q4_1; break;
+	////default:
+	////        {
+	////            fmt.Printf("%s: invalid model file '%s' (bad f16 value %d)\n",
+	////                    __func__, fname.c_str(), model.hparams.f16);
+	////            return false;
+	////        }
+	////}
+
+	////const ggml_type wtype2 = GGML_TYPE_F32;
+
+	////auto & ctx = model.ctx;
+
+	// FIXME Context size calculations - do we need this ??
+	{
+		const typeSize = 2 // ggml_type_sizef(wtype)
+		ctxSize := uint32(0)
+		////const auto & hparams = model.hparams;
+		embd := hparamsEmbd
+		layers := hparamsLayers
+		////const int n_ctx   = hparams.n_ctx;
+		vocab := hparamsVocabSize
+
+		ctxSize += embd * vocab * typeSize                                  /* ggml_type_sizef(wtype) */         // tok_embeddings
+		ctxSize += embd * 4                                                 /* ggml_type_sizef(GGML_TYPE_F32) */ // norm
+		ctxSize += embd * vocab * typeSize                                  /* ggml_type_sizef(wtype) */         // output
+		ctxSize += layers * (embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */) // attention_norm
+
+		ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wq
+		ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wk
+		ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wv
+		ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wo
+
+		ctxSize += layers * (embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */) // ffn_norm
+
+		ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w1
+		ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w2
+		ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w3
+
+		ctxSize += ctxSize * layers * embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */ // memory_k
+		ctxSize += ctxSize * layers * embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */ // memory_v
+
+		ctxSize += (5 + 10*layers) * 256 // object overhead
+
+		fmt.Printf("\nggml ctx size = %.2f MB", float32(ctxSize)/(1024*1024))
+	}
 	/*
-	   // for the big tensors, we have the option to store the data in 16-bit floats or quantized
-	   // in order to save memory and also to speed up the computation
-	   ggml_type wtype = GGML_TYPE_COUNT;
-	   switch (model.hparams.f16) {
-	       case 0: wtype = GGML_TYPE_F32;  break;
-	       case 1: wtype = GGML_TYPE_F16;  break;
-	       case 2: wtype = GGML_TYPE_Q4_0; break;
-	       case 3: wtype = GGML_TYPE_Q4_1; break;
-	       default:
-	               {
-	                   fmt.Printf("%s: invalid model file '%s' (bad f16 value %d)\n",
-	                           __func__, fname.c_str(), model.hparams.f16);
-	                   return false;
-	               }
-	   }
-
-	   const ggml_type wtype2 = GGML_TYPE_F32;
-
-	   auto & ctx = model.ctx;
-
-	   size_t ctx_size = 0;
-
-	   {
-	       const auto & hparams = model.hparams;
-
-	       const int n_embd  = hparams.n_embd;
-	       const int n_layer = hparams.n_layer;
-	       const int n_ctx   = hparams.n_ctx;
-	       const int n_vocab = hparams.n_vocab;
-
-	       ctx_size += n_embd*n_vocab*ggml_type_sizef(wtype); // tok_embeddings
-
-	       ctx_size += n_embd*ggml_type_sizef(GGML_TYPE_F32); // norm
-
-	       ctx_size += n_embd*n_vocab*ggml_type_sizef(wtype); // output
-
-	       ctx_size += n_layer*(n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attention_norm
-
-	       ctx_size += n_layer*(n_embd*n_embd*ggml_type_sizef(wtype)); // wq
-	       ctx_size += n_layer*(n_embd*n_embd*ggml_type_sizef(wtype)); // wk
-	       ctx_size += n_layer*(n_embd*n_embd*ggml_type_sizef(wtype)); // wv
-	       ctx_size += n_layer*(n_embd*n_embd*ggml_type_sizef(wtype)); // wo
-
-	       ctx_size += n_layer*(n_embd*ggml_type_sizef(GGML_TYPE_F32)); // ffn_norm
-
-	       ctx_size += n_layer*(n_ff*n_embd*ggml_type_sizef(wtype)); // w1
-	       ctx_size += n_layer*(n_ff*n_embd*ggml_type_sizef(wtype)); // w2
-	       ctx_size += n_layer*(n_ff*n_embd*ggml_type_sizef(wtype)); // w3
-
-	       ctx_size += n_ctx*n_layer*n_embd*ggml_type_sizef(GGML_TYPE_F32); // memory_k
-	       ctx_size += n_ctx*n_layer*n_embd*ggml_type_sizef(GGML_TYPE_F32); // memory_v
-
-	       ctx_size += (5 + 10*n_layer)*256; // object overhead
-
-	       fmt.Printf("%s: ggml ctx size = %6.2f MB\n", __func__, ctx_size/(1024.0*1024.0));
-	   }
-
 	   // create the ggml context
 	   {
 	       struct ggml_init_params params = {
-	           / *.mem_size   =* / ctx_size,
+	           / *.mem_size   =* / ctxSize,
 	           / *.mem_buffer =* / NULL,
 	       };
 
