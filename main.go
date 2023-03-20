@@ -9,10 +9,10 @@ import (
 
 // uitils.h
 type gptVocab struct {
-	id       int
+	id       uint32
 	token    string
-	token2id map[string]int
-	id2token map[int]string
+	token2id map[string]uint32
+	id2token map[uint32]string
 }
 
 /*
@@ -46,26 +46,24 @@ type gptVocab struct {
 #define ANSI_BOLD          "\x1b[1m"
 */
 
-const (
-	// default hparams (LLaMA 7B)
-	llamaParamsVocab = 32000
-	llamaParamsCtx   = 512 // this is provided as user input?
-	llamaParamsEmbd  = 4096
-	llamaParamsMult  = 256
-	llamaParamsHead  = 32
-	llamaParamsLayer = 32
-	llamaParamsRot   = 64
-	llamaParamsF16   = 1
-)
-
 var (
 	// determine number of model parts based on the dimension
-	llamaParts = map[int]int{
+	llamaParts = map[uint32]uint32{
 		4096: 1,
 		5120: 2,
 		6656: 4,
 		8192: 8,
 	}
+
+	// default hparams (LLaMA 7B)
+	paramsVocabSize = uint32(32000)
+	hparamsCtx      = uint32(512) // this is provided as user input?
+	hparamsEmbd     = uint32(4096)
+	hparamsMult     = uint32(256)
+	hparamsHeads    = uint32(32)
+	hparamsLayers   = uint32(32)
+	hparamsRot      = uint32(64)
+	hparamsF16      = uint32(1)
 )
 
 type llamaLayer struct {
@@ -108,8 +106,17 @@ type llamaModel struct {
 	////std::map<std::string, struct ggml_tensor *> tensors;
 }
 
+func readInt(reader *bufio.Reader) uint32 {
+	buf := make([]byte, 4)
+	if count, err := reader.Read(buf); err != nil || count != 4 {
+		fmt.Print("\n[ERROR] Failed to read data from model file")
+		os.Exit(1)
+	}
+	return uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0])
+}
+
 // load the model's weights from a file
-func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx int) error {
+func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx uint32) error {
 	fmt.Printf("\n[llamaModelLoad] Loading model from '%s' - please wait ...", fileName)
 
 	data, err := os.Open(fileName)
@@ -120,29 +127,30 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 	reader := bufio.NewReader(data)
 
 	//var magic []byte
-	magic := make([]byte, 4)
-	if _, err := reader.Read(magic); err != nil {
-		return err
-	}
+	//magic := make([]byte, 4)
+	//if _, err := reader.Read(magic); err != nil {
+	//	return err
+	//}
 
 	//var magicInt int32
-	magicInt := int32(magic[3])<<24 | int32(magic[2])<<16 | int32(magic[1])<<8 | int32(magic[0])
-	if magicInt != 0x67676d6c {
+	//magicInt := int32(magic[3])<<24 | int32(magic[2])<<16 | int32(magic[1])<<8 | int32(magic[0])
+	magic := readInt(reader)
+	if magic != 0x67676d6c {
 		fmt.Printf("\n[llamaModelLoad] Invalid model file '%s' (bad magic)", fileName)
-		return nil
+		return nil // FIXME ERR
 	}
 
 	//var buf []byte // std::vector<char> f_buf(1024*1024);
-	buf := make([]byte, 1024*1024)
-	if _, err := reader.Read(buf); err != nil {
-		fmt.Printf("\n[llamaModelLoad] Error '%w'", err)
-		return nil
-	}
+	//	buf := make([]byte, 1024*1024)
+	//	if _, err := reader.Read(buf); err != nil {
+	//		fmt.Printf("\n[llamaModelLoad] Error '%w'", err)
+	//		return nil
+	//	}
 
 	////auto fin = std::ifstream(fname, std::ios::binary);
 	////fin.rdbuf()->pubsetbuf(f_buf.data(), f_buf.size());
 	////if (!fin) {
-	////    fprintf(stderr, "%s: failed to open '%s'\n", __func__, fname.c_str());
+	////    fmt.Printf("%s: failed to open '%s'\n", __func__, fname.c_str());
 	////    return false;
 	////}
 	/*
@@ -151,64 +159,72 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 	       uint32_t magic;
 	       fin.read((char *) &magic, sizeof(magic));
 	       if (magic != 0x67676d6c) {
-	           fprintf(stderr, "%s: invalid model file '%s' (bad magic)\n", __func__, fname.c_str());
+	           fmt.Printf("%s: invalid model file '%s' (bad magic)\n", __func__, fname.c_str());
 	           return false;
 	       }
 	   }
 	*/
+
+	var n_ff, n_parts uint32
+
+	// load hparams
+	{
+		paramsVocabSize = readInt(reader) // vocab_size
+		hparamsEmbd = readInt(reader)     // dim
+		hparamsMult = readInt(reader)     // multiple_of
+		hparamsHeads = readInt(reader)    // n_heads
+		hparamsLayers = readInt(reader)   // n_layers
+		hparamsRot = readInt(reader)      // rot = dim // n_heads [obsolete]
+		hparamsF16 = readInt(reader)      // ftype
+
+		hparamsCtx = n_ctx
+
+		//n_ff = ((2*(4*hparams.n_embd)/3 + hparams.n_mult - 1)/hparams.n_mult)*hparams.n_mult;
+		n_ff = ((2*(4*hparamsEmbd)/3 + hparamsMult - 1) / hparamsMult) * hparamsMult
+		//n_parts = LLAMA_N_PARTS.at(hparams.n_embd);
+		n_parts = llamaParts[hparamsEmbd]
+
+		fmt.Printf("\nn_vocab = %d", paramsVocabSize)
+		fmt.Printf("\nn_ctx   = %d", hparamsCtx)
+		fmt.Printf("\nn_embd  = %d", hparamsEmbd)
+		fmt.Printf("\nn_mult  = %d", hparamsMult)
+		fmt.Printf("\nn_head  = %d", hparamsHeads)
+		fmt.Printf("\nn_layer = %d", hparamsLayers)
+		fmt.Printf("\nn_rot   = %d", hparamsRot)
+		fmt.Printf("\nf16     = %d", hparamsF16)
+		fmt.Printf("\nn_ff    = %d", n_ff)
+		fmt.Printf("\nn_parts = %d", n_parts)
+	}
+
+	// load vocab
+	{
+		//std::string word;
+		//word := ""
+		//var i uint32
+		for i := uint32(0); i < paramsVocabSize; i++ {
+			//fin.read((char *) &len, sizeof(len));
+			len := readInt(reader)
+
+			////word.resize(len);
+			////fin.read((char *) word.data(), len);
+
+			//var magic []byte
+			word := make([]byte, len)
+			if count, err := reader.Read(word); err != nil || uint32(count) != len {
+				fmt.Printf("\n[llamaModelLoad] Problem reading vocabulary from '%s'", fileName)
+				return nil // FIXME ERR
+			}
+
+			////vocab.token_to_id[word] = i;
+			vocab.token2id[string(word)] = i
+			vocab.id2token[i] = string(word)
+
+			if i < 30000 {
+				fmt.Printf("[ vocab[%d] = %s ]", i, string(word))
+			}
+		}
+	}
 	/*
-	   int n_ff = 0;
-	   int n_parts = 0;
-
-	   // load hparams
-	   {
-	       auto & hparams = model.hparams;
-
-	       fin.read((char *) &hparams.n_vocab, sizeof(hparams.n_vocab));
-	       //fin.read((char *) &hparams.n_ctx,   sizeof(hparams.n_ctx));
-	       fin.read((char *) &hparams.n_embd,  sizeof(hparams.n_embd));
-	       fin.read((char *) &hparams.n_mult,  sizeof(hparams.n_mult));
-	       fin.read((char *) &hparams.n_head,  sizeof(hparams.n_head));
-	       fin.read((char *) &hparams.n_layer, sizeof(hparams.n_layer));
-	       fin.read((char *) &hparams.n_rot,   sizeof(hparams.n_rot));
-	       fin.read((char *) &hparams.f16,     sizeof(hparams.f16));
-
-	       hparams.n_ctx = n_ctx;
-
-	       n_ff = ((2*(4*hparams.n_embd)/3 + hparams.n_mult - 1)/hparams.n_mult)*hparams.n_mult;
-	       n_parts = LLAMA_N_PARTS.at(hparams.n_embd);
-
-	       fprintf(stderr, "%s: n_vocab = %d\n", __func__, hparams.n_vocab);
-	       fprintf(stderr, "%s: n_ctx   = %d\n", __func__, hparams.n_ctx);
-	       fprintf(stderr, "%s: n_embd  = %d\n", __func__, hparams.n_embd);
-	       fprintf(stderr, "%s: n_mult  = %d\n", __func__, hparams.n_mult);
-	       fprintf(stderr, "%s: n_head  = %d\n", __func__, hparams.n_head);
-	       fprintf(stderr, "%s: n_layer = %d\n", __func__, hparams.n_layer);
-	       fprintf(stderr, "%s: n_rot   = %d\n", __func__, hparams.n_rot);
-	       fprintf(stderr, "%s: f16     = %d\n", __func__, hparams.f16);
-	       fprintf(stderr, "%s: n_ff    = %d\n", __func__, n_ff);
-	       fprintf(stderr, "%s: n_parts = %d\n", __func__, n_parts);
-	   }
-
-	   // load vocab
-	   {
-	       std::string word;
-	       for (int i = 0; i < model.hparams.n_vocab; i++) {
-	           uint32_t len;
-	           fin.read((char *) &len, sizeof(len));
-
-	           word.resize(len);
-	           fin.read((char *) word.data(), len);
-
-	           vocab.token_to_id[word] = i;
-	           vocab.id_to_token[i] = word;
-
-	           //if (i < 30000) {
-	           //    fprintf(stderr, "%s: vocab[%d] = '%s'\n", __func__, i, word.c_str());
-	           //}
-	       }
-	   }
-
 	   // for the big tensors, we have the option to store the data in 16-bit floats or quantized
 	   // in order to save memory and also to speed up the computation
 	   ggml_type wtype = GGML_TYPE_COUNT;
@@ -219,7 +235,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 	       case 3: wtype = GGML_TYPE_Q4_1; break;
 	       default:
 	               {
-	                   fprintf(stderr, "%s: invalid model file '%s' (bad f16 value %d)\n",
+	                   fmt.Printf("%s: invalid model file '%s' (bad f16 value %d)\n",
 	                           __func__, fname.c_str(), model.hparams.f16);
 	                   return false;
 	               }
@@ -263,7 +279,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 
 	       ctx_size += (5 + 10*n_layer)*256; // object overhead
 
-	       fprintf(stderr, "%s: ggml ctx size = %6.2f MB\n", __func__, ctx_size/(1024.0*1024.0));
+	       fmt.Printf("%s: ggml ctx size = %6.2f MB\n", __func__, ctx_size/(1024.0*1024.0));
 	   }
 
 	   // create the ggml context
@@ -275,7 +291,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 
 	       model.ctx = ggml_init(params);
 	       if (!model.ctx) {
-	           fprintf(stderr, "%s: ggml_init() failed\n", __func__);
+	           fmt.Printf("%s: ggml_init() failed\n", __func__);
 	           return false;
 	       }
 	   }
@@ -350,7 +366,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 
 	       const size_t memory_size = ggml_nbytes(model.memory_k) + ggml_nbytes(model.memory_v);
 
-	       fprintf(stderr, "%s: memory_size = %8.2f MB, n_mem = %d\n", __func__, memory_size/1024.0/1024.0, n_mem);
+	       fmt.Printf("%s: memory_size = %8.2f MB, n_mem = %d\n", __func__, memory_size/1024.0/1024.0, n_mem);
 	   }
 
 	   const size_t file_offset = fin.tellg();
@@ -368,7 +384,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 	           fname_part += "." + std::to_string(i);
 	       }
 
-	       fprintf(stderr, "%s: loading model part %d/%d from '%s'\n", __func__, i+1, n_parts, fname_part.c_str());
+	       fmt.Printf("%s: loading model part %d/%d from '%s'\n", __func__, i+1, n_parts, fname_part.c_str());
 
 	       fin = std::ifstream(fname_part, std::ios::binary);
 	       fin.rdbuf()->pubsetbuf(f_buf.data(), f_buf.size());
@@ -379,7 +395,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 	           int n_tensors = 0;
 	           size_t total_size = 0;
 
-	           fprintf(stderr, "%s: ", __func__);
+	           fmt.Printf("%s: ", __func__);
 
 	           while (true) {
 	               int32_t n_dims;
@@ -405,7 +421,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 	               fin.read(&name[0], length);
 
 	               if (model.tensors.find(name.data()) == model.tensors.end()) {
-	                   fprintf(stderr, "%s: unknown tensor '%s' in model file\n", __func__, name.data());
+	                   fmt.Printf("%s: unknown tensor '%s' in model file\n", __func__, name.data());
 	                   return false;
 	               }
 
@@ -445,32 +461,32 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 
 	               if (n_dims == 1) {
 	                   if (ggml_nelements(tensor) != nelements) {
-	                       fprintf(stderr, "%s: tensor '%s' has wrong size in model file\n", __func__, name.data());
+	                       fmt.Printf("%s: tensor '%s' has wrong size in model file\n", __func__, name.data());
 	                       return false;
 	                   }
 	               } else {
 	                   if (ggml_nelements(tensor)/n_parts != nelements) {
-	                       fprintf(stderr, "%s: tensor '%s' has wrong size in model file\n", __func__, name.data());
+	                       fmt.Printf("%s: tensor '%s' has wrong size in model file\n", __func__, name.data());
 	                       return false;
 	                   }
 	               }
 
 	               if (n_dims == 1) {
 	                   if (tensor->ne[0] != ne[0] || tensor->ne[1] != ne[1]) {
-	                       fprintf(stderr, "%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
+	                       fmt.Printf("%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
 	                               __func__, name.data(), tensor->ne[0], tensor->ne[1], ne[0], ne[1]);
 	                       return false;
 	                   }
 	               } else {
 	                   if (split_type == 0) {
 	                       if (tensor->ne[0]/n_parts != ne[0] || tensor->ne[1] != ne[1]) {
-	                           fprintf(stderr, "%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
+	                           fmt.Printf("%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
 	                                   __func__, name.data(), tensor->ne[0]/n_parts, tensor->ne[1], ne[0], ne[1]);
 	                           return false;
 	                       }
 	                   } else {
 	                       if (tensor->ne[0] != ne[0] || tensor->ne[1]/n_parts != ne[1]) {
-	                           fprintf(stderr, "%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
+	                           fmt.Printf("%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
 	                                   __func__, name.data(), tensor->ne[0], tensor->ne[1]/n_parts, ne[0], ne[1]);
 	                           return false;
 	                       }
@@ -479,7 +495,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 
 	               if (0) {
 	                   static const char * ftype_str[] = { "f32", "f16", "q4_0", "q4_1", };
-	                   fprintf(stderr, "%24s - [%5d, %5d], type = %6s, split = %d\n", name.data(), ne[0], ne[1], ftype_str[ftype], split_type);
+	                   fmt.Printf("%24s - [%5d, %5d], type = %6s, split = %d\n", name.data(), ne[0], ne[1], ftype_str[ftype], split_type);
 	               }
 
 	               size_t bpe = 0;
@@ -491,14 +507,14 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 	                   case 3: bpe = ggml_type_size(GGML_TYPE_Q4_1); assert(ne[0] % 64 == 0); break;
 	                   default:
 	                           {
-	                               fprintf(stderr, "%s: unknown ftype %d in model file\n", __func__, ftype);
+	                               fmt.Printf("%s: unknown ftype %d in model file\n", __func__, ftype);
 	                               return false;
 	                           }
 	               };
 
 	               if (n_dims == 1 || n_parts == 1) {
 	                   if ((nelements*bpe)/ggml_blck_size(tensor->type) != ggml_nbytes(tensor)) {
-	                       fprintf(stderr, "%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
+	                       fmt.Printf("%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
 	                               __func__, name.data(), ggml_nbytes(tensor), nelements*bpe);
 	                       return false;
 	                   }
@@ -512,7 +528,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 	                   total_size += ggml_nbytes(tensor);
 	               } else {
 	                   if ((nelements*bpe)/ggml_blck_size(tensor->type) != ggml_nbytes(tensor)/n_parts) {
-	                       fprintf(stderr, "%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
+	                       fmt.Printf("%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
 	                               __func__, name.data(), ggml_nbytes(tensor)/n_parts, nelements*bpe);
 	                       return false;
 	                   }
@@ -542,16 +558,16 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx i
 	                   total_size += ggml_nbytes(tensor)/n_parts;
 	               }
 
-	               //fprintf(stderr, "%42s - [%5d, %5d], type = %6s, %6.2f MB\n", name.data(), ne[0], ne[1], ftype == 0 ? "float" : "f16", ggml_nbytes(tensor)/1024.0/1024.0);
+	               //fmt.Printf("%42s - [%5d, %5d], type = %6s, %6.2f MB\n", name.data(), ne[0], ne[1], ftype == 0 ? "float" : "f16", ggml_nbytes(tensor)/1024.0/1024.0);
 	               if (++n_tensors % 8 == 0) {
-	                   fprintf(stderr, ".");
+	                   fmt.Printf(".");
 	                   fflush(stderr);
 	               }
 	           }
 
-	           fprintf(stderr, " done\n");
+	           fmt.Printf(" done\n");
 
-	           fprintf(stderr, "%s: model size = %8.2f MB / num tensors = %d\n", __func__, total_size/1024.0/1024.0, n_tensors);
+	           fmt.Printf("%s: model size = %8.2f MB / num tensors = %d\n", __func__, total_size/1024.0/1024.0, n_tensors);
 	       }
 
 	       fin.close();
@@ -600,13 +616,13 @@ bool llama_eval(
 
     if (mem_per_token > 0 && mem_per_token*N > buf_size) {
         const size_t buf_size_new = 1.1*(mem_per_token*N); // add 10% to account for ggml object overhead
-        //fprintf(stderr, "\n%s: reallocating buffer from %zu to %zu bytes\n", __func__, buf_size, buf_size_new);
+        //fmt.Printf("\n%s: reallocating buffer from %zu to %zu bytes\n", __func__, buf_size, buf_size_new);
 
         // reallocate
         buf_size = buf_size_new;
         buf = realloc(buf, buf_size);
         if (buf == nullptr) {
-            fprintf(stderr, "%s: failed to allocate %zu bytes\n", __func__, buf_size);
+            fmt.Printf("%s: failed to allocate %zu bytes\n", __func__, buf_size);
             return false;
         }
     }
@@ -792,7 +808,7 @@ bool llama_eval(
     if (mem_per_token == 0) {
         mem_per_token = ggml_used_mem(ctx0)/N;
     }
-    //fprintf(stderr, "used_mem = %zu\n", ggml_used_mem(ctx0));
+    //fmt.Printf("used_mem = %zu\n", ggml_used_mem(ctx0));
 
     ggml_free(ctx0);
 
@@ -849,14 +865,14 @@ func main() {
 	////params.model = "models/llama-7B/ggml-model.bin";
 
 	//modelName := "./models/7B/ggml-model.bin"
-	modelName := "./LLaMA/7B/ggml-model.bin"
+	modelName := "./LLaMA/7B/ggml-model-f16.bin"
 
 	////if (gpt_params_parse(argc, argv, params) == false) {
 	////    return 1;
 	////}
 
 	////if (params.n_ctx > 2048) {
-	////fprintf(stderr, "%s: warning: model does not support context sizes greater than 2048 tokens (%d specified);"
+	////fmt.Printf("%s: warning: model does not support context sizes greater than 2048 tokens (%d specified);"
 	////    "expect poor results\n", __func__, params.n_ctx);
 	////}
 
@@ -884,7 +900,7 @@ func main() {
 	{
 		////const int64_t t_start_us = ggml_time_us();
 		/////if (!llama_model_load(params.model, model, vocab, params.n_ctx)) {
-		if err := llamaModelLoad(modelName, model, vocab, llamaParamsCtx); err != nil {
+		if err := llamaModelLoad(modelName, model, vocab, hparamsCtx); err != nil {
 			fmt.Printf("\n[main] Failed to load model from '%s'", modelName)
 			return
 		}
@@ -894,8 +910,8 @@ func main() {
 
 	// print system information
 	////{
-	////    fprintf(stderr, "\n");
-	////fprintf(stderr, "system_info: n_threads = %d / %d | %s\n",
+	////    fmt.Printf("\n");
+	////fmt.Printf("system_info: n_threads = %d / %d | %s\n",
 	////    params.n_threads, std::thread::hardware_concurrency(), llama_print_system_info());
 	////}
 	/*
@@ -916,13 +932,13 @@ func main() {
 	       // tokenize the reverse prompt
 	       std::vector<gpt_vocab::id> antiprompt_inp = ::llama_tokenize(vocab, params.antiprompt, false);
 
-	       fprintf(stderr, "\n");
-	       fprintf(stderr, "%s: prompt: '%s'\n", __func__, params.prompt.c_str());
-	       fprintf(stderr, "%s: number of tokens in prompt = %zu\n", __func__, embd_inp.size());
+	       fmt.Printf("\n");
+	       fmt.Printf("%s: prompt: '%s'\n", __func__, params.prompt.c_str());
+	       fmt.Printf("%s: number of tokens in prompt = %zu\n", __func__, embd_inp.size());
 	       for (int i = 0; i < (int) embd_inp.size(); i++) {
-	           fprintf(stderr, "%6d -> '%s'\n", embd_inp[i], vocab.id_to_token.at(embd_inp[i]).c_str());
+	           fmt.Printf("%6d -> '%s'\n", embd_inp[i], vocab.id_to_token.at(embd_inp[i]).c_str());
 	       }
-	       fprintf(stderr, "\n");
+	       fmt.Printf("\n");
 	       if (params.interactive) {
 	   #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 	           struct sigaction sigint_action;
@@ -934,19 +950,19 @@ func main() {
 	           signal(SIGINT, sigint_handler);
 	   #endif
 
-	           fprintf(stderr, "%s: interactive mode on.\n", __func__);
+	           fmt.Printf("%s: interactive mode on.\n", __func__);
 
 	           if(antiprompt_inp.size()) {
-	               fprintf(stderr, "%s: reverse prompt: '%s'\n", __func__, params.antiprompt.c_str());
-	               fprintf(stderr, "%s: number of tokens in reverse prompt = %zu\n", __func__, antiprompt_inp.size());
+	               fmt.Printf("%s: reverse prompt: '%s'\n", __func__, params.antiprompt.c_str());
+	               fmt.Printf("%s: number of tokens in reverse prompt = %zu\n", __func__, antiprompt_inp.size());
 	               for (int i = 0; i < (int) antiprompt_inp.size(); i++) {
-	                   fprintf(stderr, "%6d -> '%s'\n", antiprompt_inp[i], vocab.id_to_token.at(antiprompt_inp[i]).c_str());
+	                   fmt.Printf("%6d -> '%s'\n", antiprompt_inp[i], vocab.id_to_token.at(antiprompt_inp[i]).c_str());
 	               }
-	               fprintf(stderr, "\n");
+	               fmt.Printf("\n");
 	           }
 	       }
-	       fprintf(stderr, "sampling parameters: temp = %f, top_k = %d, top_p = %f, repeat_last_n = %i, repeat_penalty = %f\n", params.temp, params.top_k, params.top_p, params.repeat_last_n, params.repeat_penalty);
-	       fprintf(stderr, "\n\n");
+	       fmt.Printf("sampling parameters: temp = %f, top_k = %d, top_p = %f, repeat_last_n = %i, repeat_penalty = %f\n", params.temp, params.top_k, params.top_p, params.repeat_last_n, params.repeat_penalty);
+	       fmt.Printf("\n\n");
 
 	       std::vector<gpt_vocab::id> embd;
 
@@ -960,7 +976,7 @@ func main() {
 
 
 	       if (params.interactive) {
-	           fprintf(stderr, "== Running in interactive mode. ==\n"
+	           fmt.Printf("== Running in interactive mode. ==\n"
 	   #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__)) || defined (_WIN32)
 	                  " - Press Ctrl+C to interject at any time.\n"
 	   #endif
@@ -988,7 +1004,7 @@ func main() {
 	               const int64_t t_start_us = ggml_time_us();
 
 	               if (!llama_eval(model, params.n_threads, n_past, embd, logits, mem_per_token)) {
-	                   fprintf(stderr, "Failed to predict\n");
+	                   fmt.Printf("Failed to predict\n");
 	                   return 1;
 	               }
 
@@ -1101,7 +1117,7 @@ func main() {
 
 	           // end of text token
 	           if (embd.back() == 2) {
-	               fprintf(stderr, " [end of text]\n");
+	               fmt.Printf(" [end of text]\n");
 	               break;
 	           }
 	       }
@@ -1114,12 +1130,12 @@ func main() {
 	       {
 	           const int64_t t_main_end_us = ggml_time_us();
 
-	           fprintf(stderr, "\n\n");
-	           fprintf(stderr, "%s: mem per token = %8zu bytes\n", __func__, mem_per_token);
-	           fprintf(stderr, "%s:     load time = %8.2f ms\n", __func__, t_load_us/1000.0f);
-	           fprintf(stderr, "%s:   sample time = %8.2f ms\n", __func__, t_sample_us/1000.0f);
-	           fprintf(stderr, "%s:  predict time = %8.2f ms / %.2f ms per token\n", __func__, t_predict_us/1000.0f, t_predict_us/1000.0f/n_past);
-	           fprintf(stderr, "%s:    total time = %8.2f ms\n", __func__, (t_main_end_us - t_main_start_us)/1000.0f);
+	           fmt.Printf("\n\n");
+	           fmt.Printf("%s: mem per token = %8zu bytes\n", __func__, mem_per_token);
+	           fmt.Printf("%s:     load time = %8.2f ms\n", __func__, t_load_us/1000.0f);
+	           fmt.Printf("%s:   sample time = %8.2f ms\n", __func__, t_sample_us/1000.0f);
+	           fmt.Printf("%s:  predict time = %8.2f ms / %.2f ms per token\n", __func__, t_predict_us/1000.0f, t_predict_us/1000.0f/n_past);
+	           fmt.Printf("%s:    total time = %8.2f ms\n", __func__, (t_main_end_us - t_main_start_us)/1000.0f);
 	       }
 
 	       ggml_free(model.ctx);
