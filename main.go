@@ -110,7 +110,6 @@ type llamaModel struct {
 func readInt(reader *bufio.Reader) uint32 {
 	buf := make([]byte, 4)
 	if count, err := io.ReadFull(reader, buf); err != nil || count != 4 {
-		fmt.Printf(" [ COUNT=%d ] ", count)
 		fmt.Print("\n[ERROR] Failed to read data from model file")
 		os.Exit(1)
 	}
@@ -201,31 +200,20 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 	// load vocab
 	{
-		//std::string word;
-		//word := ""
-		//var i uint32
-		for i := uint32(0); i < paramsVocabSize; i++ {
-			//fin.read((char *) &len, sizeof(len));
-			len := readInt(reader)
-			fmt.Printf(" [ LEN=%d ", len)
-			////word.resize(len);
-			////fin.read((char *) word.data(), len);
 
-			//var magic []byte
+		for i := uint32(0); i < paramsVocabSize; i++ {
+			len := readInt(reader)
 			word := make([]byte, len)
 			if count, err := io.ReadFull(reader, word); err != nil || count != int(len) {
 				fmt.Printf("\n[llamaModelLoad] Problem reading vocabulary from '%s'", fileName)
 				return nil // FIXME ERR
 			}
 
-			//if i < 30000 {
-			if i%6 == 0 {
-				fmt.Println()
-			}
-			fmt.Printf("| vocab[%d] = %s ] ", i, string(word))
+			//if i%6 == 0 {
+			//	fmt.Println()
 			//}
+			//fmt.Printf("| vocab[%d] = %s ] ", i, string(word))
 
-			////vocab.token_to_id[word] = i;
 			vocab.token2id[string(word)] = i
 			vocab.id2token[i] = string(word)
 		}
