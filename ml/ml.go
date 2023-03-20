@@ -6,6 +6,27 @@ import (
     "fmt"
 )*/
 
+const (
+	GGML_MAX_DIMS     = 4
+	GGML_MAX_NODES    = 4096
+	GGML_MAX_PARAMS   = 16
+	GGML_MAX_CONTEXTS = 64
+	GGML_MAX_OPT      = 4
+)
+
+type State struct {
+	Contexts [GGML_MAX_CONTEXTS]ContextContainer
+}
+
+type ContextContainer struct {
+	Used    bool
+	context Context
+}
+
+// global state
+var gState State
+var gStateBarrier int // FIXME atomic_int
+
 type InitParams struct {
 	// memory pool
 	MemSize   uint64 // bytes
@@ -2542,53 +2563,54 @@ func Init(params InitParams) *Context {
 
 	if isFirstCall {
 		// initialize GELU, SILU and EXP F32 tables
-		/*        {
-		              const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
+		////{
+		////const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
 
-		              ggml_fp16_t ii;
-		              for (int i = 0; i < (1 << 16); ++i) {
-		                  uint16_t ui = i;
-		                  memcpy(&ii, &ui, sizeof(ii));
-		                  const float f = table_f32_f16[i] = GGML_COMPUTE_FP16_TO_FP32(ii);
-		                  table_gelu_f16[i] = GGML_FP32_TO_FP16(ggml_gelu_f32(f));
-		                  table_silu_f16[i] = GGML_FP32_TO_FP16(ggml_silu_f32(f));
-		                  table_exp_f16[i]  = GGML_FP32_TO_FP16(exp(f));
-		              }
+		////ggml_fp16_t ii;
+		////for (int i = 0; i < (1 << 16); ++i) {
+		////uint16_t ui = i;
+		////memcpy(&ii, &ui, sizeof(ii));
+		////const float f = table_f32_f16[i] = GGML_COMPUTE_FP16_TO_FP32(ii);
+		////table_gelu_f16[i] = GGML_FP32_TO_FP16(ggml_gelu_f32(f));
+		////table_silu_f16[i] = GGML_FP32_TO_FP16(ggml_silu_f32(f));
+		////table_exp_f16[i]  = GGML_FP32_TO_FP16(exp(f));
+		////}
 
-		              const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
+		////const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
 
-		              GGML_PRINT_DEBUG("%s: GELU, SILU and EXP tables initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
-		          }
+		////GGML_PRINT_DEBUG("%s: GELU, SILU and EXP tables initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
+		////}
 
-		          // initialize g_state
-		          {
-		              const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
+		// initialize g_state
+		{
+			////const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
 
-		              g_state = (struct ggml_state) {
-		                  / *.contexts =* / { { 0 } },
-		              };
+			gState = State{
+				Contexts: [GGML_MAX_CONTEXTS]ContextContainer{},
+			}
 
-		              for (int i = 0; i < GGML_MAX_CONTEXTS; ++i) {
-		                  g_state.contexts[i].used = false;
-		              }
+			for i := uint32(0); i < GGML_MAX_CONTEXTS; i++ {
+				gState.Contexts[i].Used = false
+			}
 
-		              const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
+			////const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
+			//var end uint64 = ggml_time_us(); UNUSED(t_end)
 
-		              GGML_PRINT_DEBUG("%s: g_state initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
-		          }
-		*/
+			////GGML_PRINT_DEBUG("%s: g_state initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
+		}
+
 		isFirstCall = false
 	}
 
 	// find non-used context in g_state
-	var ctx *ggmlContext
+	var ctx *Context
 
 	for i := uint32(0); i < GGML_MAX_CONTEXTS; i++ {
-		if !g_state.contexts[i].used {
-			g_state.contexts[i].used = true
-			ctx = &g_state.contexts[i].context
+		if !gState.Contexts[i].Used {
+			gState.Contexts[i].Used = true
+			ctx = &gState.Contexts[i].context
 
-			GGML_PRINT_DEBUG("%s: found unused context %d\n", __func__, i)
+			////GGML_PRINT_DEBUG("%s: found unused context %d\n", __func__, i)
 			break
 		}
 	}
@@ -2600,21 +2622,22 @@ func Init(params InitParams) *Context {
 	}
 
 	var buf []byte
-	if params.memBuffer {
-		buf = params.memBuffer
+	if params.MemBuffer == nil {
+		buf = make([]byte, params.MemSize)
+
 	} else {
-		buf = make([]byte, params.memSize)
+		buf = params.MemBuffer
 	}
 
-	ctx = &ggmlContext{
-		memSize:        params.memSize,
-		memBuffer:      buf,
-		memBufferOwned: params.memBuffer != nil,
-		objects:        0,
-		objectsBegin:   nil,
-		objectsEnd:     nil,
-		scratch:        {0, 0, nil},
-		scratchSave:    {0, 0, nil},
+	ctx = &Context{
+		MemSize:        params.MemSize,
+		MemBuffer:      buf,
+		MemBufferOwned: params.MemBuffer != nil,
+		Objects:        0,
+		ObjectsBegin:   nil,
+		ObjectsEnd:     nil,
+		Scratch:        Scratch{0, 0, nil},
+		ScratchSave:    Scratch{0, 0, nil},
 	}
 
 	////ggml_assert_aligned(ctx->mem_buffer);

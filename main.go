@@ -251,11 +251,11 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 	embd := hparamsEmbd
 	layers := hparamsLayers
 	////const int n_ctx   = hparams.n_ctx;
-	vocab := hparamsVocabSize
+	vocabSize := hparamsVocabSize
 
-	ctxSize += embd * vocab * typeSize                                  /* ggml_type_sizef(wtype) */         // tok_embeddings
+	ctxSize += embd * vocabSize * typeSize                              /* ggml_type_sizef(wtype) */         // tok_embeddings
 	ctxSize += embd * 4                                                 /* ggml_type_sizef(GGML_TYPE_F32) */ // norm
-	ctxSize += embd * vocab * typeSize                                  /* ggml_type_sizef(wtype) */         // output
+	ctxSize += embd * vocabSize * typeSize                              /* ggml_type_sizef(wtype) */         // output
 	ctxSize += layers * (embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */) // attention_norm
 
 	ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wq
