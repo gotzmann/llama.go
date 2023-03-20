@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"os"
 )
@@ -108,7 +109,8 @@ type llamaModel struct {
 
 func readInt(reader *bufio.Reader) uint32 {
 	buf := make([]byte, 4)
-	if count, err := reader.Read(buf); err != nil || count != 4 {
+	if count, err := io.ReadFull(reader, buf); err != nil || count != 4 {
+		fmt.Printf(" [ COUNT=%d ] ", count)
 		fmt.Print("\n[ERROR] Failed to read data from model file")
 		os.Exit(1)
 	}
@@ -125,6 +127,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 	}
 	defer data.Close()
 	reader := bufio.NewReader(data)
+	//reader := io.NewReader(data)
 
 	//var magic []byte
 	//magic := make([]byte, 4)
@@ -204,24 +207,27 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 		for i := uint32(0); i < paramsVocabSize; i++ {
 			//fin.read((char *) &len, sizeof(len));
 			len := readInt(reader)
-
+			fmt.Printf(" [ LEN=%d ", len)
 			////word.resize(len);
 			////fin.read((char *) word.data(), len);
 
 			//var magic []byte
 			word := make([]byte, len)
-			if count, err := reader.Read(word); err != nil || uint32(count) != len {
+			if count, err := io.ReadFull(reader, word); err != nil || count != int(len) {
 				fmt.Printf("\n[llamaModelLoad] Problem reading vocabulary from '%s'", fileName)
 				return nil // FIXME ERR
 			}
 
+			//if i < 30000 {
+			if i%6 == 0 {
+				fmt.Println()
+			}
+			fmt.Printf("| vocab[%d] = %s ] ", i, string(word))
+			//}
+
 			////vocab.token_to_id[word] = i;
 			vocab.token2id[string(word)] = i
 			vocab.id2token[i] = string(word)
-
-			if i < 30000 {
-				fmt.Printf("[ vocab[%d] = %s ]", i, string(word))
-			}
 		}
 	}
 	/*
@@ -893,14 +899,17 @@ func main() {
 	       int64_t t_load_us = 0;
 
 	       gpt_vocab vocab;*/
-	var vocab *gptVocab
-	var model *llamaModel
+	var vocab gptVocab
+	vocab.token2id = make(map[string]uint32)
+	vocab.id2token = make(map[uint32]string)
+
+	var model llamaModel
 
 	// load the model
 	{
 		////const int64_t t_start_us = ggml_time_us();
 		/////if (!llama_model_load(params.model, model, vocab, params.n_ctx)) {
-		if err := llamaModelLoad(modelName, model, vocab, hparamsCtx); err != nil {
+		if err := llamaModelLoad(modelName, &model, &vocab, hparamsCtx); err != nil {
 			fmt.Printf("\n[main] Failed to load model from '%s'", modelName)
 			return
 		}
