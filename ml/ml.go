@@ -14,53 +14,51 @@ const (
 	GGML_MAX_OPT      = 4
 )
 
-
-
 // available tensor operations
 type op uint32
+
 const (
-    OP_NONE op = iota
-    OP_DUP
-    OP_ADD
-    OP_SUB
-    OP_MUL
-    OP_DIV
-    OP_SQR
-    OP_SQRT
-    OP_SUM
-    OP_MEAN
-    OP_REPEAT
-    OP_ABS
-    OP_SGN
-    OP_NEG
-    OP_STEP
-    OP_RELU
-    OP_GELU
-    OP_SILU
-    OP_NORM // normalize
-    OP_RMS_NORM
+	OP_NONE op = iota
+	OP_DUP
+	OP_ADD
+	OP_SUB
+	OP_MUL
+	OP_DIV
+	OP_SQR
+	OP_SQRT
+	OP_SUM
+	OP_MEAN
+	OP_REPEAT
+	OP_ABS
+	OP_SGN
+	OP_NEG
+	OP_STEP
+	OP_RELU
+	OP_GELU
+	OP_SILU
+	OP_NORM // normalize
+	OP_RMS_NORM
 
-    OP_MUL_MAT
+	OP_MUL_MAT
 
-    OP_SCALE
-    OP_CPY
-    OP_RESHAPE
-    OP_VIEW
-    OP_PERMUTE
-    OP_TRANSPOSE
-    OP_GET_ROWS
-    OP_DIAG_MASK_INF
-    OP_SOFT_MAX
-    OP_ROPE
-    OP_CONV_1D_1S
-    OP_CONV_1D_2S
+	OP_SCALE
+	OP_CPY
+	OP_RESHAPE
+	OP_VIEW
+	OP_PERMUTE
+	OP_TRANSPOSE
+	OP_GET_ROWS
+	OP_DIAG_MASK_INF
+	OP_SOFT_MAX
+	OP_ROPE
+	OP_CONV_1D_1S
+	OP_CONV_1D_2S
 
-    OP_FLASH_ATTN
-    OP_FLASH_FF
+	OP_FLASH_ATTN
+	OP_FLASH_FF
 
-    OP_COUNT
+	OP_COUNT
 )
-
 
 // n-dimensional tensor
 type Tensor struct {
@@ -68,8 +66,8 @@ type Tensor struct {
 	Type uint32 // FIXME
 
 	Dims uint32
-	Ne   [GGML_MAX_DIMS]uint32 // number of elements
-	nb   [GGML_MAX_DIMS]uint64 // stride in bytes:
+	ne   [GGML_MAX_DIMS]uint32 // number of elements
+	nb   [GGML_MAX_DIMS]uint32 // stride in bytes:
 	// nb[0] = sizeof(type)
 	// nb[1] = nb[0]   * ne[0] + padding
 	// nb[i] = nb[i-1] * ne[i-1]
@@ -89,7 +87,7 @@ type Tensor struct {
 
 	// performance
 	perfRuns   uint32
-	perfCycles uint64
+	perfCycles uint32
 	perfTime   uint64
 
 	data    []byte
@@ -147,143 +145,143 @@ type Context struct {
 }
 
 // ggml_new_tensor
-func NewTensor (tx *Context, typ Type, dims uint32, ne *uint32) *Tensor {
-    return NewTensorImpl(ctx, typ, dims, ne, nil);
+func NewTensor(ctx *Context, typ uint32, dims uint32, ne []uint32) *Tensor {
+	return NewTensorImpl(ctx, typ, dims, ne, nil)
 }
 
 // ggml_new_tensor_1d
-func NewTensor1D (ctx *Context, typ Type, ne0 uint32) *Tensor {
-    return newTensor(ctx, typ, 1, &ne0)
+func NewTensor1D(ctx *Context, typ uint32, ne0 []uint32) *Tensor {
+	return NewTensor(ctx, typ, 1, ne0)
 }
 
 // ggml_new_tensor_2d
-func NewTensor2d (ctx *Context, typ Type, ne0, ne1 uint32) *Tensor {
-    var ne [2]uint32 = [2]uint32{ ne0, ne1 }
-    return NewTensor(ctx, typ, 2, ne)
+func NewTensor2d(ctx *Context, typ uint32, ne0, ne1 []uint32) *Tensor {
+	ne := [][]uint32{ne0, ne1}
+	return NewTensor(ctx, typ, 2, ne)
 }
 
-//  ggml_new_tensor_impl
-func NewTensorImpl (ctx *Context, typ Type, dims uint32, ne *uint32, data *[]byte) *Tensor {
-    // always insert objects at the end of the context's memory pool
-    ////struct ggml_object * obj_cur = ctx->objects_end;
+// ggml_new_tensor_impl
+func NewTensorImpl(ctx *Context, typ uint32, dims uint32, ne [][]uint32, data []byte) *Tensor {
+	// always insert objects at the end of the context's memory pool
+	////struct ggml_object * obj_cur = ctx->objects_end;
 
-    ////const size_t cur_offs = obj_cur == NULL ? 0 : obj_cur->offs;
-    ////const size_t cur_size = obj_cur == NULL ? 0 : obj_cur->size;
-    ////const size_t cur_end  = cur_offs + cur_size;
+	////const size_t cur_offs = obj_cur == NULL ? 0 : obj_cur->offs;
+	////const size_t cur_size = obj_cur == NULL ? 0 : obj_cur->size;
+	////const size_t cur_end  = cur_offs + cur_size;
 
-    sizeNeeded := uint64(0)
+	sizeNeeded := uint64(0)
 
-    if data == nil {
-        ////size_needed += GGML_TYPE_SIZE[type]*(ne[0]/GGML_BLCK_SIZE[type]);
-        ////for (int i = 1; i < n_dims; i++) {
-        ////    size_needed *= ne[i];
-        ////}
-        // align to GGML_MEM_ALIGN
-        ////size_needed = ((size_needed + GGML_MEM_ALIGN - 1)/GGML_MEM_ALIGN)*GGML_MEM_ALIGN;
-    }
+	if data == nil {
+		////size_needed += GGML_TYPE_SIZE[type]*(ne[0]/GGML_BLCK_SIZE[type]);
+		////for (int i = 1; i < n_dims; i++) {
+		////    size_needed *= ne[i];
+		////}
+		// align to GGML_MEM_ALIGN
+		////size_needed = ((size_needed + GGML_MEM_ALIGN - 1)/GGML_MEM_ALIGN)*GGML_MEM_ALIGN;
+	}
 
-    ////char * const mem_buffer = ctx->mem_buffer;
-    ////struct ggml_object * const obj_new = (struct ggml_object *)(mem_buffer + cur_end);
+	////char * const mem_buffer = ctx->mem_buffer;
+	////struct ggml_object * const obj_new = (struct ggml_object *)(mem_buffer + cur_end);
 
-    if ctx.Scratch.Data == nil || data != nil {
-        ////size_needed += sizeof(struct ggml_tensor);
+	if ctx.Scratch.Data == nil || data != nil {
+		////size_needed += sizeof(struct ggml_tensor);
 
-        ////if (cur_end + size_needed + GGML_OBJECT_SIZE > ctx->mem_size) {
-            ////GGML_PRINT("%s: not enough space in the context's memory pool (needed %zu, available %zu)\n",
-                ////    __func__, cur_end + size_needed + GGML_OBJECT_SIZE, ctx->mem_size);
-            ////assert(false);
-            ////return NULL;
-        ////}
+		////if (cur_end + size_needed + GGML_OBJECT_SIZE > ctx->mem_size) {
+		////GGML_PRINT("%s: not enough space in the context's memory pool (needed %zu, available %zu)\n",
+		////    __func__, cur_end + size_needed + GGML_OBJECT_SIZE, ctx->mem_size);
+		////assert(false);
+		////return NULL;
+		////}
 
-        obj_new = &Object{
-            Offs: cur_end + GGML_OBJECT_SIZE,
-            Size: 0, // FIXME size_needed,
-            Next: nil,
-        }
+		obj_new = &Object{
+			Offs: cur_end + GGML_OBJECT_SIZE,
+			Size: 0, // FIXME size_needed,
+			Next: nil,
+		}
 
-    } else {
+	} else {
 
-        if (ctx.Scratch.Offs + sizeNeeded > ctx.Scratch.Size) {
-            //GGML_PRINT("%s: not enough space in the scratch memory\n", __func__);
-            //assert(false);
-            return nil
-    }
+		if ctx.Scratch.Offs+sizeNeeded > ctx.Scratch.Size {
+			//GGML_PRINT("%s: not enough space in the scratch memory\n", __func__);
+			//assert(false);
+			return nil
+		}
+	}
 
-    ////if (cur_end + sizeof(struct ggml_tensor) + GGML_OBJECT_SIZE > ctx->mem_size) {
-        ////GGML_PRINT("%s: not enough space in the context's memory pool (needed %zu, available %zu)\n",
-            ////    __func__, cur_end + sizeof(struct ggml_tensor) + GGML_OBJECT_SIZE, ctx->mem_size);
-        ////assert(false);
-        ////return NULL;
-    ////}
+	////if (cur_end + sizeof(struct ggml_tensor) + GGML_OBJECT_SIZE > ctx->mem_size) {
+	////GGML_PRINT("%s: not enough space in the context's memory pool (needed %zu, available %zu)\n",
+	////    __func__, cur_end + sizeof(struct ggml_tensor) + GGML_OBJECT_SIZE, ctx->mem_size);
+	////assert(false);
+	////return NULL;
+	////}
 
-    ////data = (char * const) ctx->scratch.data + ctx->scratch.offs;
+	////data = (char * const) ctx->scratch.data + ctx->scratch.offs;
 
-    ////*obj_new = (struct ggml_object) {
-        ////.offs = cur_end + GGML_OBJECT_SIZE,
-        ////.size = sizeof(struct ggml_tensor),
-        ////.next = NULL,
-    ////};
+	////*obj_new = (struct ggml_object) {
+	////.offs = cur_end + GGML_OBJECT_SIZE,
+	////.size = sizeof(struct ggml_tensor),
+	////.next = NULL,
+	////};
 
-    //printf("scratch offs = %zu, size_needed = %zu\n", ctx->scratch.offs, size_needed);
+	//printf("scratch offs = %zu, size_needed = %zu\n", ctx->scratch.offs, size_needed);
 
-    ////ctx->scratch.offs += size_needed;
-    ////}
+	////ctx->scratch.offs += size_needed;
+	////}
 
-    if objCur != nil {
-        objCur.Next = objNew
-    } else {
-        // this is the first object in this context
-        ctx.ObjectsBegin = objNew
-    }
+	if objCur != nil {
+		objCur.Next = objNew
+	} else {
+		// this is the first object in this context
+		ctx.ObjectsBegin = objNew
+	}
 
-    ctx.objectsEnd = objNew
+	ctx.objectsEnd = objNew
 
-    //printf("%s: inserted new object at %zu, size = %zu\n", __func__, cur_end, obj_new->size);
+	//printf("%s: inserted new object at %zu, size = %zu\n", __func__, cur_end, obj_new->size);
 
-    ////struct ggml_tensor * const result = (struct ggml_tensor *)(mem_buffer + obj_new->offs);
+	////struct ggml_tensor * const result = (struct ggml_tensor *)(mem_buffer + obj_new->offs);
 
-    ////ggml_assert_aligned(result);
+	////ggml_assert_aligned(result);
 
-    if data == nil {
-        data = make([]byte, 0) // FIXME Size?
-    }
+	if data == nil {
+		data = make([]byte, 0) // FIXME Size?
+	}
 
-    result := &Tensor{
-        Type: typ,
-        Dims: dims,
-        ne: { 1, 1, 1, 1 },
-        nb: { 0, 0, 0, 0 },
-        op: GGML_OP_NONE,
-        isParam: false,
-        grad: nil,
-        src0: nil,
-        src1: nil,
-        opt: { nil },
-        n_tasks: 0,
-        perfRuns: 0,
-        perfCycles: 0,
-        perfTime: 0,
-        data: data,
-        pad: { 0 },
-    };
+	result := &Tensor{
+		Type:       typ,
+		Dims:       dims,
+		ne:         {1, 1, 1, 1},
+		nb:         {0, 0, 0, 0},
+		Op:         OP_NONE,
+		isParam:    false,
+		grad:       nil,
+		src0:       nil,
+		src1:       nil,
+		opt:        {nil},
+		n_tasks:    0,
+		perfRuns:   0,
+		perfCycles: 0,
+		perfTime:   0,
+		data:       data,
+		pad:        {0},
+	}
 
-    ////ggml_assert_aligned(result->data);
+	////ggml_assert_aligned(result->data);
 
-    for i := uint32(0); i < n_dims; i++ {
-        result.ne[i] = ne[i]
-    }
+	//for i := uint32(0); i < dims; i++ {
+	//    result.ne[i] = ne[i]
+	//}
 
-    result.nb[0] = 2 // FIXME (FP16) GGML_TYPE_SIZE[type];
-    result.nb[1] = result.nb[0]*(result.ne[0] / 1 /* GGML_BLCK_SIZE[type] */ )
-    for i: = uint32(2); i < GGML_MAX_DIMS; i++ {
-        result.nb[i] = result.nb[i - 1]*result.ne[i - 1];
-    }
+	//result.nb[0] = 2 // FIXME (FP16) GGML_TYPE_SIZE[type];
+	//result.nb[1] = result.nb[0]*(result.ne[0] / 1 /* GGML_BLCK_SIZE[type] */ )
+	//for i: = uint32(2); i < GGML_MAX_DIMS; i++ {
+	//    result.nb[i] = result.nb[i - 1]*result.ne[i - 1];
+	//}
 
-    ctx.Objects++
+	ctx.Objects++
 
-    return result;
+	return result
 }
-
 
 /*
 #include "ggml.h"

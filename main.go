@@ -75,18 +75,26 @@ type llamaLayer struct {
 
 	// normalization
 	////struct ggml_tensor * attention_norm;
+	attentionNorm *ml.Tensor
 
 	// attention
 	///struct ggml_tensor * wq;
+	wq *ml.Tensor
 	////struct ggml_tensor * wk;
+	wk *ml.Tensor
 	////struct ggml_tensor * wv;
+	wv *ml.Tensor
 	////struct ggml_tensor * wo;
+	wo *ml.Tensor
 
 	// normalization
 	////struct ggml_tensor * ffn_norm;
+	ffn_norm *ml.Tensor
 
 	// ff
-	////struct ggml_tensor * w1;
+	w1 *ml.Tensor
+	w2 *ml.Tensor
+	w3 *ml.Tensor
 	////struct ggml_tensor * w2;
 	////struct ggml_tensor * w3;
 }
@@ -96,20 +104,25 @@ type llamaModel struct {
 	//hparams llama_hparams hparams;
 
 	////struct ggml_tensor * tok_embeddings;
+	tokEmbeddings *ml.Tensor
 
 	////struct ggml_tensor * norm;
+	norm *ml.Tensor
 	////struct ggml_tensor * output;
+	output *ml.Tensor
 
 	////std::vector<llama_layer> layers;
+	layers []llamaLayer
 
 	// key + value memory
 	////struct ggml_tensor * memory_k;
+	memory_k *ml.Tensor
 	////struct ggml_tensor * memory_v;
+	memory_v *ml.Tensor
 
-	//
 	ctx *ml.Context // ggml_context
-	////std::map<std::string, struct ggml_tensor *> tensors;
-    tensors map[string]*ml.Tensor 
+
+	tensors map[string]*ml.Tensor //std::map<std::string, struct ggml_tensor *> tensors;
 }
 
 func readInt(reader *bufio.Reader) uint32 {
@@ -291,61 +304,61 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 			return nil // FIXME ERR
 		}
 	}
-	
-    // prepare memory for the weights
-    {
-        //const auto & hparams = model.hparams;
 
-        embd := hparamsEmbd
-        layers := hparamsLayers
-        ctxSize := hparamsCtx
-        vocabSize := hparams.vocabSize
+	// prepare memory for the weights
+	{
+		//const auto & hparams = model.hparams;
 
-        model.layers.resize(layers)
+		embd := hparamsEmbd
+		layers := hparamsLayers
+		ctxSize := hparamsCtx
+		vocabSize := hparamsVocabSize
 
-        model.tok_embeddings = ggml_new_tensor_2d(ctx, wtype, n_embd, n_vocab);
+		model.layers.resize(layers)
 
-        model.norm   = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
-        model.output = ggml_new_tensor_2d(ctx, wtype,         n_embd, n_vocab);
+		model.tokEmbeddings = ml.NewTensor2D(ctx, wtype, embd, vocabSize)
 
-        // map by name
-        model.tensors["tok_embeddings.weight"] = model.tok_embeddings;
+		model.norm = ml.NewTensor1D(ctx, GGML_TYPE_F32, embd)
+		model.output = ml.NewTensor2D(ctx, wtype, embd, vocabSize)
 
-        model.tensors["norm.weight"]   = model.norm;
-        model.tensors["output.weight"] = model.output;
+		// map by name
+		model.tensors["tok_embeddings.weight"] = model.tokEmbeddings
 
-        for i = uint64(0); i < layers; i++ {
-            //auto & layer = model.layers[i];
+		model.tensors["norm.weight"] = model.norm
+		model.tensors["output.weight"] = model.output
 
-            layer.attention_norm = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
+		for i := uint32(0); i < layers; i++ {
+			//auto & layer = model.layers[i];
 
-            layer.wq = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
-            layer.wk = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
-            layer.wv = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
-            layer.wo = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
+			model.layers[i].attentionNorm = ml.NewTensor_1d(ctx, GGML_TYPE_F32, embd)
 
-            layer.ffn_norm = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
+			model.layers[i].wq = ml.NewTensor2D(ctx, wtype, embd, embd)
+			model.layers[i].wk = ml.NewTensor2D(ctx, wtype, embd, embd)
+			model.layers[i].wv = ml.NewTensor2D(ctx, wtype, embd, embd)
+			model.layers[i].wo = ml.NewTensor2D(ctx, wtype, embd, embd)
 
-            layer.w1 = ggml_new_tensor_2d(ctx, wtype, n_embd,   n_ff);
-            layer.w2 = ggml_new_tensor_2d(ctx, wtype,   n_ff, n_embd);
-            layer.w3 = ggml_new_tensor_2d(ctx, wtype, n_embd,   n_ff);
+			model.layers[i].ffn_norm = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, embd)
 
-            // map by name
-            model.tensors["layers." + std::to_string(i) + ".attention_norm.weight"] = layer.attention_norm;
+			model.layers[i].w1 = ml.NewTensor2D(ctx, wtype, embd, n_ff)
+			model.layers[i].w2 = ml.NewTensor2D(ctx, wtype, n_ff, embd)
+			model.layers[i].w3 = ml.NewTensor2D(ctx, wtype, embd, n_ff)
 
-            model.tensors["layers." + std::to_string(i) + ".attention.wq.weight"] = layer.wq;
-            model.tensors["layers." + std::to_string(i) + ".attention.wk.weight"] = layer.wk;
-            model.tensors["layers." + std::to_string(i) + ".attention.wv.weight"] = layer.wv;
-            model.tensors["layers." + std::to_string(i) + ".attention.wo.weight"] = layer.wo;
+			// map by name
+			model.tensors[fmt.Sprintf("layers.%d.attention_norm.weight", i)] = model.layers[i].attentionNorm
 
-            model.tensors["layers." + std::to_string(i) + ".ffn_norm.weight"] = layer.ffn_norm;
+			model.tensors[fmt.Sprintf("layers.%d.attention.wq.weight", i)] = model.layers[i].wq
+			model.tensors[fmt.Sprintf("layers.%d.attention.wk.weight", i)] = model.layers[i].wk
+			model.tensors[fmt.Sprintf("layers.%d.attention.wv.weight"), i] = model.layers[i].wv
+			model.tensors[fmt.Sprintf("layers.%d.attention.wo.weight"), i] = model.layers[i].wo
 
-            model.tensors["layers." + std::to_string(i) + ".feed_forward.w1.weight"] = layer.w1;
-            model.tensors["layers." + std::to_string(i) + ".feed_forward.w2.weight"] = layer.w2;
-            model.tensors["layers." + std::to_string(i) + ".feed_forward.w3.weight"] = layer.w3;
-        }
-    }
-/*
+			model.tensors[fmt.Sprintf("layers.%d.ffn_norm.weight", i)] = model.layers[i].ffn_norm
+
+			model.tensors[fmt.Sprintf("layers.%d.feed_forward.w1.weight", i)] = model.layers[i].w1
+			model.tensors[fmt.Sprintf("layers.%d.feed_forward.w2.weight", i)] = model.layers[i].w2
+			model.tensors[fmt.Sprintf("layers.%d.feed_forward.w3.weight", i)] = model.layers[i].w3
+		}
+	}
+	/*
 	   // key + value memory
 	   {
 	       const auto & hparams = model.hparams;
@@ -720,7 +733,7 @@ bool llama_eval(
             // cur = KQV_merged.contiguous().view(n_embd, N)
             cur = ggml_cpy(ctx0,
                     KQV_merged,
-                    ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, n_embd, N));
+                    ml.NewTensor2D(ctx0, GGML_TYPE_F32, n_embd, N));
 
             // projection (no bias)
             cur = ggml_mul_mat(ctx0,
