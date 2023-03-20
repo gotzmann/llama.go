@@ -1,9 +1,47 @@
 package ml
 
-include (
+/*
+import (
     "atomic"
     "fmt"
-)
+)*/
+
+type InitParams struct {
+	// memory pool
+	MemSize   uint64 // bytes
+	MemBuffer []byte // if NULL, memory will be allocated internally
+}
+
+// scratch buffer
+type Scratch struct {
+	Offs uint64
+	Size uint64
+	Data []byte
+}
+
+type Object struct {
+	Offs uint64
+	Size uint64
+
+	Next *Object
+
+	Padding [8]byte
+}
+
+// ml/ggml.c:2248
+type Context struct {
+	MemSize        uint64
+	MemBuffer      []byte
+	MemBufferOwned bool
+
+	Objects uint64
+
+	ObjectsBegin *Object
+	ObjectsEnd   *Object
+
+	Scratch     Scratch
+	ScratchSave Scratch
+}
 
 /*
 #include "ggml.h"
@@ -1962,7 +2000,7 @@ inline static void ggml_vec_mad_q4_1(const int n, float * restrict y, void * res
     const size_t bs = 2*sizeof(float) + QK/2;
 
     const uint8_t * restrict pd = ((const uint8_t *)x + 0*bs);
-    const uint8_t * restrict pm = ((const uint8_t *)x + 0*bs +   sizeof(float)); 
+    const uint8_t * restrict pm = ((const uint8_t *)x + 0*bs +   sizeof(float));
     const uint8_t * restrict pb = ((const uint8_t *)x + 0*bs + 2*sizeof(float));
 
     for (int i = 0; i < nb; i++) {
@@ -2495,94 +2533,99 @@ static inline int ggml_up(int n, int m) {
     assert(((uintptr_t) (ptr))%GGML_MEM_ALIGN == 0)
 */
 ////////////////////////////////////////////////////////////////////////////////
-/*
-struct ggml_context * ggml_init(struct ggml_init_params params) {
-    // make this function thread safe
-    ggml_critical_section_start();
 
-    static bool is_first_call = true;
+func Init(params InitParams) *Context {
+	// make this function thread safe
+	////ggml_critical_section_start();
 
-    if (is_first_call) {
-        // initialize GELU, SILU and EXP F32 tables
-        {
-            const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
+	isFirstCall := true // FIXME static ??
 
-            ggml_fp16_t ii;
-            for (int i = 0; i < (1 << 16); ++i) {
-                uint16_t ui = i;
-                memcpy(&ii, &ui, sizeof(ii));
-                const float f = table_f32_f16[i] = GGML_COMPUTE_FP16_TO_FP32(ii);
-                table_gelu_f16[i] = GGML_FP32_TO_FP16(ggml_gelu_f32(f));
-                table_silu_f16[i] = GGML_FP32_TO_FP16(ggml_silu_f32(f));
-                table_exp_f16[i]  = GGML_FP32_TO_FP16(exp(f));
-            }
+	if isFirstCall {
+		// initialize GELU, SILU and EXP F32 tables
+		/*        {
+		              const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
 
-            const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
+		              ggml_fp16_t ii;
+		              for (int i = 0; i < (1 << 16); ++i) {
+		                  uint16_t ui = i;
+		                  memcpy(&ii, &ui, sizeof(ii));
+		                  const float f = table_f32_f16[i] = GGML_COMPUTE_FP16_TO_FP32(ii);
+		                  table_gelu_f16[i] = GGML_FP32_TO_FP16(ggml_gelu_f32(f));
+		                  table_silu_f16[i] = GGML_FP32_TO_FP16(ggml_silu_f32(f));
+		                  table_exp_f16[i]  = GGML_FP32_TO_FP16(exp(f));
+		              }
 
-            GGML_PRINT_DEBUG("%s: GELU, SILU and EXP tables initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
-        }
+		              const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
 
-        // initialize g_state
-        {
-            const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
+		              GGML_PRINT_DEBUG("%s: GELU, SILU and EXP tables initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
+		          }
 
-            g_state = (struct ggml_state) {
-                / *.contexts =* / { { 0 } },
-            };
+		          // initialize g_state
+		          {
+		              const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
 
-            for (int i = 0; i < GGML_MAX_CONTEXTS; ++i) {
-                g_state.contexts[i].used = false;
-            }
+		              g_state = (struct ggml_state) {
+		                  / *.contexts =* / { { 0 } },
+		              };
 
-            const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
+		              for (int i = 0; i < GGML_MAX_CONTEXTS; ++i) {
+		                  g_state.contexts[i].used = false;
+		              }
 
-            GGML_PRINT_DEBUG("%s: g_state initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
-        }
+		              const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
 
-        is_first_call = false;
-    }
+		              GGML_PRINT_DEBUG("%s: g_state initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
+		          }
+		*/
+		isFirstCall = false
+	}
 
-    // find non-used context in g_state
-    struct ggml_context * ctx = NULL;
+	// find non-used context in g_state
+	var ctx *ggmlContext
 
-    for (int i = 0; i < GGML_MAX_CONTEXTS; i++) {
-        if (!g_state.contexts[i].used) {
-            g_state.contexts[i].used = true;
-            ctx = &g_state.contexts[i].context;
+	for i := uint32(0); i < GGML_MAX_CONTEXTS; i++ {
+		if !g_state.contexts[i].used {
+			g_state.contexts[i].used = true
+			ctx = &g_state.contexts[i].context
 
-            GGML_PRINT_DEBUG("%s: found unused context %d\n", __func__, i);
-            break;
-        }
-    }
+			GGML_PRINT_DEBUG("%s: found unused context %d\n", __func__, i)
+			break
+		}
+	}
 
-    if (ctx == NULL) {
-        GGML_PRINT_DEBUG("%s: no unused context found\n", __func__);
+	if ctx == nil {
+		////GGML_PRINT_DEBUG("%s: no unused context found\n", __func__);
+		////ggml_critical_section_end();
+		return nil
+	}
 
-        ggml_critical_section_end();
+	var buf []byte
+	if params.memBuffer {
+		buf = params.memBuffer
+	} else {
+		buf = make([]byte, params.memSize)
+	}
 
-        return NULL;
-    }
+	ctx = &ggmlContext{
+		memSize:        params.memSize,
+		memBuffer:      buf,
+		memBufferOwned: params.memBuffer != nil,
+		objects:        0,
+		objectsBegin:   nil,
+		objectsEnd:     nil,
+		scratch:        {0, 0, nil},
+		scratchSave:    {0, 0, nil},
+	}
 
-    *ctx = (struct ggml_context) {
-        / *.mem_size         =* / params.mem_size,
-        / *.mem_buffer       =* / params.mem_buffer ? params.mem_buffer : malloc(params.mem_size),
-        / *.mem_buffer_owned =* / params.mem_buffer ? false : true,
-        / *.n_objects        =* / 0,
-        / *.objects_begin    =* / NULL,
-        / *.objects_end      =* / NULL,
-        / *.scratch          =* / { 0, 0, NULL, },
-        / *.scratch_save     =* / { 0, 0, NULL, },
-    };
+	////ggml_assert_aligned(ctx->mem_buffer);
 
-    ggml_assert_aligned(ctx->mem_buffer);
+	////GGML_PRINT_DEBUG("%s: context initialized\n", __func__);
 
-    GGML_PRINT_DEBUG("%s: context initialized\n", __func__);
+	////ggml_critical_section_end();
 
-    ggml_critical_section_end();
-
-    return ctx;
+	return ctx
 }
-*/
+
 /*
 void ggml_free(struct ggml_context * ctx) {
     // make this function thread safe
@@ -5620,7 +5663,7 @@ static void ggml_compute_forward_rms_norm_f32(
                 mean /= ne00;
 
                 float * y = (float *) ((char *) dst->data + i01*nb1 + i02*nb2 + i03*nb3);
-                
+
                 memcpy(y, x, ne00 * sizeof(float));
                 // for (int i00 = 0; i00 < ne00; i00++) {
                 //     y[i00] = x[i00];

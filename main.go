@@ -6,6 +6,10 @@ import (
 	"io"
 	"log"
 	"os"
+
+	//"ml"
+	//"github.com/gotzmann/llama.go/ml"
+	"github.com/gotzmann/llama.go/ml"
 )
 
 // uitils.h
@@ -89,7 +93,7 @@ type llamaLayer struct {
 
 type llamaModel struct {
 
-	////llama_hparams hparams;
+	//hparams llama_hparams hparams;
 
 	////struct ggml_tensor * tok_embeddings;
 
@@ -103,7 +107,7 @@ type llamaModel struct {
 	////struct ggml_tensor * memory_v;
 
 	//
-	////struct ggml_context * ctx;
+	ctx *ml.Context // ggml_context
 	////std::map<std::string, struct ggml_tensor *> tensors;
 }
 
@@ -240,53 +244,53 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 	////auto & ctx = model.ctx;
 
 	// FIXME Context size calculations - do we need this ??
+	//{
+	const typeSize = 2 // ggml_type_sizef(wtype)
+	ctxSize := uint32(0)
+	////const auto & hparams = model.hparams;
+	embd := hparamsEmbd
+	layers := hparamsLayers
+	////const int n_ctx   = hparams.n_ctx;
+	vocab := hparamsVocabSize
+
+	ctxSize += embd * vocab * typeSize                                  /* ggml_type_sizef(wtype) */         // tok_embeddings
+	ctxSize += embd * 4                                                 /* ggml_type_sizef(GGML_TYPE_F32) */ // norm
+	ctxSize += embd * vocab * typeSize                                  /* ggml_type_sizef(wtype) */         // output
+	ctxSize += layers * (embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */) // attention_norm
+
+	ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wq
+	ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wk
+	ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wv
+	ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wo
+
+	ctxSize += layers * (embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */) // ffn_norm
+
+	ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w1
+	ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w2
+	ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w3
+
+	ctxSize += ctxSize * layers * embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */ // memory_k
+	ctxSize += ctxSize * layers * embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */ // memory_v
+
+	ctxSize += (5 + 10*layers) * 256 // object overhead
+
+	fmt.Printf("\nggml ctx size = %.2f MB", float32(ctxSize)/(1024*1024))
+	//}
+
+	// create the ggml context
 	{
-		const typeSize = 2 // ggml_type_sizef(wtype)
-		ctxSize := uint32(0)
-		////const auto & hparams = model.hparams;
-		embd := hparamsEmbd
-		layers := hparamsLayers
-		////const int n_ctx   = hparams.n_ctx;
-		vocab := hparamsVocabSize
+		params := ml.InitParams{
+			MemSize:   uint64(ctxSize),
+			MemBuffer: nil,
+		}
 
-		ctxSize += embd * vocab * typeSize                                  /* ggml_type_sizef(wtype) */         // tok_embeddings
-		ctxSize += embd * 4                                                 /* ggml_type_sizef(GGML_TYPE_F32) */ // norm
-		ctxSize += embd * vocab * typeSize                                  /* ggml_type_sizef(wtype) */         // output
-		ctxSize += layers * (embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */) // attention_norm
-
-		ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wq
-		ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wk
-		ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wv
-		ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wo
-
-		ctxSize += layers * (embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */) // ffn_norm
-
-		ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w1
-		ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w2
-		ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w3
-
-		ctxSize += ctxSize * layers * embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */ // memory_k
-		ctxSize += ctxSize * layers * embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */ // memory_v
-
-		ctxSize += (5 + 10*layers) * 256 // object overhead
-
-		fmt.Printf("\nggml ctx size = %.2f MB", float32(ctxSize)/(1024*1024))
+		model.ctx = ml.Init(params)
+		if model.ctx == nil {
+			fmt.Printf("\nggml_init() failed")
+			return nil // FIXME ERR
+		}
 	}
 	/*
-	   // create the ggml context
-	   {
-	       struct ggml_init_params params = {
-	           / *.mem_size   =* / ctxSize,
-	           / *.mem_buffer =* / NULL,
-	       };
-
-	       model.ctx = ggml_init(params);
-	       if (!model.ctx) {
-	           fmt.Printf("%s: ggml_init() failed\n", __func__);
-	           return false;
-	       }
-	   }
-
 	   // prepare memory for the weights
 	   {
 	       const auto & hparams = model.hparams;
