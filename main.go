@@ -109,6 +109,7 @@ type llamaModel struct {
 	//
 	ctx *ml.Context // ggml_context
 	////std::map<std::string, struct ggml_tensor *> tensors;
+    tensors map[string]*ml.Tensor 
 }
 
 func readInt(reader *bufio.Reader) uint32 {
@@ -290,61 +291,61 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 			return nil // FIXME ERR
 		}
 	}
-	/*
-	   // prepare memory for the weights
-	   {
-	       const auto & hparams = model.hparams;
+	
+    // prepare memory for the weights
+    {
+        //const auto & hparams = model.hparams;
 
-	       const int n_embd  = hparams.n_embd;
-	       const int n_layer = hparams.n_layer;
-	       const int n_ctx   = hparams.n_ctx;
-	       const int n_vocab = hparams.n_vocab;
+        embd := hparamsEmbd
+        layers := hparamsLayers
+        ctxSize := hparamsCtx
+        vocabSize := hparams.vocabSize
 
-	       model.layers.resize(n_layer);
+        model.layers.resize(layers)
 
-	       model.tok_embeddings = ggml_new_tensor_2d(ctx, wtype, n_embd, n_vocab);
+        model.tok_embeddings = ggml_new_tensor_2d(ctx, wtype, n_embd, n_vocab);
 
-	       model.norm   = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
-	       model.output = ggml_new_tensor_2d(ctx, wtype,         n_embd, n_vocab);
+        model.norm   = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
+        model.output = ggml_new_tensor_2d(ctx, wtype,         n_embd, n_vocab);
 
-	       // map by name
-	       model.tensors["tok_embeddings.weight"] = model.tok_embeddings;
+        // map by name
+        model.tensors["tok_embeddings.weight"] = model.tok_embeddings;
 
-	       model.tensors["norm.weight"]   = model.norm;
-	       model.tensors["output.weight"] = model.output;
+        model.tensors["norm.weight"]   = model.norm;
+        model.tensors["output.weight"] = model.output;
 
-	       for (int i = 0; i < n_layer; ++i) {
-	           auto & layer = model.layers[i];
+        for i = uint64(0); i < layers; i++ {
+            //auto & layer = model.layers[i];
 
-	           layer.attention_norm = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
+            layer.attention_norm = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
 
-	           layer.wq = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
-	           layer.wk = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
-	           layer.wv = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
-	           layer.wo = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
+            layer.wq = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
+            layer.wk = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
+            layer.wv = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
+            layer.wo = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
 
-	           layer.ffn_norm = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
+            layer.ffn_norm = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
 
-	           layer.w1 = ggml_new_tensor_2d(ctx, wtype, n_embd,   n_ff);
-	           layer.w2 = ggml_new_tensor_2d(ctx, wtype,   n_ff, n_embd);
-	           layer.w3 = ggml_new_tensor_2d(ctx, wtype, n_embd,   n_ff);
+            layer.w1 = ggml_new_tensor_2d(ctx, wtype, n_embd,   n_ff);
+            layer.w2 = ggml_new_tensor_2d(ctx, wtype,   n_ff, n_embd);
+            layer.w3 = ggml_new_tensor_2d(ctx, wtype, n_embd,   n_ff);
 
-	           // map by name
-	           model.tensors["layers." + std::to_string(i) + ".attention_norm.weight"] = layer.attention_norm;
+            // map by name
+            model.tensors["layers." + std::to_string(i) + ".attention_norm.weight"] = layer.attention_norm;
 
-	           model.tensors["layers." + std::to_string(i) + ".attention.wq.weight"] = layer.wq;
-	           model.tensors["layers." + std::to_string(i) + ".attention.wk.weight"] = layer.wk;
-	           model.tensors["layers." + std::to_string(i) + ".attention.wv.weight"] = layer.wv;
-	           model.tensors["layers." + std::to_string(i) + ".attention.wo.weight"] = layer.wo;
+            model.tensors["layers." + std::to_string(i) + ".attention.wq.weight"] = layer.wq;
+            model.tensors["layers." + std::to_string(i) + ".attention.wk.weight"] = layer.wk;
+            model.tensors["layers." + std::to_string(i) + ".attention.wv.weight"] = layer.wv;
+            model.tensors["layers." + std::to_string(i) + ".attention.wo.weight"] = layer.wo;
 
-	           model.tensors["layers." + std::to_string(i) + ".ffn_norm.weight"] = layer.ffn_norm;
+            model.tensors["layers." + std::to_string(i) + ".ffn_norm.weight"] = layer.ffn_norm;
 
-	           model.tensors["layers." + std::to_string(i) + ".feed_forward.w1.weight"] = layer.w1;
-	           model.tensors["layers." + std::to_string(i) + ".feed_forward.w2.weight"] = layer.w2;
-	           model.tensors["layers." + std::to_string(i) + ".feed_forward.w3.weight"] = layer.w3;
-	       }
-	   }
-
+            model.tensors["layers." + std::to_string(i) + ".feed_forward.w1.weight"] = layer.w1;
+            model.tensors["layers." + std::to_string(i) + ".feed_forward.w2.weight"] = layer.w2;
+            model.tensors["layers." + std::to_string(i) + ".feed_forward.w3.weight"] = layer.w3;
+        }
+    }
+/*
 	   // key + value memory
 	   {
 	       const auto & hparams = model.hparams;

@@ -14,6 +14,88 @@ const (
 	GGML_MAX_OPT      = 4
 )
 
+
+
+// available tensor operations
+type op uint32
+const (
+    OP_NONE op = iota
+    OP_DUP
+    OP_ADD
+    OP_SUB
+    OP_MUL
+    OP_DIV
+    OP_SQR
+    OP_SQRT
+    OP_SUM
+    OP_MEAN
+    OP_REPEAT
+    OP_ABS
+    OP_SGN
+    OP_NEG
+    OP_STEP
+    OP_RELU
+    OP_GELU
+    OP_SILU
+    OP_NORM // normalize
+    OP_RMS_NORM
+
+    OP_MUL_MAT
+
+    OP_SCALE
+    OP_CPY
+    OP_RESHAPE
+    OP_VIEW
+    OP_PERMUTE
+    OP_TRANSPOSE
+    OP_GET_ROWS
+    OP_DIAG_MASK_INF
+    OP_SOFT_MAX
+    OP_ROPE
+    OP_CONV_1D_1S
+    OP_CONV_1D_2S
+
+    OP_FLASH_ATTN
+    OP_FLASH_FF
+
+    OP_COUNT
+)
+
+
+// n-dimensional tensor
+type Tensor struct {
+	//enum ggml_type type;
+	Type uint32 // FIXME
+
+	Dims uint32
+	Ne   [GGML_MAX_DIMS]uint32 // number of elements
+	nb   [GGML_MAX_DIMS]uint64 // stride in bytes:
+	// nb[0] = sizeof(type)
+	// nb[1] = nb[0]   * ne[0] + padding
+	// nb[i] = nb[i-1] * ne[i-1]
+
+	// compute data
+	Op op
+
+	isParam bool
+
+	grad *Tensor
+	src0 *Tensor
+	src1 *Tensor
+	opt  [GGML_MAX_OPT]*Tensor
+
+	// thread scheduling
+	n_tasks uint32
+
+	// performance
+	perfRuns   uint32
+	perfCycles uint64
+	perfTime   uint64
+
+	data    []byte
+	padding [8]byte
+}
+
 type State struct {
 	Contexts [GGML_MAX_CONTEXTS]ContextContainer
 }
@@ -63,6 +145,145 @@ type Context struct {
 	Scratch     Scratch
 	ScratchSave Scratch
 }
+
+// ggml_new_tensor
+func NewTensor (tx *Context, typ Type, dims uint32, ne *uint32) *Tensor {
+    return NewTensorImpl(ctx, typ, dims, ne, nil);
+}
+
+// ggml_new_tensor_1d
+func NewTensor1D (ctx *Context, typ Type, ne0 uint32) *Tensor {
+    return newTensor(ctx, typ, 1, &ne0)
+}
+
+// ggml_new_tensor_2d
+func NewTensor2d (ctx *Context, typ Type, ne0, ne1 uint32) *Tensor {
+    var ne [2]uint32 = [2]uint32{ ne0, ne1 }
+    return NewTensor(ctx, typ, 2, ne)
+}
+
+//  ggml_new_tensor_impl
+func NewTensorImpl (ctx *Context, typ Type, dims uint32, ne *uint32, data *[]byte) *Tensor {
+    // always insert objects at the end of the context's memory pool
+    ////struct ggml_object * obj_cur = ctx->objects_end;
+
+    ////const size_t cur_offs = obj_cur == NULL ? 0 : obj_cur->offs;
+    ////const size_t cur_size = obj_cur == NULL ? 0 : obj_cur->size;
+    ////const size_t cur_end  = cur_offs + cur_size;
+
+    sizeNeeded := uint64(0)
+
+    if data == nil {
+        ////size_needed += GGML_TYPE_SIZE[type]*(ne[0]/GGML_BLCK_SIZE[type]);
+        ////for (int i = 1; i < n_dims; i++) {
+        ////    size_needed *= ne[i];
+        ////}
+        // align to GGML_MEM_ALIGN
+        ////size_needed = ((size_needed + GGML_MEM_ALIGN - 1)/GGML_MEM_ALIGN)*GGML_MEM_ALIGN;
+    }
+
+    ////char * const mem_buffer = ctx->mem_buffer;
+    ////struct ggml_object * const obj_new = (struct ggml_object *)(mem_buffer + cur_end);
+
+    if ctx.Scratch.Data == nil || data != nil {
+        ////size_needed += sizeof(struct ggml_tensor);
+
+        ////if (cur_end + size_needed + GGML_OBJECT_SIZE > ctx->mem_size) {
+            ////GGML_PRINT("%s: not enough space in the context's memory pool (needed %zu, available %zu)\n",
+                ////    __func__, cur_end + size_needed + GGML_OBJECT_SIZE, ctx->mem_size);
+            ////assert(false);
+            ////return NULL;
+        ////}
+
+        obj_new = &Object{
+            Offs: cur_end + GGML_OBJECT_SIZE,
+            Size: 0, // FIXME size_needed,
+            Next: nil,
+        }
+
+    } else {
+
+        if (ctx.Scratch.Offs + sizeNeeded > ctx.Scratch.Size) {
+            //GGML_PRINT("%s: not enough space in the scratch memory\n", __func__);
+            //assert(false);
+            return nil
+    }
+
+    ////if (cur_end + sizeof(struct ggml_tensor) + GGML_OBJECT_SIZE > ctx->mem_size) {
+        ////GGML_PRINT("%s: not enough space in the context's memory pool (needed %zu, available %zu)\n",
+            ////    __func__, cur_end + sizeof(struct ggml_tensor) + GGML_OBJECT_SIZE, ctx->mem_size);
+        ////assert(false);
+        ////return NULL;
+    ////}
+
+    ////data = (char * const) ctx->scratch.data + ctx->scratch.offs;
+
+    ////*obj_new = (struct ggml_object) {
+        ////.offs = cur_end + GGML_OBJECT_SIZE,
+        ////.size = sizeof(struct ggml_tensor),
+        ////.next = NULL,
+    ////};
+
+    //printf("scratch offs = %zu, size_needed = %zu\n", ctx->scratch.offs, size_needed);
+
+    ////ctx->scratch.offs += size_needed;
+    ////}
+
+    if objCur != nil {
+        objCur.Next = objNew
+    } else {
+        // this is the first object in this context
+        ctx.ObjectsBegin = objNew
+    }
+
+    ctx.objectsEnd = objNew
+
+    //printf("%s: inserted new object at %zu, size = %zu\n", __func__, cur_end, obj_new->size);
+
+    ////struct ggml_tensor * const result = (struct ggml_tensor *)(mem_buffer + obj_new->offs);
+
+    ////ggml_assert_aligned(result);
+
+    if data == nil {
+        data = make([]byte, 0) // FIXME Size?
+    }
+
+    result := &Tensor{
+        Type: typ,
+        Dims: dims,
+        ne: { 1, 1, 1, 1 },
+        nb: { 0, 0, 0, 0 },
+        op: GGML_OP_NONE,
+        isParam: false,
+        grad: nil,
+        src0: nil,
+        src1: nil,
+        opt: { nil },
+        n_tasks: 0,
+        perfRuns: 0,
+        perfCycles: 0,
+        perfTime: 0,
+        data: data,
+        pad: { 0 },
+    };
+
+    ////ggml_assert_aligned(result->data);
+
+    for i := uint32(0); i < n_dims; i++ {
+        result.ne[i] = ne[i]
+    }
+
+    result.nb[0] = 2 // FIXME (FP16) GGML_TYPE_SIZE[type];
+    result.nb[1] = result.nb[0]*(result.ne[0] / 1 /* GGML_BLCK_SIZE[type] */ )
+    for i: = uint32(2); i < GGML_MAX_DIMS; i++ {
+        result.nb[i] = result.nb[i - 1]*result.ne[i - 1];
+    }
+
+    ctx.Objects++
+
+    return result;
+}
+
 
 /*
 #include "ggml.h"
@@ -2233,7 +2454,7 @@ static const size_t GGML_TYPE_SIZE[GGML_TYPE_COUNT] = {
 // don't forget to update the array above when adding new types
 static_assert(GGML_TYPE_COUNT == 7, "GGML_TYPE_COUNT != 5");
 
-static const char * GGML_OP_LABEL[GGML_OP_COUNT] = {
+static const char * OP_LABEL[OP_COUNT] = {
     "NONE",
 
     "DUP",
@@ -2276,9 +2497,9 @@ static const char * GGML_OP_LABEL[GGML_OP_COUNT] = {
 };
 */
 /*
-static_assert(GGML_OP_COUNT == 35, "GGML_OP_COUNT != 35");
+static_assert(OP_COUNT == 35, "OP_COUNT != 35");
 
-static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
+static const char * OP_SYMBOL[OP_COUNT] = {
     "none",
 
     "x",
@@ -2320,7 +2541,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "flash_ff(x)",
 };
 
-static_assert(GGML_OP_COUNT == 35, "GGML_OP_COUNT != 35");
+static_assert(OP_COUNT == 35, "OP_COUNT != 35");
 
 //
 // ggml object
@@ -2782,7 +3003,7 @@ struct ggml_tensor * ggml_new_tensor_impl(
         / *.n_dims       =* / n_dims,
         / *.ne           =* / { 1, 1, 1, 1 },
         / *.nb           =* / { 0, 0, 0, 0 },
-        / *.op           =* / GGML_OP_NONE,
+        / *.op           =* / OP_NONE,
         / *.is_param     =* / false,
         / *.grad         =* / NULL,
         / *.src0         =* / NULL,
@@ -3219,7 +3440,7 @@ struct ggml_tensor * ggml_dup_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_DUP;
+    result->op   = OP_DUP;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -3256,7 +3477,7 @@ struct ggml_tensor * ggml_add_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_ADD;
+    result->op   = OP_ADD;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = b;
@@ -3295,7 +3516,7 @@ struct ggml_tensor * ggml_sub_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_SUB;
+    result->op   = OP_SUB;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = b;
@@ -3338,7 +3559,7 @@ struct ggml_tensor * ggml_mul_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_MUL;
+    result->op   = OP_MUL;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = b;
@@ -3381,7 +3602,7 @@ struct ggml_tensor * ggml_div_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_DIV;
+    result->op   = OP_DIV;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = b;
@@ -3417,7 +3638,7 @@ struct ggml_tensor * ggml_sqr_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_SQR;
+    result->op   = OP_SQR;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -3451,7 +3672,7 @@ struct ggml_tensor * ggml_sqrt_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_SQRT;
+    result->op   = OP_SQRT;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -3484,7 +3705,7 @@ struct ggml_tensor * ggml_sum(
 
     struct ggml_tensor * result = ggml_new_tensor_1d(ctx, a->type, 1);
 
-    result->op   = GGML_OP_SUM;
+    result->op   = OP_SUM;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -3507,7 +3728,7 @@ struct ggml_tensor * ggml_mean(
     int ne[GGML_MAX_DIMS] = { 1, a->ne[1], a->ne[2], a->ne[3] };
     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, a->n_dims, ne);
 
-    result->op   = GGML_OP_MEAN;
+    result->op   = OP_MEAN;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -3535,7 +3756,7 @@ struct ggml_tensor * ggml_repeat(
 
     struct ggml_tensor * result = ggml_new_tensor(ctx, a->type, b->n_dims, b->ne);
 
-    result->op   = GGML_OP_REPEAT;
+    result->op   = OP_REPEAT;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = b;
@@ -3557,7 +3778,7 @@ struct ggml_tensor * ggml_abs_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_ABS;
+    result->op   = OP_ABS;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -3593,7 +3814,7 @@ struct ggml_tensor * ggml_sgn_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_SGN;
+    result->op   = OP_SGN;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -3627,7 +3848,7 @@ struct ggml_tensor * ggml_neg_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_NEG;
+    result->op   = OP_NEG;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -3661,7 +3882,7 @@ struct ggml_tensor * ggml_step_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_STEP;
+    result->op   = OP_STEP;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -3695,7 +3916,7 @@ struct ggml_tensor * ggml_relu_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_RELU;
+    result->op   = OP_RELU;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -3729,7 +3950,7 @@ struct ggml_tensor * ggml_gelu_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_GELU;
+    result->op   = OP_GELU;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -3763,7 +3984,7 @@ struct ggml_tensor * ggml_silu_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_SILU;
+    result->op   = OP_SILU;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -3798,7 +4019,7 @@ struct ggml_tensor * ggml_norm_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_NORM;
+    result->op   = OP_NORM;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL; // TODO: maybe store epsilon here?
@@ -3831,7 +4052,7 @@ struct ggml_tensor * ggml_rms_norm_impl(
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
-    result->op   = GGML_OP_RMS_NORM;
+    result->op   = OP_RMS_NORM;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL; // TODO: maybe store epsilon here?
@@ -3868,7 +4089,7 @@ struct ggml_tensor * ggml_mul_mat(
     const int ne[4] = { a->ne[1], b->ne[1], a->ne[2], b->ne[3] };
     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, MIN(a->n_dims, b->n_dims), ne);
 
-    result->op   = GGML_OP_MUL_MAT;
+    result->op   = OP_MUL_MAT;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = b;
@@ -3897,7 +4118,7 @@ struct ggml_tensor * ggml_scale_impl(
     //struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
     struct ggml_tensor * result = ggml_view_tensor(ctx, a);
 
-    result->op   = GGML_OP_SCALE;
+    result->op   = OP_SCALE;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = b;
@@ -3938,7 +4159,7 @@ struct ggml_tensor * ggml_cpy_impl(
     // make a view of the destination
     struct ggml_tensor * result = ggml_view_tensor(ctx, b);
 
-    result->op   = GGML_OP_CPY;
+    result->op   = OP_CPY;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = b;
@@ -3979,7 +4200,7 @@ struct ggml_tensor * ggml_reshape(
 
     struct ggml_tensor * result = ggml_new_tensor_impl(ctx, a->type, b->n_dims, b->ne, a->data);
 
-    result->op   = GGML_OP_RESHAPE;
+    result->op   = OP_RESHAPE;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -4005,7 +4226,7 @@ struct ggml_tensor * ggml_reshape_2d(
     const int ne[2] = { ne0, ne1 };
     struct ggml_tensor * result = ggml_new_tensor_impl(ctx, a->type, 2, ne, a->data);
 
-    result->op   = GGML_OP_RESHAPE;
+    result->op   = OP_RESHAPE;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -4032,7 +4253,7 @@ struct ggml_tensor * ggml_reshape_3d(
     const int ne[3] = { ne0, ne1, ne2 };
     struct ggml_tensor * result = ggml_new_tensor_impl(ctx, a->type, 3, ne, a->data);
 
-    result->op   = GGML_OP_RESHAPE;
+    result->op   = OP_RESHAPE;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -4053,7 +4274,7 @@ struct ggml_tensor * ggml_view_1d(
 
     struct ggml_tensor * result = ggml_new_tensor_impl(ctx, a->type, 1, &ne0, (char *) a->data + offset);
 
-    result->op   = GGML_OP_VIEW;
+    result->op   = OP_VIEW;
     result->grad = NULL;
     result->src0 = a;
     result->src1 = NULL; // TODO: maybe store the offset here?
@@ -4082,7 +4303,7 @@ struct ggml_tensor * ggml_view_2d(
     result->nb[2] = result->nb[1]*ne1;
     result->nb[3] = result->nb[2];
 
-    result->op   = GGML_OP_VIEW;
+    result->op   = OP_VIEW;
     result->grad = NULL;
     result->src0 = a;
     result->src1 = NULL; // TODO: maybe store the offset here?
@@ -4143,7 +4364,7 @@ struct ggml_tensor * ggml_permute(
     result->nb[2] = nb[2];
     result->nb[3] = nb[3];
 
-    result->op   = GGML_OP_PERMUTE;
+    result->op   = OP_PERMUTE;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL; // TODO: maybe store the permutation here?
@@ -4171,7 +4392,7 @@ struct ggml_tensor * ggml_transpose(
     result->nb[0] = a->nb[1];
     result->nb[1] = a->nb[0];
 
-    result->op   = GGML_OP_TRANSPOSE;
+    result->op   = OP_TRANSPOSE;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -4198,7 +4419,7 @@ struct ggml_tensor * ggml_get_rows(
     //struct ggml_tensor * result = ggml_new_tensor_2d(ctx, a->type, a->ne[0], b->ne[0]);
     struct ggml_tensor * result = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, a->ne[0], b->ne[0]);
 
-    result->op   = GGML_OP_GET_ROWS;
+    result->op   = OP_GET_ROWS;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = b;
@@ -4224,7 +4445,7 @@ struct ggml_tensor * ggml_diag_mask_inf(
     struct ggml_tensor * result = ggml_view_tensor(ctx, a);
     struct ggml_tensor * b = ggml_new_i32(ctx, n_past);
 
-    result->op   = GGML_OP_DIAG_MASK_INF;
+    result->op   = OP_DIAG_MASK_INF;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = b;
@@ -4248,7 +4469,7 @@ struct ggml_tensor * ggml_soft_max(
     //struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
     struct ggml_tensor * result = ggml_view_tensor(ctx, a);
 
-    result->op   = GGML_OP_SOFT_MAX;
+    result->op   = OP_SOFT_MAX;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = NULL;
@@ -4281,7 +4502,7 @@ struct ggml_tensor * ggml_rope(
     ((int32_t *) b->data)[1] = n_dims;
     ((int32_t *) b->data)[2] = mode;
 
-    result->op   = GGML_OP_ROPE;
+    result->op   = OP_ROPE;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = b;
@@ -4308,7 +4529,7 @@ struct ggml_tensor * ggml_conv_1d_1s(
     const int ne[4] = { b->ne[0], a->ne[2], 1, 1, };
     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 2, ne);
 
-    result->op   = GGML_OP_CONV_1D_1S;
+    result->op   = OP_CONV_1D_1S;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = b;
@@ -4335,7 +4556,7 @@ struct ggml_tensor * ggml_conv_1d_2s(
     const int ne[4] = { b->ne[0]/2, a->ne[2], 1, 1, };
     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 2, ne);
 
-    result->op   = GGML_OP_CONV_1D_2S;
+    result->op   = OP_CONV_1D_2S;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = b;
@@ -4365,7 +4586,7 @@ struct ggml_tensor * ggml_flash_attn(
     //struct ggml_tensor * result = ggml_dup_tensor(ctx, q);
     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, q->ne);
 
-    result->op   = GGML_OP_FLASH_ATTN;
+    result->op   = OP_FLASH_ATTN;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = q;
     result->src1 = k;
@@ -4397,7 +4618,7 @@ struct ggml_tensor * ggml_flash_ff(
     //struct ggml_tensor * result = ggml_dup_tensor(ctx, a);
     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, a->ne);
 
-    result->op   = GGML_OP_FLASH_FF;
+    result->op   = OP_FLASH_FF;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
     result->src1 = b0;
@@ -8775,150 +8996,150 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
     GGML_ASSERT(params);
 
     switch (tensor->op) {
-        case GGML_OP_DUP:
+        case OP_DUP:
             {
                 ggml_compute_forward_dup(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_ADD:
+        case OP_ADD:
             {
                 ggml_compute_forward_add(params, tensor->src0, tensor->src1, tensor);
             } break;
-        case GGML_OP_SUB:
+        case OP_SUB:
             {
                 ggml_compute_forward_sub(params, tensor->src0, tensor->src1, tensor);
             } break;
-        case GGML_OP_MUL:
+        case OP_MUL:
             {
                 ggml_compute_forward_mul(params, tensor->src0, tensor->src1, tensor);
             } break;
-        case GGML_OP_DIV:
+        case OP_DIV:
             {
                 ggml_compute_forward_div(params, tensor->src0, tensor->src1, tensor);
             } break;
-        case GGML_OP_SQR:
+        case OP_SQR:
             {
                 ggml_compute_forward_sqr(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_SQRT:
+        case OP_SQRT:
             {
                 ggml_compute_forward_sqrt(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_SUM:
+        case OP_SUM:
             {
                 ggml_compute_forward_sum(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_MEAN:
+        case OP_MEAN:
             {
                 ggml_compute_forward_mean(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_REPEAT:
+        case OP_REPEAT:
             {
                 ggml_compute_forward_repeat(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_ABS:
+        case OP_ABS:
             {
                 ggml_compute_forward_abs(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_SGN:
+        case OP_SGN:
             {
                 ggml_compute_forward_sgn(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_NEG:
+        case OP_NEG:
             {
                 ggml_compute_forward_neg(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_STEP:
+        case OP_STEP:
             {
                 ggml_compute_forward_step(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_RELU:
+        case OP_RELU:
             {
                 ggml_compute_forward_relu(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_GELU:
+        case OP_GELU:
             {
                 ggml_compute_forward_gelu(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_SILU:
+        case OP_SILU:
             {
                 ggml_compute_forward_silu(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_NORM:
+        case OP_NORM:
             {
                 ggml_compute_forward_norm(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_RMS_NORM:
+        case OP_RMS_NORM:
             {
                 ggml_compute_forward_rms_norm(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_MUL_MAT:
+        case OP_MUL_MAT:
             {
                 ggml_compute_forward_mul_mat(params, tensor->src0, tensor->src1, tensor);
             } break;
-        case GGML_OP_SCALE:
+        case OP_SCALE:
             {
                 ggml_compute_forward_scale(params, tensor->src0, tensor->src1, tensor);
             } break;
-        case GGML_OP_CPY:
+        case OP_CPY:
             {
                 ggml_compute_forward_cpy(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_RESHAPE:
+        case OP_RESHAPE:
             {
                 ggml_compute_forward_reshape(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_VIEW:
+        case OP_VIEW:
             {
                 ggml_compute_forward_view(params, tensor->src0);
             } break;
-        case GGML_OP_PERMUTE:
+        case OP_PERMUTE:
             {
                 ggml_compute_forward_permute(params, tensor->src0);
             } break;
-        case GGML_OP_TRANSPOSE:
+        case OP_TRANSPOSE:
             {
                 ggml_compute_forward_transpose(params, tensor->src0);
             } break;
-        case GGML_OP_GET_ROWS:
+        case OP_GET_ROWS:
             {
                 ggml_compute_forward_get_rows(params, tensor->src0, tensor->src1, tensor);
             } break;
-        case GGML_OP_DIAG_MASK_INF:
+        case OP_DIAG_MASK_INF:
             {
                 ggml_compute_forward_diag_mask_inf(params, tensor->src0, tensor->src1, tensor);
             } break;
-        case GGML_OP_SOFT_MAX:
+        case OP_SOFT_MAX:
             {
                 ggml_compute_forward_soft_max(params, tensor->src0, tensor);
             } break;
-        case GGML_OP_ROPE:
+        case OP_ROPE:
             {
                 ggml_compute_forward_rope(params, tensor->src0, tensor->src1, tensor);
             } break;
-        case GGML_OP_CONV_1D_1S:
+        case OP_CONV_1D_1S:
             {
                 ggml_compute_forward_conv_1d_1s(params, tensor->src0, tensor->src1, tensor);
             } break;
-        case GGML_OP_CONV_1D_2S:
+        case OP_CONV_1D_2S:
             {
                 ggml_compute_forward_conv_1d_2s(params, tensor->src0, tensor->src1, tensor);
             } break;
-        case GGML_OP_FLASH_ATTN:
+        case OP_FLASH_ATTN:
             {
                 int32_t t = ggml_get_i32_1d(tensor->opt[1], 0);
                 GGML_ASSERT(t == 0 || t == 1);
                 bool masked = t != 0;
                 ggml_compute_forward_flash_attn(params, tensor->src0, tensor->src1, tensor->opt[0], masked, tensor);
             } break;
-        case GGML_OP_FLASH_FF:
+        case OP_FLASH_FF:
             {
                 ggml_compute_forward_flash_ff(params, tensor->src0, tensor->src1, tensor->opt[0], tensor->opt[1], tensor->opt[2], tensor);
             } break;
-        case GGML_OP_NONE:
+        case OP_NONE:
             {
                 // nop
             } break;
-        case GGML_OP_COUNT:
+        case OP_COUNT:
             {
                 GGML_ASSERT(false);
             } break;
@@ -8933,13 +9154,13 @@ static void ggml_compute_backward(struct ggml_context * ctx, struct ggml_tensor 
     struct ggml_tensor * src1 = tensor->src1;
 
     switch (tensor->op) {
-        case GGML_OP_DUP:
+        case OP_DUP:
             {
                 if (src0->grad) {
                     src0->grad = ggml_add_impl(ctx, src0->grad, tensor->grad, inplace);
                 }
             } break;
-        case GGML_OP_ADD:
+        case OP_ADD:
             {
                 if (src0->grad) {
                     src0->grad = ggml_add_impl(ctx, src0->grad, tensor->grad, inplace);
@@ -8948,7 +9169,7 @@ static void ggml_compute_backward(struct ggml_context * ctx, struct ggml_tensor 
                     src1->grad = ggml_add_impl(ctx, src1->grad, tensor->grad, inplace);
                 }
             } break;
-        case GGML_OP_SUB:
+        case OP_SUB:
             {
                 if (src0->grad) {
                     src0->grad = ggml_add_impl(ctx, src0->grad, tensor->grad, inplace);
@@ -8957,7 +9178,7 @@ static void ggml_compute_backward(struct ggml_context * ctx, struct ggml_tensor 
                     src1->grad = ggml_sub_impl(ctx, src1->grad, tensor->grad, inplace);
                 }
             } break;
-        case GGML_OP_MUL:
+        case OP_MUL:
             {
                 if (src0->grad) {
                     src0->grad =
@@ -8974,7 +9195,7 @@ static void ggml_compute_backward(struct ggml_context * ctx, struct ggml_tensor 
                                 inplace);
                 }
             } break;
-        case GGML_OP_DIV:
+        case OP_DIV:
             {
                 if (src0->grad) {
                     src0->grad =
@@ -8993,7 +9214,7 @@ static void ggml_compute_backward(struct ggml_context * ctx, struct ggml_tensor 
                                 inplace);
                 }
             } break;
-        case GGML_OP_SQR:
+        case OP_SQR:
             {
                 if (src0->grad) {
                     src0->grad =
@@ -9005,7 +9226,7 @@ static void ggml_compute_backward(struct ggml_context * ctx, struct ggml_tensor 
                                 inplace);
                 }
             } break;
-        case GGML_OP_SQRT:
+        case OP_SQRT:
             {
                 if (src0->grad) {
                     src0->grad =
@@ -9017,7 +9238,7 @@ static void ggml_compute_backward(struct ggml_context * ctx, struct ggml_tensor 
                                 inplace);
                 }
             } break;
-        case GGML_OP_SUM:
+        case OP_SUM:
             {
                 if (src0->grad) {
                     src0->grad =
@@ -9027,11 +9248,11 @@ static void ggml_compute_backward(struct ggml_context * ctx, struct ggml_tensor 
                                 inplace);
                 }
             } break;
-        case GGML_OP_MEAN:
+        case OP_MEAN:
             {
                 GGML_ASSERT(false); // TODO: implement
             } break;
-        case GGML_OP_REPEAT:
+        case OP_REPEAT:
             {
                 if (src0->grad) {
                     src0->grad =
@@ -9041,7 +9262,7 @@ static void ggml_compute_backward(struct ggml_context * ctx, struct ggml_tensor 
                                 inplace);
                 }
             } break;
-        case GGML_OP_ABS:
+        case OP_ABS:
             {
                 if (src0->grad) {
                     src0->grad =
@@ -9053,25 +9274,25 @@ static void ggml_compute_backward(struct ggml_context * ctx, struct ggml_tensor 
                                 inplace);
                 }
             } break;
-        case GGML_OP_SGN:
+        case OP_SGN:
             {
                 if (src0->grad) {
                     // noop
                 }
             } break;
-        case GGML_OP_NEG:
+        case OP_NEG:
             {
                 if (src0->grad) {
                     src0->grad = ggml_sub_impl(ctx, src0->grad, tensor->grad, inplace);
                 }
             } break;
-        case GGML_OP_STEP:
+        case OP_STEP:
             {
                 if (src0->grad) {
                     // noop
                 }
             } break;
-        case GGML_OP_RELU:
+        case OP_RELU:
             {
                 if (src0->grad) {
                     src0->grad = ggml_sub_impl(ctx,
@@ -9082,23 +9303,23 @@ static void ggml_compute_backward(struct ggml_context * ctx, struct ggml_tensor 
                             inplace);
                 }
             } break;
-        case GGML_OP_GELU:
+        case OP_GELU:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_SILU:
+        case OP_SILU:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_NORM:
+        case OP_NORM:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_RMS_NORM:
+        case OP_RMS_NORM:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_MUL_MAT:
+        case OP_MUL_MAT:
             {
                 if (src0->grad) {
                     // TODO: this requires outer product - ggml_out_prod(ctx, src1, tensor->grad);
@@ -9113,67 +9334,67 @@ static void ggml_compute_backward(struct ggml_context * ctx, struct ggml_tensor 
                                 inplace);
                 }
             } break;
-        case GGML_OP_SCALE:
+        case OP_SCALE:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_CPY:
+        case OP_CPY:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_RESHAPE:
+        case OP_RESHAPE:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_VIEW:
+        case OP_VIEW:
             {
                 GGML_ASSERT(false); // not supported
             } break;
-        case GGML_OP_PERMUTE:
+        case OP_PERMUTE:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_TRANSPOSE:
+        case OP_TRANSPOSE:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_GET_ROWS:
+        case OP_GET_ROWS:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_DIAG_MASK_INF:
+        case OP_DIAG_MASK_INF:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_SOFT_MAX:
+        case OP_SOFT_MAX:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_ROPE:
+        case OP_ROPE:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_CONV_1D_1S:
+        case OP_CONV_1D_1S:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_CONV_1D_2S:
+        case OP_CONV_1D_2S:
             {
                 GGML_ASSERT(false); // TODO: not implemented
             } break;
-        case GGML_OP_FLASH_ATTN:
+        case OP_FLASH_ATTN:
             {
                 GGML_ASSERT(false); // not supported
             } break;
-        case GGML_OP_FLASH_FF:
+        case OP_FLASH_FF:
             {
                 GGML_ASSERT(false); // not supported
             } break;
-        case GGML_OP_NONE:
+        case OP_NONE:
             {
                 // nop
             } break;
-        case GGML_OP_COUNT:
+        case OP_COUNT:
             {
                 GGML_ASSERT(false);
             } break;
@@ -9184,7 +9405,7 @@ static void ggml_visit_parents(struct ggml_cgraph * cgraph, struct ggml_tensor *
     if (node->grad == NULL) {
         // this usually happens when we generate intermediate nodes from constants in the backward pass
         // it can also happen during forward pass, if the user performs computations with constants
-        if (node->op != GGML_OP_NONE) {
+        if (node->op != OP_NONE) {
             //GGML_PRINT_DEBUG("%s: warning: node %p has no grad, but op %d\n", __func__, (void *) node, node->op);
         }
     }
@@ -9216,7 +9437,7 @@ static void ggml_visit_parents(struct ggml_cgraph * cgraph, struct ggml_tensor *
         }
     }
 
-    if (node->op == GGML_OP_NONE && node->grad == NULL) {
+    if (node->op == OP_NONE && node->grad == NULL) {
         // reached a leaf node, not part of the gradient graph (e.g. a constant)
         GGML_ASSERT(cgraph->n_leafs < GGML_MAX_NODES);
 
@@ -9488,44 +9709,44 @@ void ggml_graph_compute(struct ggml_context * ctx, struct ggml_cgraph * cgraph) 
             struct ggml_tensor * node = cgraph->nodes[i];
 
             switch (node->op) {
-                case GGML_OP_DUP:
+                case OP_DUP:
                     {
                         node->n_tasks = 1;
                     } break;
-                case GGML_OP_ADD:
+                case OP_ADD:
                     {
                         node->n_tasks = n_threads;
                     } break;
-                case GGML_OP_SUB:
-                case GGML_OP_MUL:
-                case GGML_OP_DIV:
-                case GGML_OP_SQR:
-                case GGML_OP_SQRT:
-                case GGML_OP_SUM:
-                case GGML_OP_MEAN:
-                case GGML_OP_REPEAT:
-                case GGML_OP_ABS:
-                case GGML_OP_SGN:
-                case GGML_OP_NEG:
-                case GGML_OP_STEP:
-                case GGML_OP_RELU:
+                case OP_SUB:
+                case OP_MUL:
+                case OP_DIV:
+                case OP_SQR:
+                case OP_SQRT:
+                case OP_SUM:
+                case OP_MEAN:
+                case OP_REPEAT:
+                case OP_ABS:
+                case OP_SGN:
+                case OP_NEG:
+                case OP_STEP:
+                case OP_RELU:
                     {
                         node->n_tasks = 1;
                     } break;
-                case GGML_OP_GELU:
+                case OP_GELU:
                     {
                         node->n_tasks = n_threads;
                     } break;
-                case GGML_OP_SILU:
+                case OP_SILU:
                     {
                         node->n_tasks = n_threads;
                     } break;
-                case GGML_OP_NORM:
-                case GGML_OP_RMS_NORM:
+                case OP_NORM:
+                case OP_RMS_NORM:
                     {
                         node->n_tasks = n_threads;
                     } break;
-                case GGML_OP_MUL_MAT:
+                case OP_MUL_MAT:
                     {
                         node->n_tasks = n_threads;
 
@@ -9593,30 +9814,30 @@ void ggml_graph_compute(struct ggml_context * ctx, struct ggml_cgraph * cgraph) 
 
                         work_size = MAX(work_size, cur);
                     } break;
-                case GGML_OP_SCALE:
+                case OP_SCALE:
                     {
                         node->n_tasks = n_threads;
                     } break;
-                case GGML_OP_CPY:
-                case GGML_OP_RESHAPE:
-                case GGML_OP_VIEW:
-                case GGML_OP_PERMUTE:
-                case GGML_OP_TRANSPOSE:
-                case GGML_OP_GET_ROWS:
-                case GGML_OP_DIAG_MASK_INF:
+                case OP_CPY:
+                case OP_RESHAPE:
+                case OP_VIEW:
+                case OP_PERMUTE:
+                case OP_TRANSPOSE:
+                case OP_GET_ROWS:
+                case OP_DIAG_MASK_INF:
                     {
                         node->n_tasks = 1;
                     } break;
-                case GGML_OP_SOFT_MAX:
+                case OP_SOFT_MAX:
                     {
                         node->n_tasks = n_threads;
                     } break;
-                case GGML_OP_ROPE:
+                case OP_ROPE:
                     {
                         node->n_tasks = 1;
                     } break;
-                case GGML_OP_CONV_1D_1S:
-                case GGML_OP_CONV_1D_2S:
+                case OP_CONV_1D_1S:
+                case OP_CONV_1D_2S:
                     {
                         node->n_tasks = n_threads;
 
@@ -9645,7 +9866,7 @@ void ggml_graph_compute(struct ggml_context * ctx, struct ggml_cgraph * cgraph) 
 
                         work_size = MAX(work_size, cur);
                     } break;
-                case GGML_OP_FLASH_ATTN:
+                case OP_FLASH_ATTN:
                     {
                         node->n_tasks = n_threads;
 
@@ -9665,7 +9886,7 @@ void ggml_graph_compute(struct ggml_context * ctx, struct ggml_cgraph * cgraph) 
 
                         work_size = MAX(work_size, cur);
                     } break;
-                case GGML_OP_FLASH_FF:
+                case OP_FLASH_FF:
                     {
                         node->n_tasks = n_threads;
 
@@ -9683,11 +9904,11 @@ void ggml_graph_compute(struct ggml_context * ctx, struct ggml_cgraph * cgraph) 
 
                         work_size = MAX(work_size, cur);
                     } break;
-                case GGML_OP_NONE:
+                case OP_NONE:
                     {
                         node->n_tasks = 1;
                     } break;
-                case GGML_OP_COUNT:
+                case OP_COUNT:
                     {
                         GGML_ASSERT(false);
                     } break;
@@ -9898,7 +10119,7 @@ void ggml_graph_reset(struct ggml_cgraph * cgraph) {
 }
 
 void ggml_graph_print(const struct ggml_cgraph * cgraph) {
-    int64_t perf_total_per_op_us[GGML_OP_COUNT] = {0};
+    int64_t perf_total_per_op_us[OP_COUNT] = {0};
 
     GGML_PRINT("=== GRAPH ===\n");
 
@@ -9914,7 +10135,7 @@ void ggml_graph_print(const struct ggml_cgraph * cgraph) {
         GGML_PRINT(" - %3d: [ %6d, %6d, %6d] %16s %s (%3d) cpu = %7.3f / %7.3f ms, wall = %7.3f / %7.3f ms\n",
                 i,
                 node->ne[0], node->ne[1], node->ne[2],
-                GGML_OP_LABEL[node->op], node->is_param ? "x" : node->grad ? "g" : " ", node->perf_runs,
+                OP_LABEL[node->op], node->is_param ? "x" : node->grad ? "g" : " ", node->perf_runs,
                 (double) node->perf_cycles  / (double) ggml_cycles_per_ms(),
                 (double) node->perf_cycles  / (double) ggml_cycles_per_ms() / (double) node->perf_runs,
                 (double) node->perf_time_us / 1000.0,
@@ -9928,11 +10149,11 @@ void ggml_graph_print(const struct ggml_cgraph * cgraph) {
         GGML_PRINT(" - %3d: [ %6d, %6d] %8s\n",
                 i,
                 node->ne[0], node->ne[1],
-                GGML_OP_LABEL[node->op]);
+                OP_LABEL[node->op]);
     }
 
-    for (int i = 0; i < GGML_OP_COUNT; i++) {
-        GGML_PRINT("perf_total_per_op_us[%16s] = %7.3f ms\n", GGML_OP_LABEL[i], (double) perf_total_per_op_us[i] / 1000.0);
+    for (int i = 0; i < OP_COUNT; i++) {
+        GGML_PRINT("perf_total_per_op_us[%16s] = %7.3f ms\n", OP_LABEL[i], (double) perf_total_per_op_us[i] / 1000.0);
     }
 
     GGML_PRINT("========================================\n");
@@ -9999,10 +10220,10 @@ style = filled; fillcolor = %s; shape = record; \
 label=\"%d [%d, %d] | <x>%s",
                 (void *) node, color,
                 i, node->ne[0], node->ne[1],
-                GGML_OP_SYMBOL[node->op]);
+                OP_SYMBOL[node->op]);
 
         if (node->grad) {
-            fprintf(fp, " | <g>%s\"; ]\n", GGML_OP_SYMBOL[node->grad->op]);
+            fprintf(fp, " | <g>%s\"; ]\n", OP_SYMBOL[node->grad->op]);
         } else {
             fprintf(fp, "\"; ]\n");
         }
@@ -10082,7 +10303,7 @@ label=\"<x>CONST %d [%d, %d]\"; ]\n",
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static void ggml_opt_set_params(int np, struct ggml_tensor * const ps[], const float * x) {
+static void OPt_set_params(int np, struct ggml_tensor * const ps[], const float * x) {
     int i = 0;
     for (int p = 0; p < np; ++p) {
         const int ne = ggml_nelements(ps[p]) ;
@@ -10093,7 +10314,7 @@ static void ggml_opt_set_params(int np, struct ggml_tensor * const ps[], const f
     }
 }
 
-static void ggml_opt_get_params(int np, struct ggml_tensor * const ps[], float * x) {
+static void OPt_get_params(int np, struct ggml_tensor * const ps[], float * x) {
     int i = 0;
     for (int p = 0; p < np; ++p) {
         const int ne = ggml_nelements(ps[p]) ;
@@ -10104,7 +10325,7 @@ static void ggml_opt_get_params(int np, struct ggml_tensor * const ps[], float *
     }
 }
 
-static void ggml_opt_get_grad(int np, struct ggml_tensor * const ps[], float * g) {
+static void OPt_get_grad(int np, struct ggml_tensor * const ps[], float * g) {
     int i = 0;
     for (int p = 0; p < np; ++p) {
         const int ne = ggml_nelements(ps[p]) ;
@@ -10121,9 +10342,9 @@ static void ggml_opt_get_grad(int np, struct ggml_tensor * const ps[], float * g
 //   ref: https://arxiv.org/pdf/1412.6980.pdf
 //
 
-static enum ggml_opt_result ggml_opt_adam(
+static enum OPt_result OPt_adam(
         struct ggml_context * ctx,
-        struct ggml_opt_params params,
+        struct OPt_params params,
         struct ggml_tensor * f,
         struct ggml_cgraph * gf,
         struct ggml_cgraph * gb) {
@@ -10169,7 +10390,7 @@ static enum ggml_opt_result ggml_opt_adam(
     ggml_vec_set_f32(nx, v, 0.0f);
 
     // update view
-    ggml_opt_get_params(np, ps, x);
+    OPt_get_params(np, ps, x);
 
     // compute the function value
     ggml_graph_reset  (gf);
@@ -10204,7 +10425,7 @@ static enum ggml_opt_result ggml_opt_adam(
 
         {
             // update the gradient
-            ggml_opt_get_grad(np, ps, g1);
+            OPt_get_grad(np, ps, g1);
 
             // m_t = beta1*m_t-1 + (1 - beta1)*g_t
             ggml_vec_scale_f32(nx, m, beta1);
@@ -10233,7 +10454,7 @@ static enum ggml_opt_result ggml_opt_adam(
             ggml_vec_sub_f32  (nx, x,  x,  mh);
 
             // update the parameters
-            ggml_opt_set_params(np, ps, x);
+            OPt_set_params(np, ps, x);
         }
 
         ggml_graph_reset  (gf);
@@ -10246,7 +10467,7 @@ static enum ggml_opt_result ggml_opt_adam(
         if (fabsf(fx - fx_prev)/fx < params.adam.eps_f) {
             GGML_PRINT_DEBUG("converged\n");
 
-            return GGML_OPT_OK;
+            return OPT_OK;
         }
 
         // delta-based convergence test
@@ -10256,7 +10477,7 @@ static enum ggml_opt_result ggml_opt_adam(
                 const float rate = (pf[t%params.past] - fx)/fx;
 
                 if (fabs(rate) < params.delta) {
-                    return GGML_OPT_OK;
+                    return OPT_OK;
                 }
             }
 
@@ -10272,7 +10493,7 @@ static enum ggml_opt_result ggml_opt_adam(
                 ++n_no_improvement;
 
                 if (n_no_improvement >= params.max_no_improvement) {
-                    return GGML_OPT_OK;
+                    return OPT_OK;
                 }
             }
         }
@@ -10290,7 +10511,7 @@ static enum ggml_opt_result ggml_opt_adam(
         }
     }
 
-    return GGML_OPT_DID_NOT_CONVERGE;
+    return OPT_DID_NOT_CONVERGE;
 }
 */
 /*
@@ -10309,9 +10530,9 @@ struct ggml_lbfgs_iteration_data {
     float * y;
 };
 
-static enum ggml_opt_result linesearch_backtracking(
+static enum OPt_result linesearch_backtracking(
         struct ggml_context * ctx,
-        const struct ggml_opt_params * params,
+        const struct OPt_params * params,
         int nx,
         float * x,
         float * fx,
@@ -10357,13 +10578,13 @@ static enum ggml_opt_result linesearch_backtracking(
 
         // evaluate the function and gradient values
         {
-            ggml_opt_set_params(np, ps, x);
+            OPt_set_params(np, ps, x);
 
             ggml_graph_reset  (gf);
             ggml_set_f32      (f->grad, 1.0f);
             ggml_graph_compute(ctx, gb);
 
-            ggml_opt_get_grad(np, ps, g);
+            OPt_get_grad(np, ps, g);
 
             *fx = ggml_get_f32_1d(f, 0);
         }
@@ -10415,16 +10636,16 @@ static enum ggml_opt_result linesearch_backtracking(
     return GGML_LINESEARCH_FAIL;
 }
 
-static enum ggml_opt_result ggml_opt_lbfgs(
+static enum OPt_result OPt_lbfgs(
         struct ggml_context * ctx,
-        struct ggml_opt_params params,
+        struct OPt_params params,
         struct ggml_tensor * f,
         struct ggml_cgraph * gf,
         struct ggml_cgraph * gb) {
     if (params.lbfgs.linesearch == GGML_LINESEARCH_BACKTRACKING_WOLFE ||
         params.lbfgs.linesearch == GGML_LINESEARCH_BACKTRACKING_STRONG_WOLFE) {
         if (params.lbfgs.wolfe <= params.lbfgs.ftol || 1. <= params.lbfgs.wolfe) {
-            return GGML_OPT_INVALID_WOLFE;
+            return OPT_INVALID_WOLFE;
         }
     }
 
@@ -10463,7 +10684,7 @@ static enum ggml_opt_result ggml_opt_lbfgs(
     float step  = 0.0f;
 
     // initialize x from the graph nodes
-    ggml_opt_get_params(np, ps, x);
+    OPt_get_params(np, ps, x);
 
     // the L-BFGS memory
     struct ggml_lbfgs_iteration_data * lm = alloca(sizeof(struct ggml_lbfgs_iteration_data)*m);
@@ -10477,13 +10698,13 @@ static enum ggml_opt_result ggml_opt_lbfgs(
 
     // evaluate the function value and its gradient
     {
-        ggml_opt_set_params(np, ps, x);
+        OPt_set_params(np, ps, x);
 
         ggml_graph_reset  (gf);
         ggml_set_f32      (f->grad, 1.0f);
         ggml_graph_compute(ctx, gb);
 
-        ggml_opt_get_grad(np, ps, g);
+        OPt_get_grad(np, ps, g);
 
         fx = ggml_get_f32_1d(f, 0);
     }
@@ -10507,7 +10728,7 @@ static enum ggml_opt_result ggml_opt_lbfgs(
 
     // already optimized
     if (gnorm/xnorm <= params.lbfgs.eps) {
-        return GGML_OPT_OK;
+        return OPT_OK;
     }
 
     // initial step
@@ -10549,7 +10770,7 @@ static enum ggml_opt_result ggml_opt_lbfgs(
         }
         if (gnorm/xnorm <= params.lbfgs.eps) {
             // converged
-            return GGML_OPT_OK;
+            return OPT_OK;
         }
 
         // delta-based convergence test
@@ -10559,7 +10780,7 @@ static enum ggml_opt_result ggml_opt_lbfgs(
                 const float rate = (pf[k%params.past] - fx)/fx;
 
                 if (fabs(rate) < params.delta) {
-                    return GGML_OPT_OK;
+                    return OPT_OK;
                 }
             }
 
@@ -10575,14 +10796,14 @@ static enum ggml_opt_result ggml_opt_lbfgs(
                 n_no_improvement++;
 
                 if (n_no_improvement >= params.max_no_improvement) {
-                    return GGML_OPT_OK;
+                    return OPT_OK;
                 }
             }
         }
 
         if (params.lbfgs.n_iter != 0 && params.lbfgs.n_iter < k + 1) {
             // reached the maximum number of iterations
-            return GGML_OPT_DID_NOT_CONVERGE;
+            return OPT_DID_NOT_CONVERGE;
         }
 
         // update vectors s and y:
@@ -10635,18 +10856,18 @@ static enum ggml_opt_result ggml_opt_lbfgs(
         step = 1.0;
     }
 
-    return GGML_OPT_DID_NOT_CONVERGE;
+    return OPT_DID_NOT_CONVERGE;
 }
 */
 /*
-struct ggml_opt_params ggml_opt_default_params(enum ggml_opt_type type) {
-    struct ggml_opt_params result;
+struct OPt_params OPt_default_params(enum OPt_type type) {
+    struct OPt_params result;
 
     switch (type) {
-        case GGML_OPT_ADAM:
+        case OPT_ADAM:
             {
-                result = (struct ggml_opt_params) {
-                    .type      = GGML_OPT_ADAM,
+                result = (struct OPt_params) {
+                    .type      = OPT_ADAM,
                     .n_threads = 1,
                     .past      = 0,
                     .delta     = 1e-5f,
@@ -10667,10 +10888,10 @@ struct ggml_opt_params ggml_opt_default_params(enum ggml_opt_type type) {
                     },
                 };
             } break;
-        case GGML_OPT_LBFGS:
+        case OPT_LBFGS:
             {
-                result = (struct ggml_opt_params) {
-                    .type      = GGML_OPT_LBFGS,
+                result = (struct OPt_params) {
+                    .type      = OPT_LBFGS,
                     .n_threads = 1,
                     .past      = 0,
                     .delta     = 1e-5f,
@@ -10700,9 +10921,9 @@ struct ggml_opt_params ggml_opt_default_params(enum ggml_opt_type type) {
     return result;
 }
 
-enum ggml_opt_result ggml_opt(
+enum OPt_result OPt(
         struct ggml_context * ctx,
-        struct ggml_opt_params params,
+        struct OPt_params params,
         struct ggml_tensor * f) {
     bool free_ctx = false;
     if (ctx == NULL) {
@@ -10713,26 +10934,26 @@ enum ggml_opt_result ggml_opt(
 
         ctx = ggml_init(params_ctx);
         if (ctx == NULL) {
-            return GGML_OPT_NO_CONTEXT;
+            return OPT_NO_CONTEXT;
         }
 
         free_ctx = true;
     }
 
-    enum ggml_opt_result result = GGML_OPT_OK;
+    enum OPt_result result = OPT_OK;
 
     // build forward + backward compute graphs
     struct ggml_cgraph gf = ggml_build_forward (f);
     struct ggml_cgraph gb = ggml_build_backward(ctx, &gf, false);
 
     switch (params.type) {
-        case GGML_OPT_ADAM:
+        case OPT_ADAM:
             {
-                result = ggml_opt_adam(ctx, params, f, &gf, &gb);
+                result = OPt_adam(ctx, params, f, &gf, &gb);
             } break;
-        case GGML_OPT_LBFGS:
+        case OPT_LBFGS:
             {
-                result = ggml_opt_lbfgs(ctx, params, f, &gf, &gb);
+                result = OPt_lbfgs(ctx, params, f, &gf, &gb);
             } break;
     }
 
