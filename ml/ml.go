@@ -169,26 +169,36 @@ type Context struct {
 	ScratchSave Scratch
 }
 
+/*
 // ggml_new_tensor
-func NewTensor(ctx *Context, dt dtype, dims, ne0, ne1 uint32) *Tensor {
-	return NewTensorImpl(ctx, dt, dims, ne0, ne1, nil)
+func NewTensor(ctx *Context, dt dtype, dims, ne0, ne1, ne2, ne3 uint32) *Tensor {
+	return NewTensorImpl(ctx, dt, dims, ne0, ne1, ne2, ne3, nil)
 }
-
+*/
 // ggml_new_tensor_1d
 func NewTensor1D(ctx *Context, dt dtype, ne uint32) *Tensor {
-	return NewTensor(ctx, dt, 1, ne, 0)
+	return NewTensor(ctx, dt, 1, ne, 1, 1, 1)
 }
 
 // ggml_new_tensor_2d
 func NewTensor2D(ctx *Context, dt dtype, ne0, ne1 uint32) *Tensor {
 	//ne := []uint32{ne0, ne1}
 	//return NewTensor(ctx, typ, 2, ne)
-	return NewTensor(ctx, dt, 2, ne0, ne1) // FIXME
+	return NewTensor(ctx, dt, 2, ne0, ne1, 1, 1) // FIXME
+}
+
+func NewTensor3D(ctx *Context, dt dtype, ne0, ne1, ne2 uint32) *Tensor {
+	return NewTensor(ctx, dt, 3, ne0, ne1, ne2, 1) // FIXME
+}
+
+func NewTensor4D(ctx *Context, dt dtype, ne0, ne1, ne2, ne3 uint32) *Tensor {
+	return NewTensor(ctx, dt, 4, ne0, ne1, ne2, ne3) // FIXME
 }
 
 // TODO ne2 for 3D tensors?
 // ggml_new_tensor_impl
-func NewTensorImpl(ctx *Context, dt dtype, dims uint32, ne0, ne1 uint32, data []float32) *Tensor {
+// func NewTensorImpl(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
+func NewTensor(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32) *Tensor {
 
 	if dt != TYPE_F32 {
 		fmt.Printf("\n[ERROR] NewTensorImpl got not TYPE_F32!")
@@ -276,19 +286,12 @@ func NewTensorImpl(ctx *Context, dt dtype, dims uint32, ne0, ne1 uint32, data []
 
 	////ggml_assert_aligned(result);
 
-	if data == nil {
-		total := ne0
-		if ne1 != 0 {
-			total *= ne1
-		}
-		data = make([]float32, total) // FIXME Size?
-	}
-
+	total := ne0 * ne1 * ne2 * ne3
 	result := &Tensor{
 		Type: dt,
 		Dims: dims,
 		//ne:         [4]uint32{1, 1, 1, 1}, // FIXME Why?
-		ne:         [4]uint32{ne0, ne1, 1, 1},
+		ne:         [4]uint32{ne0, ne1, ne2, ne3},
 		nb:         [4]uint32{0, 0, 0, 0},
 		op:         OP_NONE,
 		isParam:    false,
@@ -300,7 +303,7 @@ func NewTensorImpl(ctx *Context, dt dtype, dims uint32, ne0, ne1 uint32, data []
 		perfRuns:   0,
 		perfCycles: 0,
 		perfTime:   0,
-		data:       data,
+		data:       make([]float32, total), // FIXME Size?,
 		////pad:        {0},
 	}
 

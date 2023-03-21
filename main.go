@@ -116,9 +116,9 @@ type llamaModel struct {
 
 	// key + value memory
 	////struct ggml_tensor * memory_k;
-	memory_k *ml.Tensor
+	memoryK *ml.Tensor
 	////struct ggml_tensor * memory_v;
-	memory_v *ml.Tensor
+	memoryV *ml.Tensor
 
 	ctx *ml.Context // ggml_context
 
@@ -375,229 +375,243 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 			model.tensors[prefix+"feed_forward.w3.weight"] = model.layers[i].w3
 		}
 	}
-	/*
-	   // key + value memory
-	   {
-	       const auto & hparams = model.hparams;
 
-	       const int n_embd  = hparams.n_embd;
-	       const int n_layer = hparams.n_layer;
-	       const int n_ctx   = hparams.n_ctx;
+	// key + value memory
+	{
+		//const auto & hparams = model.hparams;
 
-	       const int n_mem      = n_layer*n_ctx;
-	       const int n_elements = n_embd*n_mem;
+		embd := hparamsEmbd
+		layers := hparamsLayers
+		//ctxSize := hparamsCtx
+		//mem := layers * ctxSize
+		//elements := embd * mem
+		elements := embd * layers // FIXME
 
-	       model.memory_k = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_elements);
-	       model.memory_v = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_elements);
+		model.memoryK = ml.NewTensor1D(ctx, ml.TYPE_F32, elements)
+		model.memoryV = ml.NewTensor1D(ctx, ml.TYPE_F32, elements)
 
-	       const size_t memory_size = ggml_nbytes(model.memory_k) + ggml_nbytes(model.memory_v);
+		////memorySize = ggml_nbytes(model.memory_k) + ggml_nbytes(model.memory_v);
 
-	       fmt.Printf("%s: memory_size = %8.2f MB, n_mem = %d\n", __func__, memory_size/1024.0/1024.0, n_mem);
-	   }
+		////fmt.Printf("\nmemory_size = %8.2f MB, n_mem = %d\n", memorySize/1024.0/1024.0, mem);
+	}
 
-	   const size_t file_offset = fin.tellg();
+	////const size_t file_offset = fin.tellg();
 
-	   fin.close();
+	////fin.close();
 
-	   std::vector<uint8_t> tmp;
+	//std::vector<uint8_t> tmp;
 
-	   for (int i = 0; i < n_parts; ++i) {
-	       const int part_id = i;
-	       //const int part_id = n_parts - i - 1;
+	////tmp := []byte{}
 
-	       std::string fname_part = fname;
-	       if (i > 0) {
-	           fname_part += "." + std::to_string(i);
-	       }
+	for i := uint32(0); i < n_parts; /*++i*/ i++ {
 
-	       fmt.Printf("%s: loading model part %d/%d from '%s'\n", __func__, i+1, n_parts, fname_part.c_str());
+		////part_id = i
+		//commented const int part_id = n_parts - i - 1;
 
-	       fin = std::ifstream(fname_part, std::ios::binary);
-	       fin.rdbuf()->pubsetbuf(f_buf.data(), f_buf.size());
-	       fin.seekg(file_offset);
+		fname_part := fileName
+		if i > 0 {
+			fname_part += "." + fmt.Sprintf("%d", i)
+		}
 
-	       // load weights
-	       {
-	           int n_tensors = 0;
-	           size_t total_size = 0;
+		fmt.Printf("\nloading model part %d/%d from '%s'\n", i+1, n_parts, fname_part)
 
-	           fmt.Printf("%s: ", __func__);
+		//fin = std::ifstream(fname_part, std::ios::binary);
+		//fin.rdbuf()->pubsetbuf(f_buf.data(), f_buf.size());
+		//fin.seekg(file_offset);
 
-	           while (true) {
-	               int32_t n_dims;
-	               int32_t length;
-	               int32_t ftype;
+		// load weights
+		{
+			n_tensors := uint32(0)
+			total_size := uint64(0)
 
-	               fin.read(reinterpret_cast<char *>(&n_dims), sizeof(n_dims));
-	               fin.read(reinterpret_cast<char *>(&length), sizeof(length));
-	               fin.read(reinterpret_cast<char *>(&ftype),  sizeof(ftype));
+			//fmt.Printf("%s: ", __func__);
 
-	               if (fin.eof()) {
-	                   break;
-	               }
+			for {
+				//var n_dims, length, ftype uint32
+				//fin.read(reinterpret_cast<char *>(&n_dims), sizeof(n_dims));
+				//fin.read(reinterpret_cast<char *>(&length), sizeof(length));
+				//fin.read(reinterpret_cast<char *>(&ftype),  sizeof(ftype));
 
-	               int32_t nelements = 1;
-	               int32_t ne[2] = { 1, 1 };
-	               for (int i = 0; i < n_dims; ++i) {
-	                   fin.read(reinterpret_cast<char *>(&ne[i]), sizeof(ne[i]));
-	                   nelements *= ne[i];
-	               }
+				dims := readInt32(reader)
+				length := readInt32(reader)
+				ftype := readInt32(reader)
 
-	               std::string name(length, 0);
-	               fin.read(&name[0], length);
+				fmt.Printf("\ndims = %d", dims)
+				fmt.Printf("\nlength = %d", length)
+				fmt.Printf("\nftype = %d", ftype)
 
-	               if (model.tensors.find(name.data()) == model.tensors.end()) {
-	                   fmt.Printf("%s: unknown tensor '%s' in model file\n", __func__, name.data());
-	                   return false;
-	               }
+				////if (fin.eof()) {
+				////break;
+				////}
 
-	               // split_type = 0: split by columns
-	               // split_type = 1: split by rows
-	               int split_type = 0;
+				nelements := uint32(1)
+				//int32_t ne[2] = { 1, 1 };
+				ne := [2]uint32{1, 1} // FIXME Why only 2 ??
+				for i = uint32(0); i < dims; i++ {
+					////fin.read(reinterpret_cast<char *>(&ne[i]), sizeof(ne[i]));
+					ne[i] = readInt32(reader)
+					////nelements *= ne[i]
+					nelements *= ne[i]
+				}
 
-	               // split_type = 0:
-	               // regex:
-	               //   - tok_embeddings.*
-	               //   - layers.*.attention.wo.weight
-	               //   - layers.*.feed_forward.w2.weight
+				os.Exit(0)
+				/*
+				   ////std::string name(length, 0);
+				   ////fin.read(&name[0], length);
 
-	               // split_type = 1:
-	               // regex:
-	               //   - output.*
-	               //   - layers.*.attention.wq.weight
-	               //   - layers.*.attention.wk.weight
-	               //   - layers.*.attention.wv.weight
-	               //   - layers.*.feed_forward.w1.weight
-	               //   - layers.*.feed_forward.w3.weight
-	               if (name.find("tok_embeddings") != std::string::npos) {
-	                   split_type = 0;
-	               } else if (name.find("layers") != std::string::npos) {
-	                   if (name.find("attention.wo.weight") != std::string::npos) {
-	                       split_type = 0;
-	                   } else if (name.find("feed_forward.w2.weight") != std::string::npos) {
-	                       split_type = 0;
-	                   } else {
-	                       split_type = 1;
-	                   }
-	               } else if (name.find("output") != std::string::npos) {
-	                   split_type = 1;
-	               }
+				   if (model.tensors.find(name.data()) == model.tensors.end()) {
+				       fmt.Printf("%s: unknown tensor '%s' in model file\n", __func__, name.data());
+				       return false;
+				   }
 
-	               auto tensor = model.tensors[name.data()];
+				   // split_type = 0: split by columns
+				   // split_type = 1: split by rows
+				   splitType := uint32(0)
 
-	               if (n_dims == 1) {
-	                   if (ggml_nelements(tensor) != nelements) {
-	                       fmt.Printf("%s: tensor '%s' has wrong size in model file\n", __func__, name.data());
-	                       return false;
-	                   }
-	               } else {
-	                   if (ggml_nelements(tensor)/n_parts != nelements) {
-	                       fmt.Printf("%s: tensor '%s' has wrong size in model file\n", __func__, name.data());
-	                       return false;
-	                   }
-	               }
+				   // split_type = 0:
+				   // regex:
+				   //   - tok_embeddings.*
+				   //   - layers.*.attention.wo.weight
+				   //   - layers.*.feed_forward.w2.weight
 
-	               if (n_dims == 1) {
-	                   if (tensor->ne[0] != ne[0] || tensor->ne[1] != ne[1]) {
-	                       fmt.Printf("%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
-	                               __func__, name.data(), tensor->ne[0], tensor->ne[1], ne[0], ne[1]);
-	                       return false;
-	                   }
-	               } else {
-	                   if (split_type == 0) {
-	                       if (tensor->ne[0]/n_parts != ne[0] || tensor->ne[1] != ne[1]) {
-	                           fmt.Printf("%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
-	                                   __func__, name.data(), tensor->ne[0]/n_parts, tensor->ne[1], ne[0], ne[1]);
-	                           return false;
-	                       }
-	                   } else {
-	                       if (tensor->ne[0] != ne[0] || tensor->ne[1]/n_parts != ne[1]) {
-	                           fmt.Printf("%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
-	                                   __func__, name.data(), tensor->ne[0], tensor->ne[1]/n_parts, ne[0], ne[1]);
-	                           return false;
-	                       }
-	                   }
-	               }
+				   // split_type = 1:
+				   // regex:
+				   //   - output.*
+				   //   - layers.*.attention.wq.weight
+				   //   - layers.*.attention.wk.weight
+				   //   - layers.*.attention.wv.weight
+				   //   - layers.*.feed_forward.w1.weight
+				   //   - layers.*.feed_forward.w3.weight
+				   if (name.find("tok_embeddings") != std::string::npos) {
+				       split_type = 0;
+				   } else if (name.find("layers") != std::string::npos) {
+				       if (name.find("attention.wo.weight") != std::string::npos) {
+				           split_type = 0;
+				       } else if (name.find("feed_forward.w2.weight") != std::string::npos) {
+				           split_type = 0;
+				       } else {
+				           split_type = 1;
+				       }
+				   } else if (name.find("output") != std::string::npos) {
+				       split_type = 1;
+				   }
 
-	               if (0) {
-	                   static const char * ftype_str[] = { "f32", "f16", "q4_0", "q4_1", };
-	                   fmt.Printf("%24s - [%5d, %5d], type = %6s, split = %d\n", name.data(), ne[0], ne[1], ftype_str[ftype], split_type);
-	               }
+				   auto tensor = model.tensors[name.data()];
 
-	               size_t bpe = 0;
+				   if (n_dims == 1) {
+				       if (ggml_nelements(tensor) != nelements) {
+				           fmt.Printf("%s: tensor '%s' has wrong size in model file\n", __func__, name.data());
+				           return false;
+				       }
+				   } else {
+				       if (ggml_nelements(tensor)/n_parts != nelements) {
+				           fmt.Printf("%s: tensor '%s' has wrong size in model file\n", __func__, name.data());
+				           return false;
+				       }
+				   }
 
-	               switch (ftype) {
-	                   case 0: bpe = ggml_type_size(GGML_TYPE_F32);  break;
-	                   case 1: bpe = ggml_type_size(GGML_TYPE_F16);  break;
-	                   case 2: bpe = ggml_type_size(GGML_TYPE_Q4_0); assert(ne[0] % 64 == 0); break;
-	                   case 3: bpe = ggml_type_size(GGML_TYPE_Q4_1); assert(ne[0] % 64 == 0); break;
-	                   default:
-	                           {
-	                               fmt.Printf("%s: unknown ftype %d in model file\n", __func__, ftype);
-	                               return false;
-	                           }
-	               };
+				   if (n_dims == 1) {
+				       if (tensor->ne[0] != ne[0] || tensor->ne[1] != ne[1]) {
+				           fmt.Printf("%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
+				                   __func__, name.data(), tensor->ne[0], tensor->ne[1], ne[0], ne[1]);
+				           return false;
+				       }
+				   } else {
+				       if (split_type == 0) {
+				           if (tensor->ne[0]/n_parts != ne[0] || tensor->ne[1] != ne[1]) {
+				               fmt.Printf("%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
+				                       __func__, name.data(), tensor->ne[0]/n_parts, tensor->ne[1], ne[0], ne[1]);
+				               return false;
+				           }
+				       } else {
+				           if (tensor->ne[0] != ne[0] || tensor->ne[1]/n_parts != ne[1]) {
+				               fmt.Printf("%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
+				                       __func__, name.data(), tensor->ne[0], tensor->ne[1]/n_parts, ne[0], ne[1]);
+				               return false;
+				           }
+				       }
+				   }
 
-	               if (n_dims == 1 || n_parts == 1) {
-	                   if ((nelements*bpe)/ggml_blck_size(tensor->type) != ggml_nbytes(tensor)) {
-	                       fmt.Printf("%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
-	                               __func__, name.data(), ggml_nbytes(tensor), nelements*bpe);
-	                       return false;
-	                   }
+				   if (0) {
+				       static const char * ftype_str[] = { "f32", "f16", "q4_0", "q4_1", };
+				       fmt.Printf("%24s - [%5d, %5d], type = %6s, split = %d\n", name.data(), ne[0], ne[1], ftype_str[ftype], split_type);
+				   }
 
-	                   if (part_id == 0) {
-	                       fin.read(reinterpret_cast<char *>(tensor->data), ggml_nbytes(tensor));
-	                   } else {
-	                       fin.seekg(ggml_nbytes(tensor), std::ios::cur);
-	                   }
+				   size_t bpe = 0;
 
-	                   total_size += ggml_nbytes(tensor);
-	               } else {
-	                   if ((nelements*bpe)/ggml_blck_size(tensor->type) != ggml_nbytes(tensor)/n_parts) {
-	                       fmt.Printf("%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
-	                               __func__, name.data(), ggml_nbytes(tensor)/n_parts, nelements*bpe);
-	                       return false;
-	                   }
+				   switch (ftype) {
+				       case 0: bpe = ggml_type_size(GGML_TYPE_F32);  break;
+				       case 1: bpe = ggml_type_size(GGML_TYPE_F16);  break;
+				       case 2: bpe = ggml_type_size(GGML_TYPE_Q4_0); assert(ne[0] % 64 == 0); break;
+				       case 3: bpe = ggml_type_size(GGML_TYPE_Q4_1); assert(ne[0] % 64 == 0); break;
+				       default:
+				               {
+				                   fmt.Printf("%s: unknown ftype %d in model file\n", __func__, ftype);
+				                   return false;
+				               }
+				   };
 
-	                   if (split_type == 0) {
-	                       const int np0 = ne[0];
+				   if (n_dims == 1 || n_parts == 1) {
+				       if ((nelements*bpe)/ggml_blck_size(tensor->type) != ggml_nbytes(tensor)) {
+				           fmt.Printf("%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
+				                   __func__, name.data(), ggml_nbytes(tensor), nelements*bpe);
+				           return false;
+				       }
 
-	                       const size_t row_size = (tensor->ne[0]/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
-	                       assert(row_size == tensor->nb[1]);
+				       if (part_id == 0) {
+				           fin.read(reinterpret_cast<char *>(tensor->data), ggml_nbytes(tensor));
+				       } else {
+				           fin.seekg(ggml_nbytes(tensor), std::ios::cur);
+				       }
 
-	                       for (int i1 = 0; i1 < ne[1]; ++i1) {
-	                           const size_t offset_row = i1*row_size;
-	                           const size_t offset = offset_row + ((part_id*np0)/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
-	                           fin.read(reinterpret_cast<char *>(tensor->data) + offset, row_size/n_parts);
-	                       }
-	                   } else {
-	                       const int np1 = ne[1];
+				       total_size += ggml_nbytes(tensor);
+				   } else {
+				       if ((nelements*bpe)/ggml_blck_size(tensor->type) != ggml_nbytes(tensor)/n_parts) {
+				           fmt.Printf("%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
+				                   __func__, name.data(), ggml_nbytes(tensor)/n_parts, nelements*bpe);
+				           return false;
+				       }
 
-	                       const size_t row_size = (tensor->ne[0]/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
+				       if (split_type == 0) {
+				           const int np0 = ne[0];
 
-	                       for (int i1 = 0; i1 < ne[1]; ++i1) {
-	                           const size_t offset_row = (i1 + part_id*np1)*row_size;
-	                           fin.read(reinterpret_cast<char *>(tensor->data) + offset_row, row_size);
-	                       }
-	                   }
+				           const size_t row_size = (tensor->ne[0]/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
+				           assert(row_size == tensor->nb[1]);
 
-	                   total_size += ggml_nbytes(tensor)/n_parts;
-	               }
+				           for (int i1 = 0; i1 < ne[1]; ++i1) {
+				               const size_t offset_row = i1*row_size;
+				               const size_t offset = offset_row + ((part_id*np0)/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
+				               fin.read(reinterpret_cast<char *>(tensor->data) + offset, row_size/n_parts);
+				           }
+				       } else {
+				           const int np1 = ne[1];
 
-	               //fmt.Printf("%42s - [%5d, %5d], type = %6s, %6.2f MB\n", name.data(), ne[0], ne[1], ftype == 0 ? "float" : "f16", ggml_nbytes(tensor)/1024.0/1024.0);
-	               if (++n_tensors % 8 == 0) {
-	                   fmt.Printf(".");
-	                   fflush(stderr);
-	               }
-	           }
+				           const size_t row_size = (tensor->ne[0]/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
 
-	           fmt.Printf(" done\n");
+				           for (int i1 = 0; i1 < ne[1]; ++i1) {
+				               const size_t offset_row = (i1 + part_id*np1)*row_size;
+				               fin.read(reinterpret_cast<char *>(tensor->data) + offset_row, row_size);
+				           }
+				       }
 
-	           fmt.Printf("%s: model size = %8.2f MB / num tensors = %d\n", __func__, total_size/1024.0/1024.0, n_tensors);
-	       }
+				       total_size += ggml_nbytes(tensor)/n_parts;
+				   }
 
-	       fin.close();
-	   }*/
+				   //fmt.Printf("%42s - [%5d, %5d], type = %6s, %6.2f MB\n", name.data(), ne[0], ne[1], ftype == 0 ? "float" : "f16", ggml_nbytes(tensor)/1024.0/1024.0);
+				   if (++n_tensors % 8 == 0) {
+				       fmt.Printf(".");
+				       fflush(stderr);
+				   }
+				*/
+			}
+
+			fmt.Printf("\ndone")
+
+			fmt.Printf("\nmodel size = %.2f MB / num tensors = %d", total_size/1024.0/1024.0, n_tensors)
+		}
+
+		////fin.close();
+	}
 
 	return nil
 }
