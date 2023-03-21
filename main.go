@@ -125,7 +125,7 @@ type llamaModel struct {
 	tensors map[string]*ml.Tensor //std::map<std::string, struct ggml_tensor *> tensors;
 }
 
-func readInt(reader *bufio.Reader) uint32 {
+func readInt32(reader *bufio.Reader) uint32 {
 	buf := make([]byte, 4)
 	if count, err := io.ReadFull(reader, buf); err != nil || count != 4 {
 		fmt.Print("\n[ERROR] Failed to read data from model file")
@@ -154,7 +154,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 	//var magicInt int32
 	//magicInt := int32(magic[3])<<24 | int32(magic[2])<<16 | int32(magic[1])<<8 | int32(magic[0])
-	magic := readInt(reader)
+	magic := readInt32(reader)
 	if magic != 0x67676d6c {
 		fmt.Printf("\n[llamaModelLoad] Invalid model file '%s' (bad magic)", fileName)
 		return nil // FIXME ERR
@@ -189,13 +189,13 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 	// load hparams
 	{
-		hparamsVocabSize = readInt(reader) // vocab_size
-		hparamsEmbd = readInt(reader)      // dim
-		hparamsMult = readInt(reader)      // multiple_of
-		hparamsHeads = readInt(reader)     // n_heads
-		hparamsLayers = readInt(reader)    // n_layers
-		hparamsRot = readInt(reader)       // rot = dim // n_heads [obsolete]
-		hparamsF16 = readInt(reader)       // ftype
+		hparamsVocabSize = readInt32(reader) // vocab_size
+		hparamsEmbd = readInt32(reader)      // dim
+		hparamsMult = readInt32(reader)      // multiple_of
+		hparamsHeads = readInt32(reader)     // n_heads
+		hparamsLayers = readInt32(reader)    // n_layers
+		hparamsRot = readInt32(reader)       // rot = dim // n_heads [obsolete]
+		hparamsF16 = readInt32(reader)       // ftype
 
 		hparamsCtx = n_ctx
 
@@ -220,7 +220,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 	{
 
 		for i := uint32(0); i < hparamsVocabSize; i++ {
-			len := readInt(reader)
+			len := readInt32(reader)
 			word := make([]byte, len)
 			if count, err := io.ReadFull(reader, word); err != nil || count != int(len) {
 				fmt.Printf("\n[llamaModelLoad] Problem reading vocabulary from '%s'", fileName)
@@ -239,11 +239,12 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 	// for the big tensors, we have the option to store the data in 16-bit floats or quantized
 	// in order to save memory and also to speed up the computation
-	wtype := ml.TYPE_COUNT
+	//wtype := ml.TYPE_COUNT
 
 	////switch (model.hparams.f16) {
 	//// case 0: wtype = GGML_TYPE_F32;  break;
 	////case 1: wtype = GGML_TYPE_F16;  break;
+	wtype := ml.TYPE_F16 // FIXME dtype
 	////case 2: wtype = GGML_TYPE_Q4_0; break;
 	////case 3: wtype = GGML_TYPE_Q4_1; break;
 	////default:
@@ -254,14 +255,15 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 	////        }
 	////}
 
-	////wtype2 := ml.TYPE_F32
+	wtype2 := ml.TYPE_F32
 
 	////auto & ctx = model.ctx;
 	ctx := model.ctx
 
 	// FIXME Context size calculations - do we need this ??
 	//{
-	const typeSize = 2 // ggml_type_sizef(wtype)
+	//typeSize := ml.TypeSizeFloat(wtype)
+	typeSize := ml.TYPE_SIZE[wtype]
 	ctxSize := uint32(0)
 	////const auto & hparams = model.hparams;
 	embd := hparamsEmbd
@@ -316,7 +318,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 		//ctxSize := hparamsCtx
 		vocabSize := hparamsVocabSize
 
-		////model.layers.resize(layers)
+		////model.layers.resize(layers) // FIXME
 
 		model.tokEmbeddings = ml.NewTensor2D(ctx, wtype, embd, vocabSize)
 
