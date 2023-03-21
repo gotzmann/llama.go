@@ -341,35 +341,38 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 		model.tensors["norm.weight"] = model.norm
 		model.tensors["output.weight"] = model.output
 
+		model.layers = make([]llamaLayer, layers)
 		for i := uint32(0); i < layers; i++ {
 			//auto & layer = model.layers[i];
 
 			model.layers[i].attentionNorm = ml.NewTensor1D(ctx, ml.TYPE_F32, embd)
 
-			model.layers[i].wq = ml.NewTensor2D(ctx, wtype, embd, embd)
-			model.layers[i].wk = ml.NewTensor2D(ctx, wtype, embd, embd)
-			model.layers[i].wv = ml.NewTensor2D(ctx, wtype, embd, embd)
-			model.layers[i].wo = ml.NewTensor2D(ctx, wtype, embd, embd)
+			model.layers[i].wq = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, embd)
+			model.layers[i].wk = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, embd)
+			model.layers[i].wv = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, embd)
+			model.layers[i].wo = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, embd)
 
 			model.layers[i].ffn_norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embd)
 
-			model.layers[i].w1 = ml.NewTensor2D(ctx, wtype, embd, n_ff)
-			model.layers[i].w2 = ml.NewTensor2D(ctx, wtype, n_ff, embd)
-			model.layers[i].w3 = ml.NewTensor2D(ctx, wtype, embd, n_ff)
+			model.layers[i].w1 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, n_ff)
+			model.layers[i].w2 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, n_ff, embd)
+			model.layers[i].w3 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, n_ff)
 
 			// map by name
-			model.tensors[fmt.Sprintf("layers.%d.attention_norm.weight", i)] = model.layers[i].attentionNorm
+			prefix := fmt.Sprintf("layers.%d.", i)
 
-			model.tensors[fmt.Sprintf("layers.%d.attention.wq.weight", i)] = model.layers[i].wq
-			model.tensors[fmt.Sprintf("layers.%d.attention.wk.weight", i)] = model.layers[i].wk
-			model.tensors[fmt.Sprintf("layers.%d.attention.wv.weight", i)] = model.layers[i].wv
-			model.tensors[fmt.Sprintf("layers.%d.attention.wo.weight", i)] = model.layers[i].wo
+			model.tensors[prefix+"attention_norm.weight"] = model.layers[i].attentionNorm
 
-			model.tensors[fmt.Sprintf("layers.%d.ffn_norm.weight", i)] = model.layers[i].ffn_norm
+			model.tensors[prefix+"attention.wq.weight"] = model.layers[i].wq
+			model.tensors[prefix+"attention.wk.weight"] = model.layers[i].wk
+			model.tensors[prefix+"attention.wv.weight"] = model.layers[i].wv
+			model.tensors[prefix+"attention.wo.weight"] = model.layers[i].wo
 
-			model.tensors[fmt.Sprintf("layers.%d.feed_forward.w1.weight", i)] = model.layers[i].w1
-			model.tensors[fmt.Sprintf("layers.%d.feed_forward.w2.weight", i)] = model.layers[i].w2
-			model.tensors[fmt.Sprintf("layers.%d.feed_forward.w3.weight", i)] = model.layers[i].w3
+			model.tensors[prefix+"ffn_norm.weight"] = model.layers[i].ffn_norm
+
+			model.tensors[prefix+"feed_forward.w1.weight"] = model.layers[i].w1
+			model.tensors[prefix+"feed_forward.w2.weight"] = model.layers[i].w2
+			model.tensors[prefix+"feed_forward.w3.weight"] = model.layers[i].w3
 		}
 	}
 	/*
