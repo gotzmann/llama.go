@@ -291,42 +291,15 @@ func NewTensor(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32) *
 
 	////ggml_assert_aligned(result);
 
-	total := ne0 * ne1 * ne2 * ne3
-	result := &Tensor{
+	return &Tensor{
 		Type: dt,
 		Dims: dims,
-		//ne:         [4]uint32{1, 1, 1, 1}, // FIXME Why?
-		NE:         [4]uint32{ne0, ne1, ne2, ne3},
-		NB:         [4]uint32{0, 0, 0, 0},
-		op:         OP_NONE,
-		isParam:    false,
-		grad:       nil,
-		src0:       nil,
-		src1:       nil,
-		opt:        [4]*Tensor{nil, nil, nil, nil},
-		n_tasks:    0,
-		perfRuns:   0,
-		perfCycles: 0,
-		perfTime:   0,
-		Data:       make([]float32, total), // FIXME Size?,
-		////pad:        {0},
+		NE:   [4]uint32{ne0, ne1, ne2, ne3},
+		NB:   [4]uint32{0, 0, 0, 0},
+		op:   OP_NONE,
+		opt:  [4]*Tensor{nil, nil, nil, nil},
+		Data: make([]float32, ne0*ne1*ne2*ne3),
 	}
-
-	////ggml_assert_aligned(result->data);
-
-	//for i := uint32(0); i < dims; i++ {
-	//    result.ne[i] = ne[i]
-	//}
-
-	//result.nb[0] = 2 // FIXME (FP16) TYPE_SIZE[type];
-	//result.nb[1] = result.nb[0]*(result.ne[0] / 1 /* BLCK_SIZE[type] */ )
-	//for i: = uint32(2); i < MAX_DIMS; i++ {
-	//    result.nb[i] = result.nb[i - 1]*result.ne[i - 1];
-	//}
-
-	//ctx.Objects++ // FIXME
-
-	return result
 }
 
 func Init(params InitParams) *Context {

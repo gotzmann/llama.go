@@ -533,7 +533,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 					nStr = fmt.Sprintf("%.1f M", float32(nelements)/1024/1024)
 				}
 
-				fmt.Printf("\n\n=== Tensor # %d === [ %s | %s | dims = %d | n = %s ] ===", n_tensors, typeStr, name, dims, nStr)
+				fmt.Printf("\n\n=== Tensor # %d === [ %s | %s | dims = %d | n = %s ] ===\n\n", n_tensors, typeStr, name, dims, nStr)
 
 				if _, ok := model.tensors[name]; !ok {
 					fmt.Printf("\n[ERROR] Unknown tensor '%s' in model file", name)
@@ -576,15 +576,16 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 				////auto tensor = model.tensors[name.data()];
 				tensor := model.tensors[name]
+				tensorSize := tensor.Nelements()
 
 				if dims == 1 {
-					if tensor.Nelements() != nelements {
+					if tensorSize != nelements {
 						fmt.Printf("\n[ERROR] Tensor '%s' has wrong size in model file", name)
 						os.Exit(1)
 						//return false;
 					}
 				} else {
-					if tensor.Nelements()/n_parts != nelements {
+					if tensorSize/n_parts != nelements {
 						fmt.Printf("\n[ERROR] Tensor '%s' has wrong size in model file", name)
 						os.Exit(1)
 						//return false;
@@ -650,20 +651,21 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 						////fin.read(reinterpret_cast<char *>(tensor->data), ggml_nbytes(tensor));
 						// NB! ggml_nbytes == (ggml_nelements(tensor)*GGML_TYPE_SIZE[tensor->type])/GGML_BLCK_SIZE[tensor->type];
-						fmt.Printf("\n\nReading %d Tensor elements...\n", tensor.Nelements())
-						for n := uint32(0); n < tensor.Nelements(); n++ {
+						//fmt.Printf("\n\nReading %d Tensor elements...\n", tensor.Nelements())
+
+						for n := uint32(0); n < tensorSize; n++ {
 							if ftype == 1 {
 								tensor.Data[n] = readFP16ToFP32(reader)
 							} else { // FIXME What other types possible?
 								tensor.Data[n] = readFP32(reader)
 							}
 
-							// DEBUG Print each 1,000th or 1,000,000th element
-							if tensor.Nelements() > 1000000 && n%1000000 == 0 {
-								fmt.Printf("[ %d | %f ]", n, tensor.Data[n])
+							// DEBUG Print each 1,000th or 10,000,000th element
+							if tensorSize > 10000000 && n%10000000 == 0 {
+								fmt.Printf("| %f |", tensor.Data[n])
 							} else {
-								if tensor.Nelements() < 10000 && n%1000 == 0 {
-									fmt.Printf("[ %d | %f ]", n, tensor.Data[n])
+								if tensorSize < 10000 && n%1000 == 0 {
+									fmt.Printf("| %f |", tensor.Data[n])
 								}
 							}
 						}
