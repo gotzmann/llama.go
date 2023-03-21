@@ -125,6 +125,13 @@ type llamaModel struct {
 	tensors map[string]*ml.Tensor //std::map<std::string, struct ggml_tensor *> tensors;
 }
 
+func NewModel() llamaModel {
+	return llamaModel{
+		layers:  make([]llamaLayer, 0),
+		tensors: make(map[string]*ml.Tensor),
+	}
+}
+
 func readInt32(reader *bufio.Reader) uint32 {
 	buf := make([]byte, 4)
 	if count, err := io.ReadFull(reader, buf); err != nil || count != 4 {
@@ -243,8 +250,11 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 	////switch (model.hparams.f16) {
 	//// case 0: wtype = GGML_TYPE_F32;  break;
+
 	////case 1: wtype = GGML_TYPE_F16;  break;
+
 	wtype := ml.TYPE_F16 // FIXME dtype
+
 	////case 2: wtype = GGML_TYPE_Q4_0; break;
 	////case 3: wtype = GGML_TYPE_Q4_1; break;
 	////default:
@@ -255,7 +265,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 	////        }
 	////}
 
-	wtype2 := ml.TYPE_F32
+	//wtype2 := ml.TYPE_F32
 
 	////auto & ctx = model.ctx;
 	ctx := model.ctx
@@ -320,10 +330,10 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 		////model.layers.resize(layers) // FIXME
 
-		model.tokEmbeddings = ml.NewTensor2D(ctx, wtype, embd, vocabSize)
+		model.tokEmbeddings = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, vocabSize)
 
 		model.norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embd)
-		model.output = ml.NewTensor2D(ctx, wtype, embd, vocabSize)
+		model.output = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, vocabSize)
 
 		// map by name
 		model.tensors["tok_embeddings.weight"] = model.tokEmbeddings
@@ -910,7 +920,7 @@ func main() {
 	vocab.token2id = make(map[string]uint32)
 	vocab.id2token = make(map[uint32]string)
 
-	var model llamaModel
+	model := NewModel()
 
 	// load the model
 	{
