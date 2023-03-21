@@ -5,15 +5,38 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"strings"
 
 	"github.com/x448/float16"
 
-	//"ml"
-	//"github.com/gotzmann/llama.go/ml"
 	"github.com/gotzmann/llama.go/ml"
 )
+
+/*
+https://huggingface.co/docs/transformers/main/model_doc/llama
+
+vocab_size (int, optional, defaults to 32000) — Vocabulary size of the LLaMA model. Defines the number of different tokens that can be represented by the inputs_ids passed when calling LlamaModel
+
+hidden_size (int, optional, defaults to 4096) — Dimension of the hidden representations.
+
+intermediate_size (int, optional, defaults to 11008) — Dimension of the MLP representations.
+
+num_hidden_layers (int, optional, defaults to 32) — Number of hidden layers in the Transformer encoder.
+
+num_attention_heads (int, optional, defaults to 32) — Number of attention heads for each attention layer in the Transformer encoder.
+
+hidden_act (str or function, optional, defaults to "silu") — The non-linear activation function (function or string) in the decoder.
+
+initializer_range (float, optional, defaults to 0.02) — The standard deviation of the truncated_normal_initializer for initializing all weight matrices.
+
+rms_norm_eps (float, optional, defaults to 1e-12) — The epsilon used by the rms normalization layers.
+
+use_cache (bool, optional, defaults to True) — Whether or not the model should return the last key/values attentions (not used by all models). Only relevant if config.is_decoder=True.
+
+tie_word_embeddings(bool, optional, defaults to False) — Whether to tie weight embeddings Example —
+*/
 
 // uitils.h
 type gptVocab struct {
@@ -145,6 +168,15 @@ func readInt(reader *bufio.Reader) uint32 {
 	return uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0])
 }
 
+func readString(reader *bufio.Reader, len uint32) string {
+	buf := make([]byte, len)
+	if count, err := io.ReadFull(reader, buf); err != nil || count != int(len) {
+		fmt.Print("\n[ERROR] Failed to read data from model file")
+		os.Exit(1)
+	}
+	return string(buf)
+}
+
 func readFP16ToFP32(reader *bufio.Reader) float32 {
 	buf := make([]byte, 2)
 	if count, err := io.ReadFull(reader, buf); err != nil || count != 2 {
@@ -156,13 +188,15 @@ func readFP16ToFP32(reader *bufio.Reader) float32 {
 	return f16.Float32()
 }
 
-func readString(reader *bufio.Reader, len uint32) string {
-	buf := make([]byte, len)
-	if count, err := io.ReadFull(reader, buf); err != nil || count != int(len) {
+func readFP32(reader *bufio.Reader) float32 {
+	buf := make([]byte, 4)
+	if count, err := io.ReadFull(reader, buf); err != nil || count != 4 {
 		fmt.Print("\n[ERROR] Failed to read data from model file")
 		os.Exit(1)
 	}
-	return string(buf)
+	bits := uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0])
+	//bits := uint32(buf[1])<<24 | uint32(buf[0])<<16 | uint32(buf[3])<<8 | uint32(buf[2])
+	return math.Float32frombits(bits)
 }
 
 // load the model's weights from a file
@@ -447,6 +481,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 		// load weights
 		{
 			n_tensors := uint32(0)
+
 			////total_size := uint64(0)
 
 			//fmt.Printf("%s: ", __func__);
@@ -461,13 +496,18 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 				length := readInt(reader)
 				ftype := readInt(reader)
 
-				fmt.Printf("\ndims = %d", dims)
-				fmt.Printf("\nlength = %d", length)
-				fmt.Printf("\nftype = %d", ftype)
+				//fmt.Printf("\ndims = %d", dims)
+				//fmt.Printf("\nlength = %d", length)
+				//fmt.Printf("\nftype = %d", ftype)
 
 				////if (fin.eof()) {
 				////break;
 				////}
+
+				// FIXME Check for EOF
+				if dims > 2 {
+					break
+				}
 
 				nelements := uint32(1)
 				//int32_t ne[2] = { 1, 1 };
@@ -482,7 +522,18 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 				////std::string name(length, 0);
 				////fin.read(&name[0], length);
 				name := readString(reader, length)
-				fmt.Printf("\nname = %s", name)
+				//fmt.Printf("\nname = %s", name)
+
+				typeStr := "FP32"
+				if ftype == 1 {
+					typeStr = "FP16"
+				}
+				nStr := fmt.Sprintf("%d", nelements)
+				if nelements > 1000000 {
+					nStr = fmt.Sprintf("%.1f M", float32(nelements)/1024/1024)
+				}
+
+				fmt.Printf("\n\n=== Tensor # %d === [ %s | %s | dims = %d | n = %s ] ===", n_tensors, typeStr, name, dims, nStr)
 
 				if _, ok := model.tensors[name]; !ok {
 					fmt.Printf("\n[ERROR] Unknown tensor '%s' in model file", name)
@@ -596,24 +647,40 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 					////}
 
 					if part_id == 0 {
+
 						////fin.read(reinterpret_cast<char *>(tensor->data), ggml_nbytes(tensor));
 						// NB! ggml_nbytes == (ggml_nelements(tensor)*GGML_TYPE_SIZE[tensor->type])/GGML_BLCK_SIZE[tensor->type];
+						fmt.Printf("\n\nReading %d Tensor elements...\n", tensor.Nelements())
 						for n := uint32(0); n < tensor.Nelements(); n++ {
-							tensor.Data[n] = readFP16ToFP32(reader)
-							fmt.Printf("[ %d | %f ]", n, tensor.Data[n])
+							if ftype == 1 {
+								tensor.Data[n] = readFP16ToFP32(reader)
+							} else { // FIXME What other types possible?
+								tensor.Data[n] = readFP32(reader)
+							}
+
+							// DEBUG Print each 1,000th or 1,000,000th element
+							if tensor.Nelements() > 1000000 && n%1000000 == 0 {
+								fmt.Printf("[ %d | %f ]", n, tensor.Data[n])
+							} else {
+								if tensor.Nelements() < 10000 && n%1000 == 0 {
+									fmt.Printf("[ %d | %f ]", n, tensor.Data[n])
+								}
+							}
 						}
+
 					} else {
 						////fin.seekg(ggml_nbytes(tensor), std::ios::cur);
 						fmt.Printf("\n[ERROR] The multi-part models are not supported yet")
 						os.Exit(1)
 					}
 
-					os.Exit(0)
+					//os.Exit(0)
 
 					////total_size += ggml_nbytes(tensor)
 
 				} else {
 
+					fmt.Printf("\nNOT EXPECTED WAY")
 					os.Exit(0)
 
 					////if ((nelements*bpe)/ggml_blck_size(tensor->type) != ggml_nbytes(tensor)/n_parts) {
