@@ -141,9 +141,18 @@ func readInt32(reader *bufio.Reader) uint32 {
 	return uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0])
 }
 
+func readString(reader *bufio.Reader, len uint32) string {
+	buf := make([]byte, len)
+	if count, err := io.ReadFull(reader, buf); err != nil || count != int(len) {
+		fmt.Print("\n[ERROR] Failed to read data from model file")
+		os.Exit(1)
+	}
+	return string(buf)
+}
+
 // load the model's weights from a file
 func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx uint32) error {
-	fmt.Printf("\n[llamaModelLoad] Loading model from '%s' - please wait ...", fileName)
+	fmt.Printf("\n[llamaModelLoad] Loading model from '%s' - please wait ...\n", fileName)
 
 	data, err := os.Open(fileName)
 	if err != nil {
@@ -211,16 +220,16 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 		//n_parts = LLAMA_N_PARTS.at(hparams.n_embd);
 		n_parts = llamaParts[hparamsEmbd]
 
-		fmt.Printf("\nn_vocab = %d", hparamsVocabSize)
-		fmt.Printf("\nn_ctx   = %d", hparamsCtx)
-		fmt.Printf("\nn_embd  = %d", hparamsEmbd)
-		fmt.Printf("\nn_mult  = %d", hparamsMult)
-		fmt.Printf("\nn_head  = %d", hparamsHeads)
-		fmt.Printf("\nn_layer = %d", hparamsLayers)
-		fmt.Printf("\nn_rot   = %d", hparamsRot)
-		fmt.Printf("\nf16     = %d", hparamsF16)
-		fmt.Printf("\nn_ff    = %d", n_ff)
-		fmt.Printf("\nn_parts = %d", n_parts)
+		fmt.Printf("\nvocab  = %d", hparamsVocabSize)
+		//fmt.Printf("\nctx   = %d", hparamsCtx)
+		fmt.Printf("\nembd   = %d", hparamsEmbd)
+		fmt.Printf("\nmult   = %d", hparamsMult)
+		fmt.Printf("\nheads  = %d", hparamsHeads)
+		fmt.Printf("\nlayers = %d", hparamsLayers)
+		//fmt.Printf("\nrot   = %d", hparamsRot)
+		//fmt.Printf("\nf16     = %d", hparamsF16)
+		//fmt.Printf("\nn_ff    = %d", n_ff)
+		//fmt.Printf("\nn_parts = %d", n_parts)
 	}
 
 	// load vocab
@@ -228,19 +237,20 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 		for i := uint32(0); i < hparamsVocabSize; i++ {
 			len := readInt32(reader)
-			word := make([]byte, len)
-			if count, err := io.ReadFull(reader, word); err != nil || count != int(len) {
-				fmt.Printf("\n[llamaModelLoad] Problem reading vocabulary from '%s'", fileName)
-				return nil // FIXME ERR
-			}
+			//word := make([]byte, len)
+			//if count, err := io.ReadFull(reader, word); err != nil || count != int(len) {
+			//	fmt.Printf("\n[llamaModelLoad] Problem reading vocabulary from '%s'", fileName)
+			//	return nil // FIXME ERR
+			//}
+			word := readString(reader, len)
 
 			//if i%6 == 0 {
 			//	fmt.Println()
 			//}
 			//fmt.Printf("| vocab[%d] = %s ] ", i, string(word))
 
-			vocab.token2id[string(word)] = i
-			vocab.id2token[i] = string(word)
+			vocab.token2id[word] = i
+			vocab.id2token[i] = word
 		}
 	}
 
@@ -302,7 +312,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 	ctxSize += (5 + 10*layers) * 256 // object overhead
 
-	fmt.Printf("\nggml ctx size = %.2f MB", float32(ctxSize)/(1024*1024))
+	////fmt.Printf("\nggml ctx size = %.2f MB", float32(ctxSize)/(1024*1024))
 	//}
 
 	// create the ggml context
@@ -413,7 +423,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 			fname_part += "." + fmt.Sprintf("%d", i)
 		}
 
-		fmt.Printf("\nloading model part %d/%d from '%s'\n", i+1, n_parts, fname_part)
+		fmt.Printf("\n\n[llamaModelLoad] Loading model part %d / %d from '%s'\n", i+1, n_parts, fname_part)
 
 		//fin = std::ifstream(fname_part, std::ios::binary);
 		//fin.rdbuf()->pubsetbuf(f_buf.data(), f_buf.size());
@@ -421,8 +431,8 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 
 		// load weights
 		{
-			n_tensors := uint32(0)
-			total_size := uint64(0)
+			////n_tensors := uint32(0)
+			////total_size := uint64(0)
 
 			//fmt.Printf("%s: ", __func__);
 
@@ -454,11 +464,14 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 					nelements *= ne[i]
 				}
 
-				os.Exit(0)
-				/*
-				   ////std::string name(length, 0);
-				   ////fin.read(&name[0], length);
+				////std::string name(length, 0);
+				////fin.read(&name[0], length);
+				name := readString(reader, length)
+				fmt.Printf("\nname = %s", name)
 
+				os.Exit(0)
+
+				/*
 				   if (model.tensors.find(name.data()) == model.tensors.end()) {
 				       fmt.Printf("%s: unknown tensor '%s' in model file\n", __func__, name.data());
 				       return false;
@@ -605,9 +618,9 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *gptVocab, n_ctx u
 				*/
 			}
 
-			fmt.Printf("\ndone")
+			////fmt.Printf("\ndone")
 
-			fmt.Printf("\nmodel size = %.2f MB / num tensors = %d", total_size/1024.0/1024.0, n_tensors)
+			////fmt.Printf("\nmodel size = %.2f MB / num tensors = %d", total_size/1024.0/1024.0, n_tensors)
 		}
 
 		////fin.close();
