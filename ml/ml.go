@@ -90,8 +90,8 @@ type Tensor struct {
 	Type dtype
 
 	Dims uint32
-	ne   [MAX_DIMS]uint32 // number of elements
-	nb   [MAX_DIMS]uint32 // stride in bytes:
+	NE   [MAX_DIMS]uint32 // number of elements
+	NB   [MAX_DIMS]uint32 // stride in bytes:
 	// nb[0] = sizeof(type)
 	// nb[1] = nb[0]   * ne[0] + padding
 	// nb[i] = nb[i-1] * ne[i-1]
@@ -114,8 +114,13 @@ type Tensor struct {
 	perfCycles uint32
 	perfTime   uint64
 
-	data    []float32
+	Data    []float32
 	padding [8]byte
+}
+
+func (t *Tensor) Nelements() uint32 {
+	////static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
+	return t.NE[0] * t.NE[1] * t.NE[2] * t.NE[3]
 }
 
 type State struct {
@@ -291,8 +296,8 @@ func NewTensor(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32) *
 		Type: dt,
 		Dims: dims,
 		//ne:         [4]uint32{1, 1, 1, 1}, // FIXME Why?
-		ne:         [4]uint32{ne0, ne1, ne2, ne3},
-		nb:         [4]uint32{0, 0, 0, 0},
+		NE:         [4]uint32{ne0, ne1, ne2, ne3},
+		NB:         [4]uint32{0, 0, 0, 0},
 		op:         OP_NONE,
 		isParam:    false,
 		grad:       nil,
@@ -303,7 +308,7 @@ func NewTensor(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32) *
 		perfRuns:   0,
 		perfCycles: 0,
 		perfTime:   0,
-		data:       make([]float32, total), // FIXME Size?,
+		Data:       make([]float32, total), // FIXME Size?,
 		////pad:        {0},
 	}
 
