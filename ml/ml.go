@@ -123,6 +123,78 @@ func (t *Tensor) Nelements() uint32 {
 	return t.NE[0] * t.NE[1] * t.NE[2] * t.NE[3]
 }
 
+// ggml_get_rows
+
+func GetRows(ctx *Context, a, b *Tensor) *Tensor {
+	////GGML_ASSERT(ggml_is_matrix(a) && ggml_is_vector(b) && b->type == GGML_TYPE_I32);
+
+	////isNode := false
+
+	if a.grad != nil || b.grad != nil {
+		////GGML_ASSERT(false); // TODO: implement backward
+		////isNode = true
+		fmt.Printf("\n[STOP] ml.GetRows") // FIXME ??
+		os.Exit(1)                        // FIXME ??
+	}
+
+	// TODO: implement non F32 return
+	//struct ggml_tensor * result = ggml_new_tensor_2d(ctx, a->type, a->ne[0], b->ne[0]);
+	result := NewTensor2D(ctx, TYPE_F32, a.NE[0], b.NE[0])
+
+	result.op = OP_GET_ROWS
+	////if isNode {
+	////    result.grad = DupTensor(ctx, result)
+	////} else {
+	////    result.grad = nil
+	////}
+
+	result.src0 = a
+	result.src1 = b
+
+	return result
+}
+
+func RMSNorm(ctx *Context, a *Tensor) *Tensor {
+	return RMSNormImpl(ctx, a, false)
+}
+
+func RMSNormInplace(ctx *Context, a *Tensor) *Tensor {
+	return RMSNormImpl(ctx, a, true)
+}
+
+// //struct ggml_tensor * ggml_rms_norm_impl(
+func RMSNormImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
+	isNode := false
+
+	if !inplace && a.grad != nil {
+		////GGML_ASSERT(false); // TODO: implement backward
+		////is_node = true;
+		fmt.Printf("\n[STOP] ml.GetRows") // FIXME ??
+		os.Exit(1)                        // FIXME ??
+	}
+
+	////struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
+	var result *Tensor
+	if inplace {
+		result = ViewTensor(ctx, a)
+	} else {
+		result = DupTensor(ctx, a)
+	}
+
+	result.op = OP_RMS_NORM
+
+	result.src0 = a
+	result.src1 = nil // TODO: maybe store epsilon here?
+
+	if isNode {
+		result.grad = DupTensor(ctx, result)
+	} else {
+		result.grad = nil
+	}
+
+	return result
+}
+
 // computation graph
 type Graph struct {
 	nodesCount uint32 // FIXME Do not need
