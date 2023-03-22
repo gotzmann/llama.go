@@ -1,3 +1,4 @@
 .env
 /LLaMA
 /models
+__debug_bin
