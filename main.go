@@ -824,30 +824,36 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp *[]uint32, e
 	////gf := ml.Graph{}
 	////gf.threads = n_threads
 
-	embd := ml.NewTensor1D(ctx0, ml.TYPE_I32, N)
+	embd := ml.NewTensor1D(ctx0, ml.TYPE_I32, N) // FIXME Will be created as FP32 anyway
 	////memcpy(embd->data, embd_inp.data(), N*ggml_element_size(embd));
-	// ^^ memcpy(embd->data, embd_inp.data(), N*ggml_element_size(embd)) // FIXME
+	// FIXME Refactore inline initialization
+	embd.Type = ml.TYPE_F32
+	for em := uint32(0); em < N; em++ {
+		embd.Data[em] = float32((*embdInp)[em])
+	}
 
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
 
 	for il := uint32(0); il < layers; il++ {
 		////inpSA := inpL
 
-		var cur *ml.Tensor
+		//var cur *ml.Tensor
 
 		// norm
-		{
-			cur = ml.RMSNorm(ctx0, inpL)
+		cur := ml.RMSNorm(ctx0, inpL)
 
-			// cur = attention_norm*cur
-			cur = ml.Mul(ctx0, ml.Repeat(ctx0, model.layers[il].attentionNorm, cur), cur)
-		}
+		// cur = attention_norm*cur
+		rep := ml.Repeat(ctx0, model.layers[il].attentionNorm, cur)
+		cur = ml.Mul(ctx0, rep, cur)
 
 		// self-attention
 		{
-			////Qcur := ml.MulMat(ctx0, model.layers[il].wq, cur)
-			////Kcur := ml.MulMat(ctx0, model.layers[il].wk, cur)
-			////Vcur := ml.MulMat(ctx0, model.layers[il].wv, cur)
+			Qcur := ml.MulMat(ctx0, model.layers[il].wq, cur)
+			Kcur := ml.MulMat(ctx0, model.layers[il].wk, cur)
+			Vcur := ml.MulMat(ctx0, model.layers[il].wv, cur)
+
+			fmt.Printf("\n\nOK\n %+v %+v %+v", Qcur, Kcur, Vcur)
+			os.Exit(0)
 
 			// store key and value to memory
 			////if N >= 1 {

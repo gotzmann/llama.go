@@ -91,7 +91,7 @@ type Tensor struct {
 
 	Dims uint32
 	NE   [MAX_DIMS]uint32 // number of elements
-	NB   [MAX_DIMS]uint32 // stride in bytes:
+	//NB   [MAX_DIMS]uint32 // stride in bytes:
 	// nb[0] = sizeof(type)
 	// nb[1] = nb[0]   * ne[0] + padding
 	// nb[i] = nb[i-1] * ne[i-1]
@@ -110,12 +110,12 @@ type Tensor struct {
 	n_tasks uint32
 
 	// performance
-	perfRuns   uint32
-	perfCycles uint32
-	perfTime   uint64
+	//perfRuns   uint32
+	//perfCycles uint32
+	//perfTime   uint64
 
-	Data    []float32
-	padding [8]byte
+	Data []float32
+	//padding [8]byte
 }
 
 func AreSameShape(t0, t1 *Tensor) bool {
@@ -257,11 +257,11 @@ func Repeat(ctx *Context, a, b *Tensor) *Tensor {
 func GetRows(ctx *Context, a, b *Tensor) *Tensor {
 	////GGML_ASSERT(ggml_is_matrix(a) && ggml_is_vector(b) && b->type == GGML_TYPE_I32);
 
-	////isNode := false
+	isNode := false
 
 	if a.grad != nil || b.grad != nil {
 		////GGML_ASSERT(false); // TODO: implement backward
-		////isNode = true
+		isNode = true
 		fmt.Printf("\n[STOP] ml.GetRows") // FIXME ??
 		os.Exit(1)                        // FIXME ??
 	}
@@ -271,11 +271,11 @@ func GetRows(ctx *Context, a, b *Tensor) *Tensor {
 	result := NewTensor2D(ctx, TYPE_F32, a.NE[0], b.NE[0])
 
 	result.op = OP_GET_ROWS
-	////if isNode {
-	////    result.grad = DupTensor(ctx, result)
-	////} else {
-	////    result.grad = nil
-	////}
+	if isNode {
+		result.grad = DupTensor(ctx, result)
+	} else {
+		result.grad = nil
+	}
 
 	result.src0 = a
 	result.src1 = b
@@ -297,7 +297,7 @@ func RMSNormImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 
 	if !inplace && a.grad != nil {
 		////GGML_ASSERT(false); // TODO: implement backward
-		////is_node = true;
+		isNode = true
 		fmt.Printf("\n[STOP] ml.GetRows") // FIXME ??
 		os.Exit(1)                        // FIXME ??
 	}
@@ -311,7 +311,6 @@ func RMSNormImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 	}
 
 	result.op = OP_RMS_NORM
-
 	result.src0 = a
 	result.src1 = nil // TODO: maybe store epsilon here?
 
@@ -338,8 +337,8 @@ type Graph struct {
 	leafs [MAX_NODES]*Tensor
 
 	// performance
-	perfRuns   uint64
-	perfCycles uint64
+	//perfRuns   uint64
+	//perfCycles uint64
 	////int64_t perf_time_us;
 }
 
@@ -380,18 +379,18 @@ type Object struct {
 
 // ml/ggml.c:2248
 type Context struct {
-	MemSize        uint64
-	MemBuffer      []byte
-	MemBufferOwned bool
+	//MemSize        uint64
+	//MemBuffer      []byte
+	//MemBufferOwned bool
 
 	//Objects uint64
-	Objects []Object // FIXME Speedup with *Object?
+	//Objects []Object // FIXME Speedup with *Object?
 
-	ObjectsBegin *Object
-	ObjectsEnd   *Object
+	//ObjectsBegin *Object
+	//ObjectsEnd   *Object
 
-	Scratch     Scratch
-	ScratchSave Scratch
+	//Scratch     Scratch
+	//ScratchSave Scratch
 }
 
 /*
@@ -425,8 +424,8 @@ func NewTensor4D(ctx *Context, dt dtype, ne0, ne1, ne2, ne3 uint32) *Tensor {
 // func NewTensorImpl(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
 func NewTensor(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
 
-	if dt != TYPE_F32 {
-		fmt.Printf("\n[ERROR] NewTensorImpl got not TYPE_F32!")
+	if dt != TYPE_F32 && dt != TYPE_I32 {
+		fmt.Printf("\n[ERROR] NewTensorImpl got not supported type : %d", dt)
 		os.Exit(1)
 	}
 
@@ -522,7 +521,7 @@ func NewTensor(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 		Type: dt,
 		Dims: dims,
 		NE:   [4]uint32{ne0, ne1, ne2, ne3},
-		NB:   [4]uint32{0, 0, 0, 0},
+		//NB:   [4]uint32{0, 0, 0, 0},
 		op:   OP_NONE,
 		opt:  [4]*Tensor{nil, nil, nil, nil},
 		Data: retData,
@@ -696,24 +695,23 @@ func Init(params InitParams) *Context {
 		return nil
 	}
 
-	var buf []byte
-	if params.MemBuffer == nil {
-		buf = make([]byte, params.MemSize)
-
-	} else {
-		buf = params.MemBuffer
-	}
+	//var buf []byte
+	//if params.MemBuffer == nil {
+	//	buf = make([]byte, params.MemSize)
+	//} else {
+	//	buf = params.MemBuffer
+	//}
 
 	ctx = &Context{
-		MemSize:        params.MemSize,
-		MemBuffer:      buf,
-		MemBufferOwned: params.MemBuffer != nil,
+		//MemSize:        params.MemSize,
+		//MemBuffer:      buf,
+		//MemBufferOwned: params.MemBuffer != nil,
 		//Objects:        0,
-		Objects:      make([]Object, 0),
-		ObjectsBegin: nil,
-		ObjectsEnd:   nil,
-		Scratch:      Scratch{0, 0, nil},
-		ScratchSave:  Scratch{0, 0, nil},
+		//Objects:      make([]Object, 0),
+		//ObjectsBegin: nil,
+		//ObjectsEnd:   nil,
+		//Scratch:      Scratch{0, 0, nil},
+		//ScratchSave:  Scratch{0, 0, nil},
 	}
 
 	////ggml_assert_aligned(ctx->mem_buffer);
