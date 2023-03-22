@@ -392,8 +392,8 @@ func Tokenize(vocab *GPTVocab, text string, bos bool) []uint32 {
 	////std::reverse(res.begin(), res.end());
 	//sort.Reverse(sort.IntSlice(res))
 
-	fmt.Printf("\n\n=== PREV ===\n\n%+v", prev)
-	fmt.Printf("\n\n=== RES ===\n\n%+v", res)
+	//fmt.Printf("\n\n=== PREV ===\n\n%+v", prev)
+	//fmt.Printf("\n\n=== RES ===\n\n%+v", res)
 
 	reversed := make([]uint32, 0, len(res))
 	for n := len(res); n > 0; n-- {

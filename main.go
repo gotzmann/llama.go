@@ -1114,19 +1114,19 @@ func main() {
 	////std::vector<gpt_vocab::id> embd_inp = ::llama_tokenize(vocab, params.prompt, true);
 	embdInp := ml.Tokenize(vocab, prompt, true)
 	fmt.Printf("\n\n=== TOKENIZER ===\n\n%+v", embdInp)
+
+	////params.n_predict = std::min(params.n_predict, model.hparams.n_ctx - (int) embd_inp.size());
+
+	// tokenize the reverse prompt
+	////std::vector<gpt_vocab::id> antiprompt_inp = ::llama_tokenize(vocab, params.antiprompt, false);
+
+	fmt.Printf("\nprompt: '%s'\n", prompt)
+	fmt.Printf("\nnumber of tokens in prompt = %d\n", len(embdInp))
+	for i := 0; i < len(embdInp); i++ {
+		fmt.Printf("\n%d => '%s'", embdInp[i], vocab.ID2Token[embdInp[i]])
+	}
+
 	/*
-	       params.n_predict = std::min(params.n_predict, model.hparams.n_ctx - (int) embd_inp.size());
-
-	       // tokenize the reverse prompt
-	       std::vector<gpt_vocab::id> antiprompt_inp = ::llama_tokenize(vocab, params.antiprompt, false);
-
-	       fmt.Printf("\n");
-	       fmt.Printf("%s: prompt: '%s'\n", __func__, params.prompt.c_str());
-	       fmt.Printf("%s: number of tokens in prompt = %zu\n", __func__, embd_inp.size());
-	       for (int i = 0; i < (int) embd_inp.size(); i++) {
-	           fmt.Printf("%6d -> '%s'\n", embd_inp[i], vocab.id_to_token.at(embd_inp[i]).c_str());
-	       }
-	       fmt.Printf("\n");
 	       if (params.interactive) {
 
 	   	   #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
