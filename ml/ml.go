@@ -118,6 +118,12 @@ type Tensor struct {
 	padding [8]byte
 }
 
+func AreSameShape(t0, t1 *Tensor) bool {
+	////static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
+
+	return (t0.NE[0] == t1.NE[0]) && (t0.NE[1] == t1.NE[1]) && (t0.NE[2] == t1.NE[2]) && (t0.NE[3] == t1.NE[3])
+}
+
 func (t *Tensor) Nelements() uint32 {
 	////static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
 	return t.NE[0] * t.NE[1] * t.NE[2] * t.NE[3]
@@ -173,6 +179,74 @@ func MulImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 		result.grad = DupTensor(ctx, result)
 	} else {
 		result = nil
+	}
+
+	return result
+}
+
+// static inline bool ggml_can_mul_mat(const struct ggml_tensor * t0, const struct ggml_tensor * t1) {
+func CanMulMat(t0, t1 *Tensor) bool {
+
+	////static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
+
+	return (t0.NE[0] == t1.NE[0]) && (t0.NE[2] == t1.NE[2]) && (t0.NE[3] == t1.NE[3]) // FIXME Where NE[1] ??
+}
+
+// ggml_mul_mat
+
+// struct ggml_tensor * ggml_mul_mat(
+func MulMat(ctx *Context, a, b *Tensor) *Tensor {
+	////GGML_ASSERT(ggml_can_mul_mat(a, b));
+
+	isNode := false
+
+	if a.grad != nil || b.grad != nil {
+		isNode = true
+	}
+
+	////const int ne[4] = { a->ne[1], b->ne[1], a->ne[2], b->ne[3] };
+	result := NewTensor(ctx, TYPE_F32, min(a.Dims, b.Dims), a.NE[1], b.NE[1], a.NE[2], b.NE[3], nil) // Check for indexes
+
+	result.op = OP_MUL_MAT
+	result.src0 = a
+	result.src1 = b
+
+	if isNode {
+		result.grad = DupTensor(ctx, result)
+	} else {
+		result.grad = nil
+	}
+
+	return result
+}
+
+// ggml_repeat
+
+// struct ggml_tensor * ggml_repeat(
+func Repeat(ctx *Context, a, b *Tensor) *Tensor {
+	////GGML_ASSERT(ggml_can_repeat(a, b));
+
+	isNode := false
+
+	if a.grad != nil {
+		isNode = true
+	}
+
+	if AreSameShape(a, b) && !isNode {
+		return a
+	}
+
+	//struct ggml_tensor * result = ggml_new_tensor(ctx, a->type, b->n_dims, b->ne);
+	result := NewTensor(ctx, a.Type, b.Dims, b.NE[0], 1, 1, 1, nil)
+
+	result.op = OP_REPEAT
+	result.src0 = a
+	result.src1 = b
+
+	if isNode {
+		result.grad = DupTensor(ctx, result)
+	} else {
+		result.grad = nil
 	}
 
 	return result
@@ -437,16 +511,21 @@ func NewTensor(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 
 	////ggml_assert_aligned(result);
 
+	var retData []float32
 	if data == nil {
-		return &Tensor{
-			Type: dt,
-			Dims: dims,
-			NE:   [4]uint32{ne0, ne1, ne2, ne3},
-			NB:   [4]uint32{0, 0, 0, 0},
-			op:   OP_NONE,
-			opt:  [4]*Tensor{nil, nil, nil, nil},
-			Data: make([]float32, ne0*ne1*ne2*ne3),
-		}
+		retData = make([]float32, ne0*ne1*ne2*ne3)
+	} else {
+		retData = data
+	}
+
+	return &Tensor{
+		Type: dt,
+		Dims: dims,
+		NE:   [4]uint32{ne0, ne1, ne2, ne3},
+		NB:   [4]uint32{0, 0, 0, 0},
+		op:   OP_NONE,
+		opt:  [4]*Tensor{nil, nil, nil, nil},
+		Data: retData,
 	}
 }
 

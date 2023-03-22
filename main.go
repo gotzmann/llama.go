@@ -845,9 +845,9 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp *[]uint32, e
 
 		// self-attention
 		{
-			Qcur := ml.MulMat(ctx0, model.layers[il].wq, cur)
-			Kcur := ml.MulMat(ctx0, model.layers[il].wk, cur)
-			Vcur := ml.MulMat(ctx0, model.layers[il].wv, cur)
+			////Qcur := ml.MulMat(ctx0, model.layers[il].wq, cur)
+			////Kcur := ml.MulMat(ctx0, model.layers[il].wk, cur)
+			////Vcur := ml.MulMat(ctx0, model.layers[il].wv, cur)
 
 			// store key and value to memory
 			////if N >= 1 {
@@ -1094,12 +1094,12 @@ func main() {
 	//    params.n_threads, std::thread::hardware_concurrency(), llama_print_system_info());
 	////}
 
-	////n_past := 0
+	n_past := uint32(0)
 
 	////int64_t t_sample_us  = 0;
 	////int64_t t_predict_us = 0;
 
-	////std::vector<float> logits;
+	logits := make([]float32, 0)
 
 	// tokenize the prompt
 	prompt := "The best programming language to create general AI and profitable ML startup: "
@@ -1145,13 +1145,13 @@ func main() {
 
 	////}
 
-	fmt.Printf("\n\nsampling parameters: temp = %f, top_k = %d, top_p = %f, repeat_last_n = %i, repeat_penalty = %f", params.temp, params.top_k, params.top_p, params.repeat_last_n, params.repeat_penalty)
+	////fmt.Printf("\n\nsampling parameters: temp = %f, top_k = %d, top_p = %f, repeat_last_n = %i, repeat_penalty = %f", params.temp, params.top_k, params.top_p, params.repeat_last_n, params.repeat_penalty)
 
 	var embd []uint32
 
 	// determine the required inference memory per token:
-	memPerToken = uint64(0)
-	ml.llamaEval(model, params.n_threads, 0, []uint32{0, 1, 2, 3}, logits, &memPerToken)
+	memPerToken := uint32(0)
+	llamaEval(&model, 1 /* FIXME n_threads*/, 0, &[]uint32{0, 1, 2, 3}, &logits, &memPerToken)
 
 	////int last_n_size = params.repeat_last_n;
 	////std::vector<gpt_vocab::id> last_n_tokens(last_n_size);
@@ -1181,13 +1181,13 @@ func main() {
 	////    printf(ANSI_COLOR_YELLOW);
 	////}
 
-	for remaining_tokens > 0 {
+	for remainingTokens > 0 {
 
 		// predict
 		if len(embd) > 0 {
 			////const int64_t t_start_us = ggml_time_us();
 
-			if !llamaEval(model, params.n_threads, n_past, embd, logits, mem_per_token) {
+			if err := llamaEval(&model, 1 /* FIXME params.n_threads*/, n_past, &embd, &logits, &memPerToken); err != nil {
 				fmt.Printf("\n[ERRRO] Failed to predict")
 				os.Exit(1)
 			}
@@ -1195,20 +1195,20 @@ func main() {
 			////t_predict_us += ggml_time_us() - t_start_us;
 		}
 
-		n_past += len(embd)
+		n_past += uint32(len(embd))
 		embd = []uint32{} ////embd.clear();
 
-		if len(embdInp) <= inputConsumed {
+		if len(embdInp) <= int(inputConsumed) {
 
 			// out of user input, sample next token
-			var top_k float32 = params.top_k
-			var top_p float32 = params.top_p
-			var temp float32 = params.temp
-			var repeat_penalty float32 = params.repeat_penalty
+			////var top_k float32 = params.top_k
+			////var top_p float32 = params.top_p
+			////var temp float32 = params.temp
+			////var repeat_penalty float32 = params.repeat_penalty
 
-			vocabSize = model.hparams.n_vocab
+			////vocabSize := hparamsVocabSize
 
-			id := 0
+			////id := 0
 
 			{
 				////const int64_t t_start_sample_us = ggml_time_us();
