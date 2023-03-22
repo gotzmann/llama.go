@@ -781,7 +781,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *ml.GPTVocab, n_ct
 
 func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp *[]uint32, embdW *[]float32, memPerToken *uint32) error {
 
-	N := len(*embdInp)
+	N := uint32(len(*embdInp))
 
 	// FIXME Load hyper parameters into model itself
 	//const auto & hparams = model.hparams;

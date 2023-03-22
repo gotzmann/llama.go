@@ -123,6 +123,61 @@ func (t *Tensor) Nelements() uint32 {
 	return t.NE[0] * t.NE[1] * t.NE[2] * t.NE[3]
 }
 
+// struct ggml_tensor * ggml_view_tensor(
+func ViewTensor(ctx *Context, src *Tensor) *Tensor {
+	return NewTensor(ctx, src.Type, src.Dims, src.NE[0], src.NE[1], src.NE[2], src.NE[3], src.Data)
+}
+
+// ggml.c : ggml_dup_tensor
+func DupTensor(ctx *Context, src *Tensor) *Tensor {
+	return NewTensor(ctx, src.Type, src.Dims, src.NE[0], src.NE[1], src.NE[2], src.NE[3], nil)
+}
+
+// struct ggml_tensor * ggml_mul(
+func Mul(ctx *Context, a, b *Tensor) *Tensor {
+	return MulImpl(ctx, a, b, false)
+}
+
+// struct ggml_tensor * ggml_mul_inplace(
+func MulInplace(ctx *Context, a, b *Tensor) *Tensor {
+	return MulImpl(ctx, a, b, true)
+}
+
+// struct ggml_tensor * ggml_mul_impl(
+func MulImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
+	////GGML_ASSERT(ggml_are_same_shape(a, b));
+
+	isNode := false
+
+	if inplace && (a.grad != nil || b.grad != nil) {
+		isNode = true
+	}
+
+	if inplace {
+		////GGML_ASSERT(is_node == false);
+	}
+
+	var result *Tensor
+	if inplace {
+		result = ViewTensor(ctx, a)
+	} else {
+		result = DupTensor(ctx, a)
+	}
+
+	result.op = OP_MUL
+
+	result.src0 = a
+	result.src1 = b
+
+	if isNode {
+		result.grad = DupTensor(ctx, result)
+	} else {
+		result = nil
+	}
+
+	return result
+}
+
 // ggml_get_rows
 
 func GetRows(ctx *Context, a, b *Tensor) *Tensor {
@@ -273,28 +328,28 @@ func NewTensor(ctx *Context, dt dtype, dims, ne0, ne1, ne2, ne3 uint32) *Tensor 
 */
 // ggml_new_tensor_1d
 func NewTensor1D(ctx *Context, dt dtype, ne uint32) *Tensor {
-	return NewTensor(ctx, dt, 1, ne, 1, 1, 1)
+	return NewTensor(ctx, dt, 1, ne, 1, 1, 1, nil)
 }
 
 // ggml_new_tensor_2d
 func NewTensor2D(ctx *Context, dt dtype, ne0, ne1 uint32) *Tensor {
 	//ne := []uint32{ne0, ne1}
 	//return NewTensor(ctx, typ, 2, ne)
-	return NewTensor(ctx, dt, 2, ne0, ne1, 1, 1) // FIXME
+	return NewTensor(ctx, dt, 2, ne0, ne1, 1, 1, nil) // FIXME
 }
 
 func NewTensor3D(ctx *Context, dt dtype, ne0, ne1, ne2 uint32) *Tensor {
-	return NewTensor(ctx, dt, 3, ne0, ne1, ne2, 1) // FIXME
+	return NewTensor(ctx, dt, 3, ne0, ne1, ne2, 1, nil) // FIXME
 }
 
 func NewTensor4D(ctx *Context, dt dtype, ne0, ne1, ne2, ne3 uint32) *Tensor {
-	return NewTensor(ctx, dt, 4, ne0, ne1, ne2, ne3) // FIXME
+	return NewTensor(ctx, dt, 4, ne0, ne1, ne2, ne3, nil) // FIXME
 }
 
 // TODO ne2 for 3D tensors?
 // ggml_new_tensor_impl
 // func NewTensorImpl(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
-func NewTensor(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32) *Tensor {
+func NewTensor(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
 
 	if dt != TYPE_F32 {
 		fmt.Printf("\n[ERROR] NewTensorImpl got not TYPE_F32!")
@@ -382,14 +437,16 @@ func NewTensor(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32) *
 
 	////ggml_assert_aligned(result);
 
-	return &Tensor{
-		Type: dt,
-		Dims: dims,
-		NE:   [4]uint32{ne0, ne1, ne2, ne3},
-		NB:   [4]uint32{0, 0, 0, 0},
-		op:   OP_NONE,
-		opt:  [4]*Tensor{nil, nil, nil, nil},
-		Data: make([]float32, ne0*ne1*ne2*ne3),
+	if data == nil {
+		return &Tensor{
+			Type: dt,
+			Dims: dims,
+			NE:   [4]uint32{ne0, ne1, ne2, ne3},
+			NB:   [4]uint32{0, 0, 0, 0},
+			op:   OP_NONE,
+			opt:  [4]*Tensor{nil, nil, nil, nil},
+			Data: make([]float32, ne0*ne1*ne2*ne3),
+		}
 	}
 }
 
