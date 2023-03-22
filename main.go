@@ -779,9 +779,17 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *ml.GPTVocab, n_ct
 // The GPT-J model requires about 16MB of memory per input token.
 //
 
-func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp *[]uint32, embdW *[]float32, memPerToken *uint32) error {
+//bool llama_eval(
+//    const llama_model & model,
+//    const int n_threads,
+//    const int n_past,
+//    const std::vector<gpt_vocab::id> & embd_inp,
+//          std::vector<float>         & embd_w,
+//          size_t                     & mem_per_token) {
 
-	N := uint32(len(*embdInp))
+func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, embdW []float32, memPerToken *uint32) error {
+
+	N := uint32(len(embdInp))
 
 	// FIXME Load hyper parameters into model itself
 	//const auto & hparams = model.hparams;
@@ -829,7 +837,7 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp *[]uint32, e
 	// FIXME Refactore inline initialization
 	embd.Type = ml.TYPE_F32
 	for em := uint32(0); em < N; em++ {
-		embd.Data[em] = float32((*embdInp)[em])
+		embd.Data[em] = float32(embdInp[em])
 	}
 
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
@@ -1157,7 +1165,7 @@ func main() {
 
 	// determine the required inference memory per token:
 	memPerToken := uint32(0)
-	llamaEval(&model, 1 /* FIXME n_threads*/, 0, &[]uint32{0, 1, 2, 3}, &logits, &memPerToken)
+	llamaEval(&model, 1 /* FIXME n_threads*/, 0 /*&[]uint32{0, 1, 2, 3}*/, embdInp, logits, &memPerToken)
 
 	////int last_n_size = params.repeat_last_n;
 	////std::vector<gpt_vocab::id> last_n_tokens(last_n_size);
@@ -1193,7 +1201,7 @@ func main() {
 		if len(embd) > 0 {
 			////const int64_t t_start_us = ggml_time_us();
 
-			if err := llamaEval(&model, 1 /* FIXME params.n_threads*/, n_past, &embd, &logits, &memPerToken); err != nil {
+			if err := llamaEval(&model, 1 /* FIXME params.n_threads*/, n_past, embd, logits, &memPerToken); err != nil {
 				fmt.Printf("\n[ERRRO] Failed to predict")
 				os.Exit(1)
 			}

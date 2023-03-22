@@ -107,7 +107,7 @@ type Tensor struct {
 	opt  [MAX_OPT]*Tensor
 
 	// thread scheduling
-	n_tasks uint32
+	//n_tasks uint32
 
 	// performance
 	//perfRuns   uint32
@@ -171,14 +171,13 @@ func MulImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	}
 
 	result.op = OP_MUL
-
 	result.src0 = a
 	result.src1 = b
 
 	if isNode {
 		result.grad = DupTensor(ctx, result)
 	} else {
-		result = nil
+		result.grad = nil
 	}
 
 	return result
@@ -252,10 +251,29 @@ func Repeat(ctx *Context, a, b *Tensor) *Tensor {
 	return result
 }
 
+func IsScalar(tensor *Tensor) bool {
+	////static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
+	return tensor.NE[0] == 1 && tensor.NE[1] == 1 && tensor.NE[2] == 1 && tensor.NE[3] == 1
+}
+
+func IsVector(tensor *Tensor) bool {
+	////static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
+	return tensor.NE[1] == 1 && tensor.NE[2] == 1 && tensor.NE[3] == 1
+}
+
+func IsMatrix(tensor *Tensor) bool {
+	////static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
+	return tensor.NE[2] == 1 && tensor.NE[3] == 1
+}
+
 // ggml_get_rows
 
 func GetRows(ctx *Context, a, b *Tensor) *Tensor {
 	////GGML_ASSERT(ggml_is_matrix(a) && ggml_is_vector(b) && b->type == GGML_TYPE_I32);
+	if !IsMatrix(a) || !IsVector(b) || b.Type != TYPE_I32 {
+		fmt.Printf("\n[ERROR] GetRows fail basic assertions")
+		os.Exit(1)
+	}
 
 	isNode := false
 
@@ -374,7 +392,7 @@ type Object struct {
 
 	Next *Object
 
-	Padding [8]byte
+	//Padding [8]byte
 }
 
 // ml/ggml.c:2248
