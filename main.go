@@ -779,90 +779,85 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *ml.GPTVocab, n_ct
 // The GPT-J model requires about 16MB of memory per input token.
 //
 
-/*
+func llamaEval(model *llallamaModel, n_threads, n_past uint32, embdInp *[]uint32, embdW *[]float32, memPerToken *uint32) error {
 
-bool llama_eval(
-        const llama_model & model,
-        const int n_threads,
-        const int n_past,
-        const std::vector<gpt_vocab::id> & embd_inp,
-              std::vector<float>         & embd_w,
-              size_t                     & mem_per_token) {
-    const int N = embd_inp.size();
+    N := len(embdInp)
 
-    const auto & hparams = model.hparams;
+    // FIXME Load hyper parameters into model itself
+    //const auto & hparams = model.hparams;
 
-    const int n_embd  = hparams.n_embd;
-    const int n_layer = hparams.n_layer;
-    const int n_ctx   = hparams.n_ctx;
-    const int n_head  = hparams.n_head;
-    const int n_vocab = hparams.n_vocab;
-    const int n_rot   = hparams.n_embd/hparams.n_head;
+    embd  := hparamsEmbd
+    layers := hparamsLayers
+    ctx   := hparamsCtx
+    heads  := hparamsHeads
+    vocab := hparamsVocab
+    rot   := hparamsEmbd/hparamsHeads
 
-    const int d_key = n_embd/n_head;
+    dKey := embd/heads
 
-     // TODO: check if this size scales with n_ctx linearly and remove constant. somehow I feel it wasn't the case
+    // TODO: check if this size scales with n_ctx linearly and remove constant. somehow I feel it wasn't the case
     // static size_t buf_size = hparams.n_ctx*1024*1024;
-    static size_t buf_size = 512u*1024*1024;
-    static void * buf = malloc(buf_size);
+    ////static size_t buf_size = 512u*1024*1024;
+    ////static void * buf = malloc(buf_size);
 
-    if (mem_per_token > 0 && mem_per_token*N > buf_size) {
-        const size_t buf_size_new = 1.1*(mem_per_token*N); // add 10% to account for ggml object overhead
+    ////if (mem_per_token > 0 && mem_per_token*N > buf_size) {
+    ////    const size_t buf_size_new = 1.1*(mem_per_token*N); // add 10% to account for ggml object overhead
         //fmt.Printf("\n%s: reallocating buffer from %zu to %zu bytes\n", __func__, buf_size, buf_size_new);
 
         // reallocate
-        buf_size = buf_size_new;
-        buf = realloc(buf, buf_size);
-        if (buf == nullptr) {
-            fmt.Printf("%s: failed to allocate %zu bytes\n", __func__, buf_size);
-            return false;
-        }
-    }
+    ////    buf_size = buf_size_new;
+    ////    buf = realloc(buf, buf_size);
+    ////    if (buf == nullptr) {
+    ////        fmt.Printf("%s: failed to allocate %zu bytes\n", __func__, buf_size);
+    ////        return false;
+    ////    }
+    ////}
 
-    struct ggml_init_params params = {
-        / *.mem_size   =* / buf_size,
-        / *.mem_buffer =* / buf,
-    };
+    ////struct ggml_init_params params = {
+    ////    / *.mem_size   =* / buf_size,
+    ////    / *.mem_buffer =* / buf,
+    ////};
 
-    struct ggml_context * ctx0 = ggml_init(params);
-    ggml_cgraph gf = {};
-    gf.n_threads = n_threads;
+    ////struct ggml_context * ctx0 = ggml_init(params);
+    ctx0 := ml.Init(ml.InitParams{})
+    ////ggml_cgraph gf = {};
+    gf := ml.Graph{}
+    gf.threads = n_threads
 
-    struct ggml_tensor * embd = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, N);
-    memcpy(embd->data, embd_inp.data(), N*ggml_element_size(embd));
+    embd := ml.NewTensor1D(ctx0, ml.TYPE_I32, N)
+    ////memcpy(embd->data, embd_inp.data(), N*ggml_element_size(embd));
+    // ^^ memcpy(embd->data, embd_inp.data(), N*ggml_element_size(embd)) // FIXME
 
-    struct ggml_tensor * inpL = ggml_get_rows(ctx0, model.tok_embeddings, embd);
+    inpL := ml.GetRows(ctx0, model.tok_embeddings, embd)
 
-    for (int il = 0; il < n_layer; ++il) {
-        struct ggml_tensor * inpSA = inpL;
+    for il = 0; il < n_layer; il++ {
+        inpSA := inpL
 
-        struct ggml_tensor * cur;
+        var cur *ml.Tensor
 
         // norm
         {
-            cur = ggml_rms_norm(ctx0, inpL);
+            cur = ml.RmsNorm(ctx0, inpL)
 
             // cur = attention_norm*cur
-            cur = ggml_mul(ctx0,
-                        ggml_repeat(ctx0, model.layers[il].attention_norm, cur),
-                        cur);
+            cur = ml.Mul(ctx0, ml.Repeat(ctx0, model.layers[il].attention_norm, cur), cur)
         }
 
         // self-attention
         {
-            struct ggml_tensor * Qcur = ggml_mul_mat(ctx0, model.layers[il].wq, cur);
-            struct ggml_tensor * Kcur = ggml_mul_mat(ctx0, model.layers[il].wk, cur);
-            struct ggml_tensor * Vcur = ggml_mul_mat(ctx0, model.layers[il].wv, cur);
+            Qcur := ml.MulMat(ctx0, model.layers[il].wq, cur)
+            Kcur := ml.MulMat(ctx0, model.layers[il].wk, cur)
+            Vcur := ml.MulMat(ctx0, model.layers[il].wv, cur)
 
             // store key and value to memory
-            if (N >= 1) {
-                struct ggml_tensor * k = ggml_view_1d(ctx0, model.memory_k, N*n_embd, (ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past));
-                struct ggml_tensor * v = ggml_view_1d(ctx0, model.memory_v, N*n_embd, (ggml_element_size(model.memory_v)*n_embd)*(il*n_ctx + n_past));
+            ////if N >= 1 {
+                ////struct ggml_tensor * k = ggml_view_1d(ctx0, model.memory_k, N*n_embd, (ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past));
+                ////struct ggml_tensor * v = ggml_view_1d(ctx0, model.memory_v, N*n_embd, (ggml_element_size(model.memory_v)*n_embd)*(il*n_ctx + n_past));
 
-                ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
-                ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Vcur, v));
-            }
-
+                ////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
+                ////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Vcur, v));
+            ////}
+/*
             // Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)
             struct ggml_tensor * Q =
                 ggml_permute(ctx0,
@@ -872,7 +867,8 @@ bool llama_eval(
                                 ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, n_embd/n_head, n_head, N)),
                             n_past, n_rot, 0),
                         0, 2, 1, 3);
-
+*/
+/*
             // K = Kmem.view(n_embd/n_head, n_head, n_past + N).permute(0, 2, 1, 3)
             struct ggml_tensor * K =
                 ggml_permute(ctx0,
@@ -882,23 +878,23 @@ bool llama_eval(
                                 n_embd/n_head, n_head, n_past + N),
                             n_past, n_rot, 1),
                         0, 2, 1, 3);
-
+*/
             // K * Q
-            struct ggml_tensor * KQ = ggml_mul_mat(ctx0, K, Q);
-
+            ////struct ggml_tensor * KQ = ggml_mul_mat(ctx0, K, Q);
+/*
             // KQ_scaled = KQ / sqrt(n_embd/n_head)
             struct ggml_tensor * KQ_scaled =
                 ggml_scale(ctx0,
                         KQ,
                         ggml_new_f32(ctx0, 1.0f/sqrt(float(n_embd)/n_head))
                         );
-
+*/
             // KQ_masked = mask_past(KQ_scaled)
-            struct ggml_tensor * KQ_masked = ggml_diag_mask_inf(ctx0, KQ_scaled, n_past);
+            ////struct ggml_tensor * KQ_masked = ggml_diag_mask_inf(ctx0, KQ_scaled, n_past);
 
             // KQ = soft_max(KQ_masked)
-            struct ggml_tensor * KQ_soft_max = ggml_soft_max(ctx0, KQ_masked);
-
+            ////struct ggml_tensor * KQ_soft_max = ggml_soft_max(ctx0, KQ_masked);
+/*
             // V_trans = Vmem.view(n_embd/n_head, n_head, n_past + N).permute(1, 2, 0, 3).contiguous()
             struct ggml_tensor * V_trans =
                 ggml_permute(ctx0,
@@ -906,84 +902,84 @@ bool llama_eval(
                             ggml_view_1d(ctx0, model.memory_v, (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_v)*n_embd),
                             n_embd/n_head, n_head, n_past + N),
                         1, 2, 0, 3);
-
+*/
             // KQV = transpose(V) * KQ_soft_max
-            struct ggml_tensor * KQV = ggml_mul_mat(ctx0, V_trans, KQ_soft_max);
+            ////struct ggml_tensor * KQV = ggml_mul_mat(ctx0, V_trans, KQ_soft_max);
 
             // KQV_merged = KQV.permute(0, 2, 1, 3)
-            struct ggml_tensor * KQV_merged = ggml_permute(ctx0, KQV, 0, 2, 1, 3);
+            ////struct ggml_tensor * KQV_merged = ggml_permute(ctx0, KQV, 0, 2, 1, 3);
 
             // cur = KQV_merged.contiguous().view(n_embd, N)
-            cur = ggml_cpy(ctx0,
-                    KQV_merged,
-                    ml.NewTensor2D(ctx0, GGML_TYPE_F32, n_embd, N));
+            ////cur = ggml_cpy(ctx0,
+            ////        KQV_merged,
+            ////        ml.NewTensor2D(ctx0, GGML_TYPE_F32, n_embd, N));
 
             // projection (no bias)
-            cur = ggml_mul_mat(ctx0,
-                    model.layers[il].wo,
-                    cur);
+            ////cur = ggml_mul_mat(ctx0,
+            ////        model.layers[il].wo,
+            ////        cur);
         }
 
-        struct ggml_tensor * inpFF = ggml_add(ctx0, cur, inpSA);
+        ////struct ggml_tensor * inpFF = ggml_add(ctx0, cur, inpSA);
 
         // feed-forward network
         {
             // norm
             {
-                cur = ggml_rms_norm(ctx0, inpFF);
+                ////cur = ggml_rms_norm(ctx0, inpFF);
 
                 // cur = ffn_norm*cur
-                cur = ggml_mul(ctx0,
-                        ggml_repeat(ctx0, model.layers[il].ffn_norm, cur),
-                        cur);
+                ////cur = ggml_mul(ctx0,
+                ////        ggml_repeat(ctx0, model.layers[il].ffn_norm, cur),
+                ////        cur);
             }
 
-            struct ggml_tensor * tmp = ggml_mul_mat(ctx0,
-                    model.layers[il].w3,
-                    cur);
+            ////struct ggml_tensor * tmp = ggml_mul_mat(ctx0,
+            ////        model.layers[il].w3,
+            ////        cur);
 
 
-            cur = ggml_mul_mat(ctx0,
-                    model.layers[il].w1,
-                    cur);
+            ////cur = ggml_mul_mat(ctx0,
+            ////        model.layers[il].w1,
+            ////        cur);
 
             // SILU activation
-            cur = ggml_silu(ctx0, cur);
+            ////cur = ggml_silu(ctx0, cur);
 
-            cur = ggml_mul(ctx0, cur, tmp);
+            ////cur = ggml_mul(ctx0, cur, tmp);
 
-            cur = ggml_mul_mat(ctx0,
-                    model.layers[il].w2,
-                    cur);
+            ////cur = ggml_mul_mat(ctx0,
+            ////        model.layers[il].w2,
+            ////        cur);
         }
 
-        cur  = ggml_add(ctx0, cur, inpFF);
+        ////cur  = ggml_add(ctx0, cur, inpFF);
 
         // input for next layer
-        inpL = cur;
+        inpL = cur
     }
 
     // norm
     {
-        inpL = ggml_rms_norm(ctx0, inpL);
+        ////inpL = ggml_rms_norm(ctx0, inpL);
 
         // inpL = norm*inpL
-        inpL = ggml_mul(ctx0,
-                    ggml_repeat(ctx0, model.norm, inpL),
-                    inpL);
+        ////inpL = ggml_mul(ctx0,
+        ////            ggml_repeat(ctx0, model.norm, inpL),
+        ////            inpL);
     }
 
     // lm_head
     {
-        inpL = ggml_mul_mat(ctx0, model.output, inpL);
+        ////inpL = ggml_mul_mat(ctx0, model.output, inpL);
     }
 
     // logits -> probs
     //inpL = ggml_soft_max(ctx0, inpL);
 
     // run the computation
-    ggml_build_forward_expand(&gf, inpL);
-    ggml_graph_compute       (ctx0, &gf);
+    ////ggml_build_forward_expand(&gf, inpL);
+    ////ggml_graph_compute       (ctx0, &gf);
 
     //if (n_past%100 == 0) {
     //    ggml_graph_print   (&gf);
@@ -994,19 +990,19 @@ bool llama_eval(
     //memcpy(embd_w.data(), ggml_get_data(inpL), sizeof(float)*n_vocab*N);
 
     // return result for just the last token
-    embd_w.resize(n_vocab);
-    memcpy(embd_w.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
+    ////embd_w.resize(n_vocab);
+    ////memcpy(embd_w.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
 
-    if (mem_per_token == 0) {
-        mem_per_token = ggml_used_mem(ctx0)/N;
-    }
+    ////if (mem_per_token == 0) {
+    ////    mem_per_token = ggml_used_mem(ctx0)/N;
+    ////}
     //fmt.Printf("used_mem = %zu\n", ggml_used_mem(ctx0));
 
-    ggml_free(ctx0);
+    ////ggml_free(ctx0);
 
-    return true;
+    return nil
 }
-*/
+
 
 /*
 
@@ -1126,214 +1122,219 @@ func main() {
 		fmt.Printf("\n%d => '%s'", embdInp[i], vocab.ID2Token[embdInp[i]])
 	}
 
-	/*
-	       if (params.interactive) {
+	
+    if (params.interactive) {
 
-	   	   #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
-	   	           struct sigaction sigint_action;
-	   	           sigint_action.sa_handler = sigint_handler;
-	   	           sigemptyset (&sigint_action.sa_mask);
-	   	           sigint_action.sa_flags = 0;
-	   	           sigaction(SIGINT, &sigint_action, NULL);
-	   	   #elif defined (_WIN32)
-	   	           signal(SIGINT, sigint_handler);
-	   	   #endif
+    ////#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
+    ////        struct sigaction sigint_action;
+    ////        sigint_action.sa_handler = sigint_handler;
+    ////        sigemptyset (&sigint_action.sa_mask);
+    ////        sigint_action.sa_flags = 0;
+    ////        sigaction(SIGINT, &sigint_action, NULL);
+    ////#elif defined (_WIN32)
+    ////       signal(SIGINT, sigint_handler);
+    ////#endif
 
-	   	           fmt.Printf("%s: interactive mode on.\n", __func__);
+    ////fmt.Printf("%s: interactive mode on.\n", __func__);
 
-	   	           if(antiprompt_inp.size()) {
-	   	               fmt.Printf("%s: reverse prompt: '%s'\n", __func__, params.antiprompt.c_str());
-	   	               fmt.Printf("%s: number of tokens in reverse prompt = %zu\n", __func__, antiprompt_inp.size());
-	   	               for (int i = 0; i < (int) antiprompt_inp.size(); i++) {
-	   	                   fmt.Printf("%6d -> '%s'\n", antiprompt_inp[i], vocab.id_to_token.at(antiprompt_inp[i]).c_str());
-	   	               }
-	   	               fmt.Printf("\n");
-	   	           }
-	   	       }
-	   	       fmt.Printf("sampling parameters: temp = %f, top_k = %d, top_p = %f, repeat_last_n = %i, repeat_penalty = %f\n", params.temp, params.top_k, params.top_p, params.repeat_last_n, params.repeat_penalty);
-	   	       fmt.Printf("\n\n");
+    ////if(antiprompt_inp.size()) {
+    ////    fmt.Printf("%s: reverse prompt: '%s'\n", __func__, params.antiprompt.c_str());
+    ////    fmt.Printf("%s: number of tokens in reverse prompt = %zu\n", __func__, antiprompt_inp.size());
+    ////    for (int i = 0; i < (int) antiprompt_inp.size(); i++) {
+    ////        fmt.Printf("%6d -> '%s'\n", antiprompt_inp[i], vocab.id_to_token.at(antiprompt_inp[i]).c_str());
+    ////    }
+    ////    fmt.Printf("\n");
+    ////}
 
-	   	       std::vector<gpt_vocab::id> embd;
+	}
+	   	    
+    fmt.P/rintf("\n\nsampling parameters: temp = %f, top_k = %d, top_p = %f, repeat_last_n = %i, repeat_penalty = %f", params.temp, params.top_k, params.top_p, params.repeat_last_n, params.repeat_penalty)
 
-	   	       // determine the required inference memory per token:
-	   	       size_t mem_per_token = 0;
-	   	       llama_eval(model, params.n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token);
+    var embd []uint32
 
-	   	       int last_n_size = params.repeat_last_n;
-	   	       std::vector<gpt_vocab::id> last_n_tokens(last_n_size);
-	   	       std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
+    // determine the required inference memory per token:
+    mem_per_token = uint64(0)
+    llamaEval(model, params.n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token);
+
+    ////int last_n_size = params.repeat_last_n;
+    ////std::vector<gpt_vocab::id> last_n_tokens(last_n_size);
+    ///std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
 
 
-	   	       if (params.interactive) {
-	   	           fmt.Printf("== Running in interactive mode. ==\n"
-	   	   #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__)) || defined (_WIN32)
-	   	                  " - Press Ctrl+C to interject at any time.\n"
-	   	   #endif
-	   	                  " - Press Return to return control to LLaMa.\n"
-	   	                  " - If you want to submit another line, end your input in '\\'.\n");
-	   	       }
+    ////if (params.interactive) {
+    ////fmt.Printf("== Running in interactive mode. ==\n"
+    ////#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__)) || defined (_WIN32)
+    ////              " - Press Ctrl+C to interject at any time.\n"
+    ////#endif
+    ////              " - Press Return to return control to LLaMa.\n"
+    ////              " - If you want to submit another line, end your input in '\\'.\n");
+    ////   }
 
-	   	       int remaining_tokens = params.n_predict;
-	   	       int input_consumed = 0;
-	   	       bool input_noecho = false;
+    int remaining_tokens = params.n_predict;
+    int input_consumed = 0;
+    bool input_noecho = false;
 
-	   	       // prompt user immediately after the starting prompt has been loaded
-	   	       if (params.interactive_start) {
-	   	           is_interacting = true;
-	   	       }
+    // prompt user immediately after the starting prompt has been loaded
+    ////if (params.interactive_start) {
+    ////    is_interacting = true;
+    ////}
 
-	   	       // set the color for the prompt which will be output initially
-	   	       if (params.use_color) {
-	   	           printf(ANSI_COLOR_YELLOW);
-	   	       }
+    // set the color for the prompt which will be output initially
+    ////if (params.use_color) {
+    ////    printf(ANSI_COLOR_YELLOW);
+    ////}
 
-	   	       while (remaining_tokens > 0) {
-	   	           // predict
-	   	           if (embd.size() > 0) {
-	   	               const int64_t t_start_us = ggml_time_us();
+    for ;remaining_tokens > 0; {
 
-	   	               if (!llama_eval(model, params.n_threads, n_past, embd, logits, mem_per_token)) {
-	   	                   fmt.Printf("Failed to predict\n");
-	   	                   return 1;
-	   	               }
+        // predict
+        if len(embd) > 0 {
+            ////const int64_t t_start_us = ggml_time_us();
 
-	   	               t_predict_us += ggml_time_us() - t_start_us;
-	   	           }
+            if !llamaEval(model, params.n_threads, n_past, embd, logits, mem_per_token) {
+                fmt.Printf("\n[ERRRO] Failed to predict")
+                os.Exit(1)
+            }
 
-	   	           n_past += embd.size();
-	   	           embd.clear();
+            ////t_predict_us += ggml_time_us() - t_start_us;
+        }
 
-	   	           if (embd_inp.size() <= input_consumed) {
-	   	               // out of user input, sample next token
-	   	               const float top_k = params.top_k;
-	   	               const float top_p = params.top_p;
-	   	               const float temp  = params.temp;
-	   	               const float repeat_penalty = params.repeat_penalty;
+        n_past += len(embd)
+        embd = []uint32{} ////embd.clear();
 
-	   	               const int n_vocab = model.hparams.n_vocab;
+        if len(embdInp) <= inputConsumed {
 
-	   	               gpt_vocab::id id = 0;
+            // out of user input, sample next token
+            var top_k float32 = params.top_k;
+            var top_p float32 = params.top_p;
+            var temp float32 = params.temp;
+            var repeat_penalty float32 = params.repeat_penalty;
 
-	   	               {
-	   	                   const int64_t t_start_sample_us = ggml_time_us();
+            vocabSize = model.hparams.n_vocab;
 
-	   	                   id = llama_sample_top_p_top_k(vocab, logits.data() + (logits.size() - n_vocab), last_n_tokens, repeat_penalty, top_k, top_p, temp, rng);
+            id := 0
 
-	   	                   last_n_tokens.erase(last_n_tokens.begin());
-	   	                   last_n_tokens.push_back(id);
+            {
+                ////const int64_t t_start_sample_us = ggml_time_us();
 
-	   	                   t_sample_us += ggml_time_us() - t_start_sample_us;
-	   	               }
+                ////id = llama_sample_top_p_top_k(vocab, logits.data() + (logits.size() - n_vocab), last_n_tokens, repeat_penalty, top_k, top_p, temp, rng);
 
-	   	               // add it to the context
-	   	               embd.push_back(id);
+                ////last_n_tokens.erase(last_n_tokens.begin());
+                ////last_n_tokens.push_back(id);
 
-	   	               // echo this to console
-	   	               input_noecho = false;
+                ////t_sample_us += ggml_time_us() - t_start_sample_us;
+            }
 
-	   	               // decrement remaining sampling budget
-	   	               --remaining_tokens;
-	   	           } else {
-	   	               // some user input remains from prompt or interaction, forward it to processing
-	   	               while (embd_inp.size() > input_consumed) {
-	   	                   embd.push_back(embd_inp[input_consumed]);
-	   	                   last_n_tokens.erase(last_n_tokens.begin());
-	   	                   last_n_tokens.push_back(embd_inp[input_consumed]);
-	   	                   ++input_consumed;
-	   	                   if (embd.size() > params.n_batch) {
-	   	                       break;
-	   	                   }
-	   	               }
+            // add it to the context
+            ////embd.push_back(id);
 
-	   	               // reset color to default if we there is no pending user input
-	   	               if (!input_noecho && params.use_color && embd_inp.size() == input_consumed) {
-	   	                   printf(ANSI_COLOR_RESET);
-	   	               }
-	   	           }
+            // echo this to console
+            inputNoEcho = false
 
-	   	           // display text
-	   	           if (!input_noecho) {
-	   	               for (auto id : embd) {
-	   	                   printf("%s", vocab.id_to_token[id].c_str());
-	   	               }
-	   	               fflush(stdout);
-	   	           }
+            // decrement remaining sampling budget
+            remainingTokens--
 
-	   	           // in interactive mode, and not currently processing queued inputs;
-	   	           // check if we should prompt the user for more
-	   	           if (params.interactive && embd_inp.size() <= input_consumed) {
-	   	               // check for reverse prompt
-	   	               if (antiprompt_inp.size() && std::equal(antiprompt_inp.rbegin(), antiprompt_inp.rend(), last_n_tokens.rbegin())) {
-	   	                   // reverse prompt found
-	   	                   is_interacting = true;
-	   	               }
-	   	               if (is_interacting) {
-	   	                   // currently being interactive
-	   	                   bool another_line=true;
-	   	                   while (another_line) {
-	   	                       fflush(stdout);
-	   	                       char buf[256] = {0};
-	   	                       int n_read;
-	   	                       if(params.use_color) printf(ANSI_BOLD ANSI_COLOR_GREEN);
-	   	                       if (scanf("%255[^\n]%n%*c", buf, &n_read) <= 0) {
-	   	                           // presumable empty line, consume the newline
-	   	                           std::ignore = scanf("%*c");
-	   	                           n_read=0;
-	   	                       }
-	   	                       if(params.use_color) printf(ANSI_COLOR_RESET);
+        } else {
 
-	   	                       if (n_read > 0 && buf[n_read-1]=='\\') {
-	   	                           another_line = true;
-	   	                           buf[n_read-1] = '\n';
-	   	                           buf[n_read] = 0;
-	   	                       } else {
-	   	                           another_line = false;
-	   	                           buf[n_read] = '\n';
-	   	                           buf[n_read+1] = 0;
-	   	                       }
+            // some user input remains from prompt or interaction, forward it to processing
+            ////while (embd_inp.size() > input_consumed) {
+                ////embd.push_back(embd_inp[input_consumed]);
+                ////last_n_tokens.erase(last_n_tokens.begin());
+                ////last_n_tokens.push_back(embd_inp[input_consumed]);
+                ////++input_consumed;
+                ////if (embd.size() > params.n_batch) {
+                    ////break;
+                ////}
+        }
 
-	   	                       std::vector<gpt_vocab::id> line_inp = ::llama_tokenize(vocab, buf, false);
-	   	                       embd_inp.insert(embd_inp.end(), line_inp.begin(), line_inp.end());
+        // reset color to default if we there is no pending user input
+        ////if (!input_noecho && params.use_color && embd_inp.size() == input_consumed) {
+            ////printf(ANSI_COLOR_RESET);
+        ////}
+    }
 
-	   	                       remaining_tokens -= line_inp.size();
+    // display text
+    if !inputNoEcho {
+        //for (auto id : embd) {
+        ////for (auto id : embd) {
+        for _, id := range embd { // FIXME Ordered / Unordered ??
+            fmt.Printf("%s", vocab.ID2Token[id])
+        }
+        ////fflush(stdout);
+    }
 
-	   	                       input_noecho = true; // do not echo this again
-	   	                   }
+    // in interactive mode, and not currently processing queued inputs;
+    // check if we should prompt the user for more
+    ////if (params.interactive && embd_inp.size() <= input_consumed) {
+        // check for reverse prompt
+    ////    if (antiprompt_inp.size() && std::equal(antiprompt_inp.rbegin(), antiprompt_inp.rend(), last_n_tokens.rbegin())) {
+            // reverse prompt found
+    ////        is_interacting = true;
+    ////    }
+    ////    if (is_interacting) {
+            // currently being interactive
+    ////        bool another_line=true;
+    ////        while (another_line) {
+    ////            fflush(stdout);
+    ////            char buf[256] = {0};
+    ////            int n_read;
+    ////            if(params.use_color) printf(ANSI_BOLD ANSI_COLOR_GREEN);
+    ////            if (scanf("%255[^\n]%n%*c", buf, &n_read) <= 0) {
+    ////                // presumable empty line, consume the newline
+    ////                std::ignore = scanf("%*c");
+    ////                n_read=0;
+    ////            }
+    ////            if(params.use_color) printf(ANSI_COLOR_RESET);
 
-	   	                   is_interacting = false;
-	   	               }
-	   	           }
+    ////            if (n_read > 0 && buf[n_read-1]=='\\') {
+    ////                another_line = true;
+    ////                buf[n_read-1] = '\n';
+    ////                buf[n_read] = 0;
+    ////            } else {
+    ////                another_line = false;
+    ////                buf[n_read] = '\n';
+    ////                buf[n_read+1] = 0;
+    ////            }
 
-	   	           // end of text token
-	   	           if (embd.back() == 2) {
-	   	               fmt.Printf(" [end of text]\n");
-	   	               break;
-	   	           }
-	   	       }
+    ////            std::vector<gpt_vocab::id> line_inp = ::llama_tokenize(vocab, buf, false);
+    ////            embd_inp.insert(embd_inp.end(), line_inp.begin(), line_inp.end());
 
-	   	   #if defined (_WIN32)
-	   	       signal(SIGINT, SIG_DFL);
-	   	   #endif
+    ////            remaining_tokens -= line_inp.size();
 
-	   	       // report timing
-	   	       {
-	   	           const int64_t t_main_end_us = ggml_time_us();
+    ////            input_noecho = true; // do not echo this again
+    ////        }
 
-	   	           fmt.Printf("\n\n");
-	   	           fmt.Printf("%s: mem per token = %8zu bytes\n", __func__, mem_per_token);
-	   	           fmt.Printf("%s:     load time = %8.2f ms\n", __func__, t_load_us/1000.0f);
-	   	           fmt.Printf("%s:   sample time = %8.2f ms\n", __func__, t_sample_us/1000.0f);
-	   	           fmt.Printf("%s:  predict time = %8.2f ms / %.2f ms per token\n", __func__, t_predict_us/1000.0f, t_predict_us/1000.0f/n_past);
-	   	           fmt.Printf("%s:    total time = %8.2f ms\n", __func__, (t_main_end_us - t_main_start_us)/1000.0f);
-	   	       }
+    ////        is_interacting = false;
+    ////    }
+    ////}
 
-	   	       ggml_free(model.ctx);
+        // end of text token
+        if (embd.back() == 2) {
+            fmt.Printf(" [ EOF ]\n");
+            break;
+        }
+    }
 
-	   	       if (params.use_color) {
-	   	           printf(ANSI_COLOR_RESET);
-	   	       }
+    ////#if defined (_WIN32)
+    ////    signal(SIGINT, SIG_DFL);
+    ////#endif
 
-	   	       return 0;
-	*/
+    // report timing
+    ////{
+    ////    const int64_t t_main_end_us = ggml_time_us();
+
+    ////    fmt.Printf("\n\n");
+    ////    fmt.Printf("%s: mem per token = %8zu bytes\n", __func__, mem_per_token);
+    ////    fmt.Printf("%s:     load time = %8.2f ms\n", __func__, t_load_us/1000.0f);
+    ////    fmt.Printf("%s:   sample time = %8.2f ms\n", __func__, t_sample_us/1000.0f);
+    ////    fmt.Printf("%s:  predict time = %8.2f ms / %.2f ms per token\n", __func__, t_predict_us/1000.0f, t_predict_us/1000.0f/n_past);
+    ////    fmt.Printf("%s:    total time = %8.2f ms\n", __func__, (t_main_end_us - t_main_start_us)/1000.0f);
+    ////}
+
+    ////ggml_free(model.ctx);
+
+    ////if (params.use_color) {
+    ////    printf(ANSI_COLOR_RESET);
+    ////}
+
 	return
 }

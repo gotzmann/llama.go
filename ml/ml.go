@@ -123,6 +123,25 @@ func (t *Tensor) Nelements() uint32 {
 	return t.NE[0] * t.NE[1] * t.NE[2] * t.NE[3]
 }
 
+// computation graph
+type Graph struct {
+	nodesCount uint32 // FIXME Do not need
+	leafCount  uint32 // FIXME Do not need
+	threads    uint32
+
+	workSize uint64
+	work     *Tensor
+
+	nodes [MAX_NODES]*Tensor
+	grads [MAX_NODES]*Tensor
+	leafs [MAX_NODES]*Tensor
+
+	// performance
+	perfRuns   uint64
+	perfCycles uint64
+	////int64_t perf_time_us;
+}
+
 type State struct {
 	Contexts [MAX_CONTEXTS]ContextContainer
 }
