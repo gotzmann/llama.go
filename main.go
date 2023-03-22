@@ -797,9 +797,9 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 	embdSize := hparamsEmbd
 	layers := hparamsLayers
 	////ctx := hparamsCtx
-	////heads := hparamsHeads
+	heads := hparamsHeads
 	////vocab := hparamsVocab
-	////rot := hparamsEmbd / hparamsHeads
+	rot := hparamsEmbd / hparamsHeads
 
 	////dKey := embd / heads
 
@@ -878,17 +878,16 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 
 				////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Vcur, v));
 			}
-			/*
-			   // Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)
-			   struct ggml_tensor * Q =
-			       ggml_permute(ctx0,
-			               ggml_rope(ctx0,
-			                   ggml_cpy(ctx0,
-			                       Qcur,
-			                       ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, n_embd/n_head, n_head, N)),
-			                   n_past, n_rot, 0),
-			               0, 2, 1, 3);
-			*/
+
+			// Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)
+			Q := ml.Permute(ctx0,
+				ml.Rope(ctx0,
+					ml.Copy(ctx0,
+						Qcur,
+						ml.NewTensor3D(ctx0, ml.TYPE_F32, embdSize/heads, heads, N)),
+					n_past, rot, 0),
+				0, 2, 1, 3)
+
 			/*
 			   // K = Kmem.view(n_embd/n_head, n_head, n_past + N).permute(0, 2, 1, 3)
 			   struct ggml_tensor * K =
