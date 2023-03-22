@@ -302,6 +302,99 @@ func NewTensor(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32) *
 	}
 }
 
+// uitils.h
+type GPTVocab struct {
+	Token2ID map[string]uint32
+	ID2Token map[uint32]string
+}
+
+func min(a, b uint32) uint32 {
+	if a <= b {
+		return a
+	}
+	return b
+}
+
+// FIXME Would it work with UTF-8? Rewrite for runes
+// SentencePiece implementation after https://guillaume-be.github.io/2020-05-30/sentence_piece
+// std::vector<gpt_vocab::id> llamaTokenize(const gpt_vocab & vocab, const std::string & text, bool bos) {
+func Tokenize(vocab *GPTVocab, text string, bos bool) []uint32 {
+
+	// TODO: Calculate this constant from the vocabulary
+	MAX_TOKEN_LEN := uint32(18)
+	length := uint32(len(text))
+
+	////std::vector<gpt_vocab::id> res;
+	res := make([]uint32, 0)
+	////std::vector<int> score;
+	//var score []uint32
+	////std::vector<gpt_vocab::id> prev;
+	//var prev []uint32
+	////int len = text.length();
+
+	////score.resize(len + 1);
+	score := make([]uint32, length+1)
+	////prev.resize(len + 1);
+	prev := make([]uint32, length+1)
+
+	// Forward pass
+	//var token uint32
+	//var ok bool
+	for i := uint32(0); i < length; i++ {
+		maxLen := min(length-i, MAX_TOKEN_LEN)
+		for subLen := uint32(1); subLen <= maxLen; subLen++ {
+			////auto sub = text.substr(i, sub_len);
+			sub := text[i : i+subLen]
+			////auto token = vocab.token_to_id.find(sub);
+			token, ok := vocab.Token2ID[sub] // FIXME if not found?
+			//if token != vocab.token2id.end() {
+			if ok {
+				tokenScore := uint32(len(sub) * len(sub))
+				localScore := score[i] + tokenScore
+				next := i + subLen
+				if score[next] < localScore {
+					score[next] = localScore
+					////prev[next] = (*token).second
+					prev[next] = token
+				}
+			}
+		}
+	}
+
+	// Backward pass
+	i := length
+	for i > 0 {
+		////gpt_vocab::id token_id = prev[i];
+		tokenID := prev[i]
+		if tokenID == 0 {
+			// TODO: Return error or something more meaningful
+			fmt.Printf("\n[ERROR] Failed to tokenize string!")
+			break
+		}
+		////res.push_back(token_id);
+		res = append(res, tokenID)
+		////auto token = (*vocab.id_to_token.find(token_id)).second;
+		token, _ := vocab.ID2Token[tokenID]
+		i -= uint32(len(token))
+	}
+
+	if bos {
+		////res.push_back(1); // TODO: replace with vocab.bos
+		res = append(res, 1) // TODO: replace with vocab.bos
+	}
+
+	// Pieces are in reverse order so correct that
+	////std::reverse(res.begin(), res.end());
+	//sort.Reverse(sort.IntSlice(res))
+
+	reversed := make([]uint32, length+1)
+	for n := uint32(length + 1); n >= 0; n-- {
+		reversed = append(reversed, res[n])
+	}
+
+	return reversed
+}
+
 func Init(params InitParams) *Context {
 	// make this function thread safe
 	////ggml_critical_section_start();
