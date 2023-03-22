@@ -118,10 +118,9 @@ type Tensor struct {
 	//padding [8]byte
 }
 
-func AreSameShape(t0, t1 *Tensor) bool {
+func AreSameShape(a, b *Tensor) bool {
 	////static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
-
-	return (t0.NE[0] == t1.NE[0]) && (t0.NE[1] == t1.NE[1]) && (t0.NE[2] == t1.NE[2]) && (t0.NE[3] == t1.NE[3])
+	return (a.NE[0] == b.NE[0]) && (a.NE[1] == b.NE[1]) && (a.NE[2] == b.NE[2]) && (a.NE[3] == b.NE[3])
 }
 
 func (t *Tensor) Nelements() uint32 {
@@ -152,6 +151,11 @@ func MulInplace(ctx *Context, a, b *Tensor) *Tensor {
 // struct ggml_tensor * ggml_mul_impl(
 func MulImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	////GGML_ASSERT(ggml_are_same_shape(a, b));
+
+	if !AreSameShape(a, b) {
+		fmt.Printf("\n[STOP] MulImpl - tensors of different shapes!")
+		os.Exit(1)
+	}
 
 	isNode := false
 
@@ -236,7 +240,7 @@ func Repeat(ctx *Context, a, b *Tensor) *Tensor {
 	}
 
 	//struct ggml_tensor * result = ggml_new_tensor(ctx, a->type, b->n_dims, b->ne);
-	result := NewTensor(ctx, a.Type, b.Dims, b.NE[0], 1, 1, 1, nil)
+	result := NewTensor(ctx, a.Type, b.Dims, b.NE[0], b.NE[1], b.NE[2], b.NE[3], nil)
 
 	result.op = OP_REPEAT
 	result.src0 = a
@@ -270,7 +274,7 @@ func IsMatrix(tensor *Tensor) bool {
 
 func GetRows(ctx *Context, a, b *Tensor) *Tensor {
 	////GGML_ASSERT(ggml_is_matrix(a) && ggml_is_vector(b) && b->type == GGML_TYPE_I32);
-	if !IsMatrix(a) || !IsVector(b) || b.Type != TYPE_I32 {
+	if !IsMatrix(a) || !IsVector(b) /* FIXME || b.Type != TYPE_I32 */ {
 		fmt.Printf("\n[ERROR] GetRows fail basic assertions")
 		os.Exit(1)
 	}
@@ -341,18 +345,159 @@ func RMSNormImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 	return result
 }
 
+// ggml_view_1d
+
+func View1D(ctx *Context, a *Tensor, ne0 uint32 /*, offset uint64*/) *Tensor {
+	if a.grad != nil {
+		////GGML_ASSERT(false); // gradient propagation is not supported
+		fmt.Printf("\n[STOP] View1D : gradient propagation is not supported")
+		os.Exit(1)
+	}
+
+	result := NewTensor(ctx, a.Type, 1, ne0, 1, 1, 1, a.Data /*+ offset*/) // FIXME
+
+	result.op = OP_VIEW
+	result.grad = nil
+	result.src0 = a
+	result.src1 = nil // TODO: maybe store the offset here?
+
+	return result
+}
+
+// static void ggml_build_forward_impl(struct ggml_cgraph * cgraph, struct ggml_tensor * tensor, bool expand) {
+func BuildForwardImpl(graph *Graph, tensor *Tensor, expand bool) {
+
+	if !expand {
+		graph.NodesCount = 0
+		graph.LeafsCount = 0
+	}
+
+	n0 := graph.NodesCount
+	////UNUSED(n0); // FIXED
+
+	VisitParents(graph, tensor)
+
+	n_new := graph.NodesCount - n0
+	////GGML_PRINT_DEBUG("%s: visited %d new nodes\n", __func__, n_new);
+
+	if n_new > 0 {
+		// the last added node should always be starting point
+		////GGML_ASSERT(cgraph->nodes[cgraph->n_nodes - 1] == tensor);
+		if !(graph.Nodes[graph.NodesCount-1] == tensor) {
+			fmt.Printf("\n[STOP] BuildForwardImpl : the last added node should always be starting point!")
+			os.Exit(1)
+		}
+	}
+}
+
+// void ggml_build_forward_expand(struct ggml_cgraph * cgraph, struct ggml_tensor * tensor) {
+func BuildForwardExpand(graph *Graph, tensor *Tensor) {
+	BuildForwardImpl(graph, tensor, true)
+}
+
+// static void ggml_visit_parents(struct ggml_cgraph * cgraph, struct ggml_tensor * node) {
+func VisitParents(graph *Graph, node *Tensor) {
+
+	if node.grad == nil {
+		// this usually happens when we generate intermediate nodes from constants in the backward pass
+		// it can also happen during forward pass, if the user performs computations with constants
+		if node.op != OP_NONE {
+			//GGML_PRINT_DEBUG("%s: warning: node %p has no grad, but op %d\n", __func__, (void *) node, node->op);
+		}
+	}
+
+	// check if already visited
+	for i := uint32(0); i < graph.NodesCount; i++ {
+		if graph.Nodes[i] == node {
+			return
+		}
+	}
+
+	for i := uint32(0); i < graph.LeafsCount; i++ {
+		if graph.Leafs[i] == node {
+			return
+		}
+	}
+
+	if node.src0 != nil {
+		VisitParents(graph, node.src0)
+	}
+
+	if node.src1 != nil {
+		VisitParents(graph, node.src1)
+	}
+
+	for i := 0; i < MAX_OPT; i++ {
+		if node.opt[i] != nil {
+			VisitParents(graph, node.opt[i])
+		}
+	}
+
+	if node.op == OP_NONE && node.grad == nil {
+		// reached a leaf node, not part of the gradient graph (e.g. a constant)
+		////GGML_ASSERT(cgraph->n_leafs < GGML_MAX_NODES);
+
+		graph.Leafs[graph.LeafsCount] = node
+		graph.LeafsCount++
+	} else {
+		////GGML_ASSERT(cgraph->n_nodes < GGML_MAX_NODES);
+
+		graph.Nodes[graph.NodesCount] = node
+		graph.Grads[graph.NodesCount] = node.grad
+		graph.NodesCount++
+	}
+}
+
+// ggml_cpy
+
+func CopyImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
+	////GGML_ASSERT(ggml_nelements(a) == ggml_nelements(b));
+
+	isNode := false
+
+	if !inplace && (a.grad != nil || b.grad != nil) {
+		////GGML_ASSERT(false); // TODO: implement backward
+		isNode = true
+		fmt.Printf("\n[STOP] cpyImpl")
+		os.Exit(1)
+	}
+
+	// make a view of the destination
+	result := ViewTensor(ctx, b)
+
+	result.op = OP_CPY
+	result.src0 = a
+	result.src1 = b
+
+	if isNode {
+		result.grad = DupTensor(ctx, result)
+	} else {
+		result.grad = nil
+	}
+
+	return result
+}
+
+func Copy(ctx *Context, a, b *Tensor) *Tensor {
+	return CopyImpl(ctx, a, b, false)
+}
+
+func CopyInplace(ctx *Context, a, b *Tensor) *Tensor {
+	return CopyImpl(ctx, a, b, true)
+}
+
 // computation graph
 type Graph struct {
-	nodesCount uint32 // FIXME Do not need
-	leafCount  uint32 // FIXME Do not need
-	threads    uint32
+	NodesCount uint32 // FIXME Do not need
+	LeafsCount uint32 // FIXME Do not need
+	Threads    uint32
 
-	workSize uint64
-	work     *Tensor
+	WorkSize uint64
+	Work     *Tensor
 
-	nodes [MAX_NODES]*Tensor
-	grads [MAX_NODES]*Tensor
-	leafs [MAX_NODES]*Tensor
+	Nodes [MAX_NODES]*Tensor
+	Grads [MAX_NODES]*Tensor
+	Leafs [MAX_NODES]*Tensor
 
 	// performance
 	//perfRuns   uint64

@@ -794,7 +794,7 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 	// FIXME Load hyper parameters into model itself
 	//const auto & hparams = model.hparams;
 
-	////embd := hparamsEmbd
+	embdSize := hparamsEmbd
 	layers := hparamsLayers
 	////ctx := hparamsCtx
 	////heads := hparamsHeads
@@ -829,7 +829,7 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 	////struct ggml_context * ctx0 = ggml_init(params);
 	ctx0 := ml.Init(ml.InitParams{})
 	////ggml_cgraph gf = {};
-	////gf := ml.Graph{}
+	gf := ml.Graph{}
 	////gf.threads = n_threads
 
 	embd := ml.NewTensor1D(ctx0, ml.TYPE_I32, N) // FIXME Will be created as FP32 anyway
@@ -861,16 +861,23 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 			Vcur := ml.MulMat(ctx0, model.layers[il].wv, cur)
 
 			fmt.Printf("\n\nOK\n %+v %+v %+v", Qcur, Kcur, Vcur)
-			os.Exit(0)
+			//os.Exit(0)
 
 			// store key and value to memory
-			////if N >= 1 {
-			////struct ggml_tensor * k = ggml_view_1d(ctx0, model.memory_k, N*n_embd, (ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past));
-			////struct ggml_tensor * v = ggml_view_1d(ctx0, model.memory_v, N*n_embd, (ggml_element_size(model.memory_v)*n_embd)*(il*n_ctx + n_past));
+			if N >= 1 {
 
-			////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
-			////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Vcur, v));
-			////}
+				// !!! FIXME !!!
+
+				////struct ggml_tensor * k = ggml_view_1d(ctx0, model.memory_k, N*n_embd, (ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past));
+				k := ml.View1D(ctx0, model.memoryK, N*embdSize /*(ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past)*/)
+
+				////struct ggml_tensor * v = ggml_view_1d(ctx0, model.memory_v, N*n_embd, (ggml_element_size(model.memory_v)*n_embd)*(il*n_ctx + n_past));
+
+				////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
+				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Kcur, k))
+
+				////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Vcur, v));
+			}
 			/*
 			   // Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)
 			   struct ggml_tensor * Q =
@@ -937,34 +944,34 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 		////struct ggml_tensor * inpFF = ggml_add(ctx0, cur, inpSA);
 
 		// feed-forward network
-		{
-			// norm
-			{
-				////cur = ggml_rms_norm(ctx0, inpFF);
+		////{
+		// norm
+		////{
+		////cur = ggml_rms_norm(ctx0, inpFF);
 
-				// cur = ffn_norm*cur
-				////cur = ggml_mul(ctx0,
-				////        ggml_repeat(ctx0, model.layers[il].ffn_norm, cur),
-				////        cur);
-			}
+		// cur = ffn_norm*cur
+		////cur = ggml_mul(ctx0,
+		////        ggml_repeat(ctx0, model.layers[il].ffn_norm, cur),
+		////        cur);
+		////}
 
-			////struct ggml_tensor * tmp = ggml_mul_mat(ctx0,
-			////        model.layers[il].w3,
-			////        cur);
+		////struct ggml_tensor * tmp = ggml_mul_mat(ctx0,
+		////        model.layers[il].w3,
+		////        cur);
 
-			////cur = ggml_mul_mat(ctx0,
-			////        model.layers[il].w1,
-			////        cur);
+		////cur = ggml_mul_mat(ctx0,
+		////        model.layers[il].w1,
+		////        cur);
 
-			// SILU activation
-			////cur = ggml_silu(ctx0, cur);
+		// SILU activation
+		////cur = ggml_silu(ctx0, cur);
 
-			////cur = ggml_mul(ctx0, cur, tmp);
+		////cur = ggml_mul(ctx0, cur, tmp);
 
-			////cur = ggml_mul_mat(ctx0,
-			////        model.layers[il].w2,
-			////        cur);
-		}
+		////cur = ggml_mul_mat(ctx0,
+		////        model.layers[il].w2,
+		////        cur);
+		////}
 
 		////cur  = ggml_add(ctx0, cur, inpFF);
 
@@ -973,19 +980,19 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 	}
 
 	// norm
-	{
-		////inpL = ggml_rms_norm(ctx0, inpL);
+	////{
+	////inpL = ggml_rms_norm(ctx0, inpL);
 
-		// inpL = norm*inpL
-		////inpL = ggml_mul(ctx0,
-		////            ggml_repeat(ctx0, model.norm, inpL),
-		////            inpL);
-	}
+	// inpL = norm*inpL
+	////inpL = ggml_mul(ctx0,
+	////            ggml_repeat(ctx0, model.norm, inpL),
+	////            inpL);
+	////}
 
 	// lm_head
-	{
-		////inpL = ggml_mul_mat(ctx0, model.output, inpL);
-	}
+	////{
+	////inpL = ggml_mul_mat(ctx0, model.output, inpL);
+	////}
 
 	// logits -> probs
 	//inpL = ggml_soft_max(ctx0, inpL);
