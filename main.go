@@ -7,7 +7,9 @@ import (
 	"log"
 	"math"
 	"os"
+	"reflect"
 	"strings"
+	"unsafe"
 
 	"github.com/x448/float16"
 
@@ -274,27 +276,26 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *ml.GPTVocab, n_ct
 		//fmt.Printf("\nn_parts = %d", n_parts)
 	}
 
-	// load vocab
-	{
+	// --- load vocab
+	for i := uint32(0); i < hparamsVocabSize; i++ {
+		len, _ := readInt(reader)
+		//word := make([]byte, len)
+		//if count, err := io.ReadFull(reader, word); err != nil || count != int(len) {
+		//	fmt.Printf("\n[llamaModelLoad] Problem reading vocabulary from '%s'", fileName)
+		//	return nil // FIXME ERR
+		//}
+		word := readString(reader, len)
 
-		for i := uint32(0); i < hparamsVocabSize; i++ {
-			len, _ := readInt(reader)
-			//word := make([]byte, len)
-			//if count, err := io.ReadFull(reader, word); err != nil || count != int(len) {
-			//	fmt.Printf("\n[llamaModelLoad] Problem reading vocabulary from '%s'", fileName)
-			//	return nil // FIXME ERR
-			//}
-			word := readString(reader, len)
+		//if i%6 == 0 {
+		//	fmt.Println()
+		//}
+		//fmt.Printf("| vocab[%d] = %s ] ", i, string(word))
 
-			//if i%6 == 0 {
-			//	fmt.Println()
-			//}
-			//fmt.Printf("| vocab[%d] = %s ] ", i, string(word))
-
-			vocab.Token2ID[word] = i
-			vocab.ID2Token[i] = word
-		}
+		vocab.Token2ID[word] = i
+		vocab.ID2Token[i] = word
 	}
+
+	//return nil
 
 	// for the big tensors, we have the option to store the data in 16-bit floats or quantized
 	// in order to save memory and also to speed up the computation
@@ -648,22 +649,48 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *ml.GPTVocab, n_ct
 						// NB! ggml_nbytes == (ggml_nelements(tensor)*GGML_TYPE_SIZE[tensor->type])/GGML_BLCK_SIZE[tensor->type];
 						//fmt.Printf("\n\nReading %d Tensor elements...\n", tensor.Nelements())
 
-						for n := uint32(0); n < tensorSize; n++ {
-							if ftype == 1 {
+						//dataHeader := (*reflect.SliceHeader) (unsafe.Pointer(&tensor.Data))
+						//dataHeader.Data
+
+						if ftype == 1 { // --- FP16
+
+							for n := uint32(0); n < tensorSize; n++ {
 								tensor.Data[n] = readFP16ToFP32(reader)
-							} else { // FIXME What other types possible?
-								tensor.Data[n] = readFP32(reader)
 							}
 
-							// DEBUG Print each 1,000th or 10,000,000th element
-							if tensorSize > 10000000 && n%10000000 == 0 {
-								fmt.Printf("| %f |", tensor.Data[n])
-							} else {
-								if tensorSize < 10000 && n%1000 == 0 {
-									fmt.Printf("| %f |", tensor.Data[n])
-								}
+						} else { // --- FP32
+
+							var fake []byte
+
+							fakeHeader := (*reflect.SliceHeader)(unsafe.Pointer(&fake))
+							dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&tensor.Data))
+
+							fakeHeader.Data = dataHeader.Data
+							fakeHeader.Len = int(tensorSize * 4)
+							fakeHeader.Cap = int(tensorSize * 4)
+
+							//fmt.Printf("\n== FAKE []BYTE LEN = %d", len(fake))
+							if count, err := io.ReadFull(reader, fake); err != nil || count != int(tensorSize*4) {
+								fmt.Printf("\n[ERROR] Failed to read BIG FP32 chunk from model!")
+								fmt.Printf("\n[ERROR] COUNT = %d | ERR = %s", count, err.Error())
+								os.Exit(1)
 							}
+							//os.Exit(0)
+
+							//for n := uint32(0); n < tensorSize; n++ {
+							//	tensor.Data[n] = readFP32(reader)
+							//}
 						}
+
+						// DEBUG Print each 1,000th or 10,000,000th element
+						//if tensorSize > 10000000 && n%10000000 == 0 {
+						//	fmt.Printf("| %f |", tensor.Data[n])
+						//} else {
+						//	if tensorSize < 10000 && n%1000 == 0 {
+						//		fmt.Printf("| %f |", tensor.Data[n])
+						//	}
+						//}
+						//}
 
 					} else {
 						////fin.seekg(ggml_nbytes(tensor), std::ios::cur);
@@ -1029,9 +1056,6 @@ func main() {
 	//var params gptParams//gpt_params params;
 	////params.model = "models/llama-7B/ggml-model.bin";
 
-	//modelName := "./models/7B/ggml-model.bin"
-	modelName := "./LLaMA/7B/ggml-model-f16.bin"
-
 	////if (gpt_params_parse(argc, argv, params) == false) {
 	////    return 1;
 	////}
@@ -1058,22 +1082,16 @@ func main() {
 	       int64_t t_load_us = 0;
 
 	       gpt_vocab vocab;*/
-	var vocab ml.GPTVocab
-	vocab.Token2ID = make(map[string]uint32)
-	vocab.ID2Token = make(map[uint32]string)
 
+	//modelName := "./LLaMA/7B/ggml-model-f16.bin"
+	modelName := "./LLaMA/7B/ggml-model-fp32.bin"
 	model := NewModel()
+	vocab := ml.NewVocab()
 
 	// load the model
-	{
-		////const int64_t t_start_us = ggml_time_us();
-		/////if (!llama_model_load(params.model, model, vocab, params.n_ctx)) {
-		if err := llamaModelLoad(modelName, &model, &vocab, hparamsCtx); err != nil {
-			fmt.Printf("\n[main] Failed to load model from '%s'", modelName)
-			return
-		}
-
-		////t_load_us = ggml_time_us() - t_start_us;
+	if err := llamaModelLoad(modelName, &model, vocab, hparamsCtx); err != nil {
+		fmt.Printf("\n[main] Failed to load model from '%s'", modelName)
+		return
 	}
 
 	// print system information
@@ -1089,13 +1107,12 @@ func main() {
 
 	////std::vector<float> logits;
 
-	// Add a space in front of the first character to match OG llama tokenizer behavior
-	////params.prompt.insert(0, 1, ' ')
-
 	// tokenize the prompt
 	prompt := "The best programming language to create general AI and profitable ML startup: "
+	// Add a space in front of the first character to match OG llama tokenizer behavior
+	prompt = " " + prompt
 	////std::vector<gpt_vocab::id> embd_inp = ::llama_tokenize(vocab, params.prompt, true);
-	embdInp := ml.Tokenize(&vocab, prompt, true)
+	embdInp := ml.Tokenize(vocab, prompt, true)
 	fmt.Printf("\n\n=== TOKENIZER ===\n\n%+v", embdInp)
 	/*
 	       params.n_predict = std::min(params.n_predict, model.hparams.n_ctx - (int) embd_inp.size());

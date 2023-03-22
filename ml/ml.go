@@ -308,6 +308,13 @@ type GPTVocab struct {
 	ID2Token map[uint32]string
 }
 
+func NewVocab() *GPTVocab {
+	return &GPTVocab{
+		Token2ID: make(map[string]uint32),
+		ID2Token: make(map[uint32]string),
+	}
+}
+
 func min(a, b uint32) uint32 {
 	if a <= b {
 		return a
@@ -338,8 +345,6 @@ func Tokenize(vocab *GPTVocab, text string, bos bool) []uint32 {
 	prev := make([]uint32, length+1)
 
 	// Forward pass
-	//var token uint32
-	//var ok bool
 	for i := uint32(0); i < length; i++ {
 		maxLen := min(length-i, MAX_TOKEN_LEN)
 		for subLen := uint32(1); subLen <= maxLen; subLen++ {
@@ -362,7 +367,7 @@ func Tokenize(vocab *GPTVocab, text string, bos bool) []uint32 {
 	}
 
 	// Backward pass
-	i := length
+	i := len(text)
 	for i > 0 {
 		////gpt_vocab::id token_id = prev[i];
 		tokenID := prev[i]
@@ -375,7 +380,7 @@ func Tokenize(vocab *GPTVocab, text string, bos bool) []uint32 {
 		res = append(res, tokenID)
 		////auto token = (*vocab.id_to_token.find(token_id)).second;
 		token, _ := vocab.ID2Token[tokenID]
-		i -= uint32(len(token))
+		i -= len(token)
 	}
 
 	if bos {
@@ -387,9 +392,12 @@ func Tokenize(vocab *GPTVocab, text string, bos bool) []uint32 {
 	////std::reverse(res.begin(), res.end());
 	//sort.Reverse(sort.IntSlice(res))
 
-	reversed := make([]uint32, length+1)
-	for n := uint32(length + 1); n >= 0; n-- {
-		reversed = append(reversed, res[n])
+	fmt.Printf("\n\n=== PREV ===\n\n%+v", prev)
+	fmt.Printf("\n\n=== RES ===\n\n%+v", res)
+
+	reversed := make([]uint32, 0, len(res))
+	for n := len(res); n > 0; n-- {
+		reversed = append(reversed, res[n-1])
 	}
 
 	return reversed
