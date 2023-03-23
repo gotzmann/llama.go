@@ -910,33 +910,36 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 
 			// KQ_masked = mask_past(KQ_scaled)
 			////struct ggml_tensor * KQ_masked = ggml_diag_mask_inf(ctx0, KQ_scaled, n_past);
+            KQMasked := ml.DiagMaskInf(ctx0, KQScaled, n_past)
 
 			// KQ = soft_max(KQ_masked)
 			////struct ggml_tensor * KQ_soft_max = ggml_soft_max(ctx0, KQ_masked);
-			/*
+            KQSoftMax := ml.SoftMax(ctx0, KQMasked)
+
+			
 			   // V_trans = Vmem.view(n_embd/n_head, n_head, n_past + N).permute(1, 2, 0, 3).contiguous()
-			   struct ggml_tensor * V_trans =
-			       ggml_permute(ctx0,
-			               ggml_reshape_3d(ctx0,
-			                   ggml_view_1d(ctx0, model.memory_v, (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_v)*n_embd),
-			                   n_embd/n_head, n_head, n_past + N),
-			               1, 2, 0, 3);
-			*/
+			   VTrans :=
+			       ml.Permute(ctx0,
+			               ml.Reshape3D(ctx0,
+			                   ml.View1D(ctx0, model.memoryV, /* (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_v)*n_embd)*/,
+			                   embdSize/heads, heads, n_past + N),
+			               1, 2, 0, 3)
+			
 			// KQV = transpose(V) * KQ_soft_max
-			////struct ggml_tensor * KQV = ggml_mul_mat(ctx0, V_trans, KQ_soft_max);
+			KQV := ml.MulMat(ctx0, V_trans, KQ_soft_max)
 
 			// KQV_merged = KQV.permute(0, 2, 1, 3)
-			////struct ggml_tensor * KQV_merged = ggml_permute(ctx0, KQV, 0, 2, 1, 3);
+			KQVMerged := ml.Permute(ctx0, KQV, 0, 2, 1, 3)
 
 			// cur = KQV_merged.contiguous().view(n_embd, N)
-			////cur = ggml_cpy(ctx0,
-			////        KQV_merged,
-			////        ml.NewTensor2D(ctx0, GGML_TYPE_F32, n_embd, N));
+			cur = ml.Copy(ctx0,
+			    KQVMerged,
+			    ml.NewTensor2D(ctx0, ml.TYPE_F32, embdSize, N))
 
 			// projection (no bias)
-			////cur = ggml_mul_mat(ctx0,
-			////        model.layers[il].wo,
-			////        cur);
+			cur = ml.MulMat(ctx0,
+			        model.layers[il].wo,
+			        cur)
 		}
 
 		////struct ggml_tensor * inpFF = ggml_add(ctx0, cur, inpSA);

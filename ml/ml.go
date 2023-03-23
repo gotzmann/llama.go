@@ -943,6 +943,59 @@ func ScaleInplace(ctx *Context, a, b *Tensor) *Tensor {
 	return ScaleImpl(ctx, a, b, true)
 }
 
+// ggml_diag_mask_inf
+
+func DiagMaskInf(ctx *Context, a *Tensor, past uint32) *Tensor {
+	////bool is_node = false;
+
+	if a.grad != nil {
+		////GGML_ASSERT(false); // TODO: implement backward
+		////is_node = true;
+		fmt.Printf("\n[STOP] DiagMaskInf : assertion failed")
+		os.Exit(1)
+	}
+
+	// TODO: when implement backward, fix this:
+	//struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
+	result := ViewTensor(ctx, a)
+	//// FIXME
+	//// b := NewI32(ctx, past)
+	b := NewFP32(ctx, float32(past))
+
+	result.op = OP_DIAG_MASK_INF
+	////result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
+	result.grad = nil
+	result.src0 = a
+	result.src1 = b
+
+	return result
+}
+
+// ggml_soft_max
+
+func SoftMax(ctx *Context, a *Tensor) *Tensor {
+	////bool is_node = false;
+
+	if a.grad != nil {
+		////GGML_ASSERT(false); // TODO: implement backward
+		////is_node = true;
+		fmt.Printf("\n[STOP] SoftMax : assertion failed")
+		os.Exit(1)
+	}
+
+	// TODO: when implement backward, fix this:
+	//struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
+	result := ViewTensor(ctx, a)
+
+	result.op = OP_SOFT_MAX
+	////result.grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
+	result.grad = nil
+	result.src0 = a
+	result.src1 = nil
+
+	return result
+}
+
 // uitils.h
 type GPTVocab struct {
 	Token2ID map[string]uint32
