@@ -128,6 +128,11 @@ func (t *Tensor) Nelements() uint32 {
 	return t.NE[0] * t.NE[1] * t.NE[2] * t.NE[3]
 }
 
+func Nrows(tensor *Tensor) uint32 {
+	////static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
+	return tensor.NE[1] * tensor.NE[2] * tensor.NE[3]
+}
+
 // struct ggml_tensor * ggml_view_tensor(
 func ViewTensor(ctx *Context, src *Tensor) *Tensor {
 	return NewTensor(ctx, src.Type, src.Dims, src.NE[0], src.NE[1], src.NE[2], src.NE[3], src.Data)
@@ -752,6 +757,190 @@ func Permute(ctx *Context, a *Tensor, axis0, axis1, axis2, axis3 uint32) *Tensor
 	}
 
 	return result
+}
+
+// ggml_rope
+
+func Rope(ctx *Context, a *Tensor, past, dims, mode uint32) *Tensor {
+	////GGML_ASSERT(n_past >= 0);
+
+	isNode := false
+
+	if a.grad != nil {
+		////GGML_ASSERT(false); // TODO: implement backward
+		isNode = true
+		fmt.Printf("\n[STOP] Rope error")
+		os.Exit(1)
+	}
+
+	// TODO: when implement backward, fix this:
+	//struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
+	result := ViewTensor(ctx, a)
+
+	b := NewTensor1D(ctx, TYPE_I32, 3)
+	////((int32_t *) b->data)[0] = past
+	b.Data[0] = float32(past)
+	////((int32_t *) b->data)[1] = dims
+	b.Data[1] = float32(dims)
+	////((int32_t *) b->data)[2] = mode
+	b.Data[2] = float32(mode)
+
+	result.op = OP_ROPE
+	result.src0 = a
+	result.src1 = b
+
+	if isNode {
+		result.grad = DupTensor(ctx, result)
+	} else {
+		result.grad = nil
+	}
+
+	return result
+}
+
+func Reshape3D(ctx *Context, a *Tensor, ne0, ne1, ne2 uint32) *Tensor {
+	////GGML_ASSERT(ggml_is_contiguous(a));
+	////GGML_ASSERT(ggml_nelements(a) == ne0*ne1*ne2);
+	if a.Nelements() != ne0*ne1*ne2 {
+		fmt.Printf("\n[STOP] Reshape3D : different elements number")
+		os.Exit(1)
+	}
+
+	////bool is_node = false;
+
+	////if (a->grad) {
+	////    GGML_ASSERT(false); // TODO: implement backward
+	////    is_node = true;
+	////}
+
+	//ne := [3]uint32{ ne0, ne1, ne2 }
+	result := NewTensor(ctx, a.Type, 3, ne0, ne1, ne2, 1, a.Data)
+
+	result.op = OP_RESHAPE
+	////result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
+	result.grad = nil
+	result.src0 = a
+	result.src1 = nil
+
+	return result
+}
+
+// struct ggml_tensor * ggml_new_f32(struct ggml_context * ctx, float value) {
+func NewFP32(ctx *Context, value float32) *Tensor {
+
+	////ctx->scratch_save = ctx->scratch;
+	////ctx->scratch.data = NULL;
+
+	result := NewTensor1D(ctx, TYPE_F32, 1)
+
+	////ctx->scratch = ctx->scratch_save;
+
+	SetFP32(result, value)
+
+	return result
+}
+
+// struct ggml_tensor * ggml_set_f32(struct ggml_tensor * tensor, float value) {
+func SetFP32(tensor *Tensor, value float32) *Tensor {
+
+	////n := tensor.Nrows()
+	////nc := tensor.NE[0]
+	////n1 := tensor.nb[1];
+
+	////data := tensor.Data
+
+	////switch (tensor->type) {
+	////case GGML_TYPE_Q4_0:
+	////{
+	////GGML_ASSERT(false);
+	////} break;
+	////case GGML_TYPE_Q4_1:
+	////{
+	////GGML_ASSERT(false);
+	////} break;
+	////case GGML_TYPE_I8:
+	////{
+	////assert(tensor->nb[0] == sizeof(int8_t));
+	////for (int i = 0; i < n; i++) {
+	////ggml_vec_set_i8(nc, (int8_t *)(data + i*n1), value);
+	////}
+	////} break;
+	////case GGML_TYPE_I16:
+	////{
+	////assert(tensor->nb[0] == sizeof(int16_t));
+	////for (int i = 0; i < n; i++) {
+	////ggml_vec_set_i16(nc, (int16_t *)(data + i*n1), value);
+	////}
+	////} break;
+	////case GGML_TYPE_I32:
+	////{
+	////assert(tensor->nb[0] == sizeof(int32_t));
+	////for (int i = 0; i < n; i++) {
+	////ggml_vec_set_i32(nc, (int32_t *)(data + i*n1), value);
+	////}
+	////} break;
+	////case GGML_TYPE_F16:
+	////{
+	////assert(tensor->nb[0] == sizeof(ggml_fp16_t));
+	////for (int i = 0; i < n; i++) {
+	////ggml_vec_set_f16(nc, (ggml_fp16_t *)(data + i*n1), value);
+	////}
+	////} break;
+	////case GGML_TYPE_F32:
+	////{
+	////assert(tensor->nb[0] == sizeof(float));
+
+	// FIXME Optimize with mem zeroing
+	n := tensor.Nelements()
+	for i := uint32(0); i < n; i++ {
+		////ggml_vec_set_f32(nc, (float *)(data + i*n1), value);
+		tensor.Data[i] = value
+	}
+
+	////} break;
+	////case GGML_TYPE_COUNT:
+	////{
+	////GGML_ASSERT(false);
+	////} break;
+	////}
+
+	return tensor
+}
+
+// ggml_scale
+
+func ScaleImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
+	////GGML_ASSERT(ggml_is_scalar(b));
+	////GGML_ASSERT(ggml_is_padded_1d(a));
+
+	////bool is_node = false;
+
+	if !inplace && (a.grad != nil || b.grad != nil) {
+		////GGML_ASSERT(false); // TODO: implement backward
+		////is_node = true;
+		fmt.Printf("\n[STOP] ScaleImpl : assertion failed")
+		os.Exit(1)
+	}
+
+	// TODO: when implement backward, fix this:
+	//struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
+	result := ViewTensor(ctx, a)
+
+	result.op = OP_SCALE
+	////result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
+	result.grad = nil
+	result.src0 = a
+	result.src1 = b
+
+	return result
+}
+
+func Scale(ctx *Context, a, b *Tensor) *Tensor {
+	return ScaleImpl(ctx, a, b, false)
+}
+
+func ScaleInplace(ctx *Context, a, b *Tensor) *Tensor {
+	return ScaleImpl(ctx, a, b, true)
 }
 
 // uitils.h

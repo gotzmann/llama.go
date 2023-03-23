@@ -888,27 +888,26 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 					n_past, rot, 0),
 				0, 2, 1, 3)
 
-			/*
-			   // K = Kmem.view(n_embd/n_head, n_head, n_past + N).permute(0, 2, 1, 3)
-			   struct ggml_tensor * K =
-			       ggml_permute(ctx0,
-			               ggml_rope(ctx0,
-			                   ggml_reshape_3d(ctx0,
-			                       ggml_view_1d(ctx0, model.memory_k, (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_k)*n_embd),
-			                       n_embd/n_head, n_head, n_past + N),
-			                   n_past, n_rot, 1),
-			               0, 2, 1, 3);
-			*/
+			// K = Kmem.view(n_embd/n_head, n_head, n_past + N).permute(0, 2, 1, 3)
+			K := ml.Permute(ctx0,
+				ml.Rope(ctx0,
+					ml.Reshape3D(ctx0,
+						ml.View1D(ctx0, model.memoryK, (n_past+N)*embdSize /*, il*n_ctx*ggml_element_size(model.memory_k)*n_embd*/),
+						embdSize/heads, heads, n_past+N),
+					n_past, rot, 1),
+				0, 2, 1, 3)
+
 			// K * Q
 			////struct ggml_tensor * KQ = ggml_mul_mat(ctx0, K, Q);
-			/*
-			   // KQ_scaled = KQ / sqrt(n_embd/n_head)
-			   struct ggml_tensor * KQ_scaled =
-			       ggml_scale(ctx0,
-			               KQ,
-			               ggml_new_f32(ctx0, 1.0f/sqrt(float(n_embd)/n_head))
-			               );
-			*/
+			KQ := ml.MulMat(ctx0, K, Q)
+
+			// KQ_scaled = KQ / sqrt(n_embd/n_head)
+			KQScaled :=
+				ml.Scale(ctx0,
+					KQ,
+					ml.NewFP32(ctx0, float32(1.0/math.Sqrt(float64(embdSize)/float64(heads)))),
+				)
+
 			// KQ_masked = mask_past(KQ_scaled)
 			////struct ggml_tensor * KQ_masked = ggml_diag_mask_inf(ctx0, KQ_scaled, n_past);
 
