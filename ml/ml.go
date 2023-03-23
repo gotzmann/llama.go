@@ -1241,6 +1241,33 @@ func StepInplace(ctx *Context, a *Tensor) *Tensor {
 	return StepImpl(ctx, a, true)
 }
 
+// ggml_transpose
+
+func Transpose(ctx *Context, a *Tensor) *Tensor {
+	////isNode := false
+
+	if a.grad != nil {
+		////GGML_ASSERT(false); // TODO: implement backward
+		////is_node = true;
+	}
+
+	result := ViewTensor(ctx, a)
+
+	result.NE[0] = a.NE[1]
+	result.NE[1] = a.NE[0]
+
+	//result->nb[0] = a->nb[1];
+	//result->nb[1] = a->nb[0];
+
+	result.op = OP_TRANSPOSE
+	////result.grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
+	result.grad = nil
+	result.src0 = a
+	result.src1 = nil
+
+	return result
+}
+
 /*
 func BuildForwardImpl(graph *Graph, tensor *Tensor, expand bool) {
 
