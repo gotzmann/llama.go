@@ -3,8 +3,6 @@ package ml
 import (
 	"fmt"
 	"os"
-	// "atomic"
-	// "fmt"
 )
 
 const (
