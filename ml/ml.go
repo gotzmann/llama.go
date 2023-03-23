@@ -1550,11 +1550,32 @@ const (
 )
 
 type ComputeParams struct {
-	Type     TaskType
-	ith, nth uint32
+	Type TaskType
+	ith  uint32
+	nth  uint32
 	// work buffer for all threads
-	wsize uint64
-	wdata []byte // FIXME *void
+	////wsize uint64
+	////wdata []byte // FIXME *void
+}
+
+type ComputeStateShared struct {
+	////ggml_lock_t spin;
+
+	threads uint32
+
+	// synchronization primitives
+	////atomic_int  n_ready;
+	////atomic_bool has_work;
+	////atomic_bool stop; // stop all threads
+}
+
+type ComputeState struct {
+	threads uint32
+
+	params ComputeParams
+	node   *Tensor
+
+	shared *ComputeStateShared
 }
 
 func GraphCompute(ctx *Context, graph *Graph) {
@@ -1567,9 +1588,16 @@ func GraphCompute(ctx *Context, graph *Graph) {
 	       n_ready   = 0,
 	       has_work  = false,
 	       stop      = false,
-	   };
-	   struct ggml_compute_state * workers = threads > 1 ? alloca(sizeof(struct ggml_compute_state)*(threads - 1)) : NULL;
-	*/
+	};*/
+
+	var workers []ComputeState
+	if threads > 1 {
+		//////workers = alloca(sizeof(struct ggml_compute_state)*(threads - 1))
+		fmt.Printf("\n[HALT] Parallelism is not allowed!")
+		os.Exit(1)
+		workers = make([]ComputeState, threads)
+	}
+
 	/*
 	   // create thread pool
 	   if (threads > 1) {
@@ -1814,10 +1842,8 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		////cgraph->work = ggml_new_tensor_1d(ctx, TYPE_I8, cgraph->work_size);
 
 		// FIXME
-		////graph.Work = NewTensor1D(ctx, TYPE_I8, graph.WorkSize)
-
 		fmt.Printf("\n[COMPUTE] graph.WorkSize = %d", graph.WorkSize)
-		////graph.Work = NewTensor1D(ctx, TYPE_F16, graph.WorkSize)
+		////graph.Work = NewTensor1D(ctx, TYPE_I8, graph.WorkSize)
 		graph.Work = NewTensor1D(ctx, TYPE_F32, graph.WorkSize)
 
 		////}
@@ -1853,38 +1879,38 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 		// --- COMPUTE
 
-		////if node->n_tasks > 1 {
+		if node.TasksCount > 1 {
 
-		////if (atomic_fetch_add(&state_shared.n_ready, 1) == threads - 1) {
-		////atomic_store(&state_shared.has_work, false);
-		////}
+			////if (atomic_fetch_add(&state_shared.n_ready, 1) == threads - 1) {
+			////atomic_store(&state_shared.has_work, false);
+			////}
 
-		////while (atomic_load(&state_shared.has_work)) {
-		////ggml_lock_lock  (&state_shared.spin);
-		////ggml_lock_unlock(&state_shared.spin);
-		////}
+			////while (atomic_load(&state_shared.has_work)) {
+			////ggml_lock_lock  (&state_shared.spin);
+			////ggml_lock_unlock(&state_shared.spin);
+			////}
 
-		// launch thread pool
-		////for (int j = 0; j < threads - 1; j++) {
-		////workers[j].params = (struct ggml_compute_params) {
-		////.type  = TASK_COMPUTE,
-		////.ith   = j + 1,
-		////.nth   = node->n_tasks,
-		////.wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
-		////.wdata = cgraph->work ? cgraph->work->data : NULL,
-		////};
-		////workers[j].node = node;
-		////}
+			// launch thread pool
+			for j := uint32(0); j < threads-1; j++ {
+				workers[j].params = ComputeParams{
+					Type: TASK_COMPUTE,
+					ith:  j + 1,
+					nth:  node.TasksCount,
+					////.wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
+					////.wdata = cgraph->work ? cgraph->work->data : NULL,
+				}
+				workers[j].node = node
+			}
 
-		////atomic_fetch_sub(&state_shared.n_ready, 1);
+			////atomic_fetch_sub(&state_shared.n_ready, 1);
 
-		////while (atomic_load(&state_shared.n_ready) > 0) {
-		////ggml_lock_lock  (&state_shared.spin);
-		////ggml_lock_unlock(&state_shared.spin);
-		////}
+			////while (atomic_load(&state_shared.n_ready) > 0) {
+			////ggml_lock_lock  (&state_shared.spin);
+			////ggml_lock_unlock(&state_shared.spin);
+			////}
 
-		////atomic_store(&state_shared.has_work, true);
-		////}
+			////atomic_store(&state_shared.has_work, true);
+		}
 
 		params.Type = TASK_COMPUTE
 		fmt.Printf("\n[COMPUTE] ComputeForward | TASK_COMPUTE | ...")
@@ -1911,44 +1937,44 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 		// --- FINALIZE
 
-		////if (node->n_tasks > 1) {
-		////if (atomic_fetch_add(&state_shared.n_ready, 1) == threads - 1) {
-		////atomic_store(&state_shared.has_work, false);
-		////}
+		if node.TasksCount > 1 {
+			////if (atomic_fetch_add(&state_shared.n_ready, 1) == threads - 1) {
+			////atomic_store(&state_shared.has_work, false);
+			////}
 
-		////while (atomic_load(&state_shared.has_work)) {
-		////ggml_lock_lock  (&state_shared.spin);
-		////ggml_lock_unlock(&state_shared.spin);
-		////}
+			////while (atomic_load(&state_shared.has_work)) {
+			////ggml_lock_lock  (&state_shared.spin);
+			////ggml_lock_unlock(&state_shared.spin);
+			////}
 
-		// launch thread pool
-		////for (int j = 0; j < threads - 1; j++) {
-		////workers[j].params = (struct ggml_compute_params) {
-		////.type  = TASK_FINALIZE,
-		////.ith   = j + 1,
-		////.nth   = node->n_tasks,
-		////.wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
-		////.wdata = cgraph->work ? cgraph->work->data : NULL,
-		////};
-		////workers[j].node = node;
-		////}
+			// launch thread pool
+			for j := uint32(0); j < threads-1; j++ {
+				workers[j].params = ComputeParams{
+					Type: TASK_FINALIZE,
+					ith:  j + 1,
+					nth:  node.TasksCount,
+					////.wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
+					////.wdata = cgraph->work ? cgraph->work->data : NULL,
+				}
+				workers[j].node = node
+			}
 
-		////atomic_fetch_sub(&state_shared.n_ready, 1);
+			////atomic_fetch_sub(&state_shared.n_ready, 1);
 
-		////while (atomic_load(&state_shared.n_ready) > 0) {
-		////ggml_lock_lock  (&state_shared.spin);
-		////ggml_lock_unlock(&state_shared.spin);
-		////}
+			////while (atomic_load(&state_shared.n_ready) > 0) {
+			////ggml_lock_lock  (&state_shared.spin);
+			////ggml_lock_unlock(&state_shared.spin);
+			////}
 
-		////atomic_store(&state_shared.has_work, true);
-		////}
+			////atomic_store(&state_shared.has_work, true);
+		}
 
 		params.Type = TASK_FINALIZE
 		fmt.Printf("\n[COMPUTE] ComputeForward | TASK_FINALIZE | ...")
 		ComputeForward(&params, node)
 
 		// wait for thread pool
-		////if (node->n_tasks > 1) {
+		////if node.TasksCount > 1 {
 		////if (atomic_fetch_add(&state_shared.n_ready, 1) == threads - 1) {
 		////atomic_store(&state_shared.has_work, false);
 		////}
@@ -1978,7 +2004,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 	}
 
 	// join thread pool
-	////if (threads > 1) {
+	//if (threads > 1) {
 	////atomic_store(&state_shared.stop, true);
 	////atomic_store(&state_shared.has_work, true);
 

@@ -795,7 +795,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *ml.GPTVocab, n_ct
 //          std::vector<float>         & embd_w,
 //          size_t                     & mem_per_token) {
 
-func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, embdW []float32, memPerToken *uint32) error {
+func llamaEval(model *llamaModel, threads, n_past uint32, embdInp []uint32, embdW []float32, memPerToken *uint32) error {
 
 	N := uint32(len(embdInp))
 
@@ -837,8 +837,7 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 	////struct ggml_context * ctx0 = ggml_init(params);
 	ctx0 := ml.Init(ml.InitParams{})
 	////ggml_cgraph gf = {};
-	gf := ml.Graph{}
-	////gf.threads = n_threads
+	gf := ml.Graph{Threads: threads}
 
 	embd := ml.NewTensor1D(ctx0, ml.TYPE_I32, N) // FIXME Will be created as FP32 anyway
 	////memcpy(embd->data, embd_inp.data(), N*ggml_element_size(embd));
