@@ -277,6 +277,9 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *ml.GPTVocab, n_ct
 	}
 
 	// --- load vocab
+
+	fmt.Printf("\n\n[llamaModelLoad] Loading vocab...")
+
 	for i := uint32(0); i < hparamsVocabSize; i++ {
 		len, _ := readInt(reader)
 		//word := make([]byte, len)
@@ -466,7 +469,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *ml.GPTVocab, n_ct
 			fname_part += "." + fmt.Sprintf("%d", i)
 		}
 
-		fmt.Printf("\n\n[llamaModelLoad] Loading model part %d / %d from '%s'\n", i+1, n_parts, fname_part)
+		fmt.Printf("\n\n[llamaModelLoad] Loading model part %d / %d from '%s'\n\n", i+1, n_parts, fname_part)
 
 		//fin = std::ifstream(fname_part, std::ios::binary);
 		//fin.rdbuf()->pubsetbuf(f_buf.data(), f_buf.size());
@@ -529,7 +532,12 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *ml.GPTVocab, n_ct
 					nStr = fmt.Sprintf("%.1f M", float32(nelements)/1024/1024)
 				}
 
-				fmt.Printf("\n\n=== Tensor # %d === [ %s | %s | dims = %d | n = %s ] ===\n\n", n_tensors, typeStr, name, dims, nStr)
+				// DEBUG
+				//fmt.Printf("\n\n=== Tensor # %d === [ %s | %s | dims = %d | n = %s ] ===\n\n", n_tensors, typeStr, name, dims, nStr)
+				fmt.Printf("\n[ # %d | %s | %s | dims = %d | n = %s ]", n_tensors, typeStr, name, dims, nStr)
+				//if n_tensors%3 == 0 {
+				//	fmt.Printf("\n")
+				//}
 
 				if _, ok := model.tensors[name]; !ok {
 					fmt.Printf("\n[ERROR] Unknown tensor '%s' in model file", name)
@@ -750,10 +758,10 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *ml.GPTVocab, n_ct
 
 				//fmt.Printf("%42s - [%5d, %5d], type = %6s, %6.2f MB\n", name.data(), ne[0], ne[1], ftype == 0 ? "float" : "f16", ggml_nbytes(tensor)/1024.0/1024.0);
 				n_tensors++
-				if n_tensors%8 == 0 {
-					fmt.Printf(".")
-					////fflush(stderr);
-				}
+				////if n_tensors%8 == 0 {
+				////fmt.Printf(".")
+				////fflush(stderr);
+				////}
 
 			}
 
@@ -854,6 +862,8 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 		rep := ml.Repeat(ctx0, model.layers[il].attentionNorm, cur)
 		cur = ml.Mul(ctx0, rep, cur)
 
+		fmt.Printf("\n[EVAL] Self-attention #%d...", il)
+
 		// self-attention
 		{
 			Qcur := ml.MulMat(ctx0, model.layers[il].wq, cur)
@@ -941,6 +951,8 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 				cur)
 		}
 
+		fmt.Printf("\n[EVAL] Feed-forward network #%d...", il)
+
 		inpFF := ml.Add(ctx0, cur, inpSA)
 
 		// feed-forward network
@@ -979,27 +991,32 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 		inpL = cur
 	}
 
-	// norm
-	////{
-	////inpL = ggml_rms_norm(ctx0, inpL);
+	fmt.Printf("\n[EVAL] RMS Norm...")
 
-	// inpL = norm*inpL
-	////inpL = ggml_mul(ctx0,
-	////            ggml_repeat(ctx0, model.norm, inpL),
-	////            inpL);
-	////}
+	// norm
+	{
+		inpL = ml.RMSNorm(ctx0, inpL)
+
+		// inpL = norm*inpL
+		inpL = ml.Mul(ctx0,
+			ml.Repeat(ctx0, model.norm, inpL),
+			inpL)
+	}
+
+	fmt.Printf("\n[EVAL] LM Head...")
 
 	// lm_head
-	////{
-	////inpL = ggml_mul_mat(ctx0, model.output, inpL);
-	////}
+	inpL = ml.MulMat(ctx0, model.output, inpL)
 
 	// logits -> probs
 	//inpL = ggml_soft_max(ctx0, inpL);
 
 	// run the computation
-	////ggml_build_forward_expand(&gf, inpL);
-	////ggml_graph_compute       (ctx0, &gf);
+	fmt.Printf("\n[EVAL] BuildForwardExpand...")
+	ml.BuildForwardExpand(&gf, inpL)
+
+	fmt.Printf("\n[EVAL] GraphCompute...")
+	ml.GraphCompute(ctx0, &gf)
 
 	//if (n_past%100 == 0) {
 	//    ggml_graph_print   (&gf);
@@ -1135,8 +1152,8 @@ func main() {
 	// tokenize the reverse prompt
 	////std::vector<gpt_vocab::id> antiprompt_inp = ::llama_tokenize(vocab, params.antiprompt, false);
 
-	fmt.Printf("\nprompt: '%s'\n", prompt)
-	fmt.Printf("\nnumber of tokens in prompt = %d\n", len(embdInp))
+	fmt.Printf("\nPROMPT = '%s'\n", prompt)
+	fmt.Printf("\n#TOKENS = %d\n", len(embdInp))
 	for i := 0; i < len(embdInp); i++ {
 		fmt.Printf("\n%d => '%s'", embdInp[i], vocab.ID2Token[embdInp[i]])
 	}
@@ -1169,6 +1186,8 @@ func main() {
 	////fmt.Printf("\n\nsampling parameters: temp = %f, top_k = %d, top_p = %f, repeat_last_n = %i, repeat_penalty = %f", params.temp, params.top_k, params.top_p, params.repeat_last_n, params.repeat_penalty)
 
 	var embd []uint32
+
+	fmt.Printf("\n[LLaMM] Start Inference...")
 
 	// determine the required inference memory per token:
 	memPerToken := uint32(0)
