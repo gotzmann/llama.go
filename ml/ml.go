@@ -264,6 +264,30 @@ func AddInplace(ctx *Context, a, b *Tensor) *Tensor {
 	return AddImpl(ctx, a, b, true)
 }
 
+// ggml_sum
+
+func Sum(ctx *Context, a *Tensor) *Tensor {
+	isNode := false
+
+	if a.grad != nil {
+		isNode = true
+	}
+
+	result := NewTensor1D(ctx, a.Type, 1)
+
+	result.op = OP_SUM
+	result.src0 = a
+	result.src1 = nil
+
+	if isNode {
+		result.grad = DupTensor(ctx, result)
+	} else {
+		result.grad = nil
+	}
+
+	return result
+}
+
 // ggml_sub
 
 func SubImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
@@ -297,6 +321,45 @@ func Sub(ctx *Context, a, b *Tensor) *Tensor {
 
 func SubInplace(ctx *Context, a, b *Tensor) *Tensor {
 	return SubImpl(ctx, a, b, true)
+}
+
+// ggml_div
+
+func DivImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
+	////GGML_ASSERT(ggml_are_same_shape(a, b));
+
+	////bool is_node = false;
+
+	////if (!inplace && (a->grad || b->grad)) {
+	////is_node = true;
+	////}
+
+	////if (inplace) {
+	////GGML_ASSERT(is_node == false);
+	////}
+
+	var result *Tensor
+	if inplace {
+		result = ViewTensor(ctx, a)
+	} else {
+		result = DupTensor(ctx, a)
+	}
+
+	result.op = OP_DIV
+	////result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
+	result.grad = nil
+	result.src0 = a
+	result.src1 = b
+
+	return result
+}
+
+func Div(ctx *Context, a, b *Tensor) *Tensor {
+	return DivImpl(ctx, a, b, false)
+}
+
+func DivInplace(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
+	return DivImpl(ctx, a, b, true)
 }
 
 // Repeat
@@ -570,7 +633,11 @@ type Graph struct {
 
 	WorkSize uint64
 	Work     *Tensor
-
+	/*
+		Nodes [MAX_NODES]*Tensor
+		Grads [MAX_NODES]*Tensor
+		Leafs [MAX_NODES]*Tensor
+	*/
 	Nodes [MAX_NODES]*Tensor
 	Grads [MAX_NODES]*Tensor
 	Leafs [MAX_NODES]*Tensor
@@ -1100,6 +1167,7 @@ func SiluInplace(ctx *Context, a *Tensor) *Tensor {
 	return SiluImpl(ctx, a, true)
 }
 
+/*
 func BuildForwardImpl(graph *Graph, tensor *Tensor, expand bool) {
 
 	if !expand {
@@ -1123,9 +1191,9 @@ func BuildForwardImpl(graph *Graph, tensor *Tensor, expand bool) {
 
 func BuildForwardExpand(graph *Graph, tensor *Tensor) {
 	BuildForwardImpl(graph, tensor, true)
-}
+}*/
 
-func BuildForward(tensor *Tensor) {
+func BuildForward(tensor *Tensor) *Graph {
 
 	result := Graph{
 		NodesCount: 0,
@@ -1133,9 +1201,12 @@ func BuildForward(tensor *Tensor) {
 		// .n_threads    = 0,
 		// .work_size    = 0,
 		// *.work         = NULL,
-		nodes: nil,
-		grads: nil,
-		leafs: nil,
+
+		// FIXME Do use [4096] or [] with append?
+		//Nodes: make([4096]*Tensor, 0),
+		//Grads: nil,
+		//Leafs: nil,
+
 		//.perf_runs    = 0,
 		//.perf_cycles  = 0,
 		//.perf_time_us = 0,
@@ -1143,7 +1214,7 @@ func BuildForward(tensor *Tensor) {
 
 	BuildForwardImpl(&result, tensor, false)
 
-	return result
+	return &result
 }
 
 func BuildBackward(ctx *Context, gf *Graph, keep bool) Graph {
