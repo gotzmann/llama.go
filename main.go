@@ -469,7 +469,7 @@ func llamaModelLoad(fileName string, model *llamaModel, vocab *ml.GPTVocab, n_ct
 			fname_part += "." + fmt.Sprintf("%d", i)
 		}
 
-		fmt.Printf("\n\n[llamaModelLoad] Loading model part %d / %d from '%s'\n\n", i+1, n_parts, fname_part)
+		fmt.Printf("\n\n[llamaModelLoad] Loading model part %d / %d from '%s'\n", i+1, n_parts, fname_part)
 
 		//fin = std::ifstream(fname_part, std::ios::binary);
 		//fin.rdbuf()->pubsetbuf(f_buf.data(), f_buf.size());

@@ -1814,7 +1814,12 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 		////PRINT_DEBUG("%s: allocating work buffer for graph (%zu bytes)\n", __func__, cgraph->work_size);
 		////cgraph->work = ggml_new_tensor_1d(ctx, TYPE_I8, cgraph->work_size);
-		graph.Work = NewTensor1D(ctx, TYPE_I8, graph.WorkSize)
+
+		// FIXME
+		////graph.Work = NewTensor1D(ctx, TYPE_I8, graph.WorkSize)
+		fmt.Printf("\n[COMPUTE] graph.WorkSize = %d", graph.WorkSize)
+		graph.Work = NewTensor1D(ctx, TYPE_F16, graph.WorkSize)
+
 		////}
 	}
 
