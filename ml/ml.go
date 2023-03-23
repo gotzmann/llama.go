@@ -668,7 +668,7 @@ type Graph struct {
 	LeafsCount uint32 // FIXME Do not need
 	Threads    uint32
 
-	WorkSize uint64
+	WorkSize uint32
 	Work     *Tensor
 	/*
 		Nodes [MAX_NODES]*Tensor
@@ -1602,7 +1602,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 	// initialize tasks + work buffer
 	{
-		workSize := 0
+		////workSize := 0
 
 		// thread scheduling for the different operations
 		for i := uint32(0); i < graph.NodesCount; i++ {
@@ -1647,7 +1647,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 				//node->n_tasks = MIN(threads, MAX(1, nr0/128));
 				//printf("nr0 = %8d, nr1 = %8d, nr0*nr1 = %8d, n_tasks = %d\n", nr0, nr1, nr0*nr1, node->n_tasks);
 
-				cur := 0
+				////cur := 0
 
 				// TODO: better way to determine if the matrix is transposed
 				////if (node.src0.NB[1] < node->src0->nb[0]) {
@@ -1700,7 +1700,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 				////cur = (TYPE_SIZE[TYPE_Q4_1]*ggml_nelements(node->src1))/BLCK_SIZE[TYPE_Q4_1];
 				//// #endif
 				if node.src0.Type == TYPE_F32 && node.src1.Type == TYPE_F32 {
-					cur = 0
+					////cur = 0
 				} else {
 					////ASSERT(false);
 					fmt.Printf("\n[HALT] Mismatch of data within compute graph!")
@@ -1732,8 +1732,8 @@ func GraphCompute(ctx *Context, graph *Graph) {
 				////ASSERT(node->src1->ne[2] == 1);
 				////ASSERT(node->src1->ne[3] == 1);
 
-				cur := 0
-				nk = node.src0.NE[0]
+				////cur := 0
+				////nk = node.src0.NE[0]
 
 				////if node.src0.Type == TYPE_F16 &&
 				////node.src1.Type == TYPE_F32) {
@@ -1760,9 +1760,9 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 				node.TasksCount = threads
 
-				cur := 0
+				////cur := 0
 
-				ne11 := Up(node.src1.NE[1], SOFT_MAX_UNROLL)
+				////ne11 := Up(node.src1.NE[1], SOFT_MAX_UNROLL)
 
 				if node.src1.Type == TYPE_F32 {
 					////cur  = sizeof(float)*ne11*node->n_tasks; // TODO: this can become (n_tasks-1)
@@ -1814,7 +1814,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 		////PRINT_DEBUG("%s: allocating work buffer for graph (%zu bytes)\n", __func__, cgraph->work_size);
 		////cgraph->work = ggml_new_tensor_1d(ctx, TYPE_I8, cgraph->work_size);
-		graph.work = NewTensor1D(ctx, TYPE_I8, graph.workSize)
+		graph.Work = NewTensor1D(ctx, TYPE_I8, graph.WorkSize)
 		////}
 	}
 
@@ -1824,7 +1824,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 	for i := uint32(0); i < graph.NodesCount; i++ {
 		////PRINT_DEBUG_5("%s: %d/%d\n", __func__, i, cgraph->n_nodes);
 
-		node := graph.nodes[i]
+		node := graph.Nodes[i]
 
 		// TODO: this could be used to avoid unnecessary computations, but it needs to be improved
 		//if (node->grad == NULL && node->perf_runs > 0) {
@@ -1838,7 +1838,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		params := ComputeParams{
 			Type: TASK_INIT,
 			ith:  0,
-			nth:  node.Threads,
+			nth:  node.TasksCount, // node.Threads, // FIXME ASAP
 			////wsize: graph.work ? ggml_nbytes(cgraph->work) : 0,
 			////wdata: graph.work ? cgraph->work->data : NULL,
 		}
@@ -2004,160 +2004,159 @@ func GraphCompute(ctx *Context, graph *Graph) {
 /////////////////////////////////
 
 func ComputeForward(params *ComputeParams, tensor *Tensor) {
-    ////ASSERT(params);
+	////ASSERT(params);
 
-    switch tensor.op {
+	switch tensor.op {
 
-        case OP_DUP:
-                ggml_compute_forward_dup(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_dup")
-                os.Exit(1)
-        case OP_ADD:
-                ggml_compute_forward_add(params, tensor->src0, tensor->src1, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_add")
-                os.Exit(1)
-        case OP_SUB:
-                ggml_compute_forward_sub(params, tensor->src0, tensor->src1, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_sub")
-                os.Exit(1)
-        case OP_MUL:
-                ggml_compute_forward_mul(params, tensor->src0, tensor->src1, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_mul")
-                os.Exit(1)
-        case OP_DIV:
-                ggml_compute_forward_div(params, tensor->src0, tensor->src1, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_div")
-                os.Exit(1)
-        case OP_SQR:
-                ggml_compute_forward_sqr(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_sqr")
-                os.Exit(1)
-        case OP_SQRT:
-                ggml_compute_forward_sqrt(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_sqrt")
-                os.Exit(1)
-        case OP_SUM:
-                ggml_compute_forward_sum(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_sum")
-                os.Exit(1)
-        case OP_MEAN:
-                ggml_compute_forward_mean(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_mean")
-                os.Exit(1)
-        case OP_REPEAT:
-                ggml_compute_forward_repeat(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_repeat")
-                os.Exit(1)
-        case OP_ABS:
-                ggml_compute_forward_abs(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_abs")
-                os.Exit(1)
-        case OP_SGN:
-                ggml_compute_forward_sgn(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_sgn")
-                os.Exit(1)
-        case OP_NEG:
-                ggml_compute_forward_neg(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_neg")
-                os.Exit(1)
-        case OP_STEP:
-                ggml_compute_forward_step(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_step")
-                os.Exit(1)
-        case OP_RELU:
-                ggml_compute_forward_relu(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_relu")
-                os.Exit(1)
-        case OP_GELU:
-                ggml_compute_forward_gelu(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_gelu")
-                os.Exit(1)
-        case OP_SILU:
-                ggml_compute_forward_silu(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_silu")
-                os.Exit(1)
-        case OP_NORM:
-                ggml_compute_forward_norm(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_norm")
-                os.Exit(1)
-        case OP_RMS_NORM:
-                ggml_compute_forward_rms_norm(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_rsm_norm")
-                os.Exit(1)
-        case OP_MUL_MAT:
-                ggml_compute_forward_mul_mat(params, tensor->src0, tensor->src1, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_mul_mat")
-                os.Exit(1)
-        case OP_SCALE:
-                ggml_compute_forward_scale(params, tensor->src0, tensor->src1, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_scale")
-                os.Exit(1)
-        case OP_CPY:
-                ggml_compute_forward_cpy(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_cpy")
-                os.Exit(1)
-        case OP_RESHAPE:
-                ggml_compute_forward_reshape(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_reshape")
-                os.Exit(1)
-        case OP_VIEW:
-                ggml_compute_forward_view(params, tensor->src0);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_view")
-                os.Exit(1)
-        case OP_PERMUTE:
-                ggml_compute_forward_permute(params, tensor->src0);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_permute")
-                os.Exit(1)
-        case OP_TRANSPOSE:
-                ggml_compute_forward_transpose(params, tensor->src0);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_transpose")
-                os.Exit(1)
-        case OP_GET_ROWS:
-                ggml_compute_forward_get_rows(params, tensor->src0, tensor->src1, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_rows")
-                os.Exit(1)
-        case OP_DIAG_MASK_INF:
-                ggml_compute_forward_diag_mask_inf(params, tensor->src0, tensor->src1, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_diag_mask_inf")
-                os.Exit(1)
-        case OP_SOFT_MAX:
-                ggml_compute_forward_soft_max(params, tensor->src0, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_soft_max")
-                os.Exit(1)
-        case OP_ROPE:
-                ggml_compute_forward_rope(params, tensor->src0, tensor->src1, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_rope")
-                os.Exit(1)
-        case OP_CONV_1D_1S:
-                ggml_compute_forward_conv_1d_1s(params, tensor->src0, tensor->src1, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_conv_1d_1s")
-                os.Exit(1)
-        case OP_CONV_1D_2S:
-                ggml_compute_forward_conv_1d_2s(params, tensor->src0, tensor->src1, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_conv_1d_2s")
-                os.Exit(1)
-        case OP_FLASH_ATTN:
-                int32_t t = ggml_get_i32_1d(tensor->opt[1], 0);
-                ASSERT(t == 0 || t == 1);
-                bool masked = t != 0;
-                ggml_compute_forward_flash_attn(params, tensor->src0, tensor->src1, tensor->opt[0], masked, tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_flash_attn")
-                os.Exit(1)
-        case OP_FLASH_FF:
-                ggml_compute_forward_flash_ff(params, tensor->src0, tensor->src1, tensor->opt[0], tensor->opt[1], tensor->opt[2], tensor);
-                fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_flash_ff")
-                os.Exit(1)
-        case OP_NONE:
-                // nop
-        case OP_COUNT:
-                ////ASSERT(false);
-                ////fmt.Printf("\n[HALT] ")
-                ////os.Exit(1)
-    }
+	case OP_DUP:
+		////ggml_compute_forward_dup(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_dup")
+		os.Exit(1)
+	case OP_ADD:
+		////ggml_compute_forward_add(params, tensor->src0, tensor->src1, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_add")
+		os.Exit(1)
+	case OP_SUB:
+		////ggml_compute_forward_sub(params, tensor->src0, tensor->src1, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_sub")
+		os.Exit(1)
+	case OP_MUL:
+		////ggml_compute_forward_mul(params, tensor->src0, tensor->src1, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_mul")
+		os.Exit(1)
+	case OP_DIV:
+		////ggml_compute_forward_div(params, tensor->src0, tensor->src1, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_div")
+		os.Exit(1)
+	case OP_SQR:
+		////ggml_compute_forward_sqr(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_sqr")
+		os.Exit(1)
+	case OP_SQRT:
+		////ggml_compute_forward_sqrt(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_sqrt")
+		os.Exit(1)
+	case OP_SUM:
+		////ggml_compute_forward_sum(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_sum")
+		os.Exit(1)
+	case OP_MEAN:
+		////ggml_compute_forward_mean(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_mean")
+		os.Exit(1)
+	case OP_REPEAT:
+		////ggml_compute_forward_repeat(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_repeat")
+		os.Exit(1)
+	case OP_ABS:
+		////ggml_compute_forward_abs(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_abs")
+		os.Exit(1)
+	case OP_SGN:
+		////ggml_compute_forward_sgn(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_sgn")
+		os.Exit(1)
+	case OP_NEG:
+		////ggml_compute_forward_neg(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_neg")
+		os.Exit(1)
+	case OP_STEP:
+		////ggml_compute_forward_step(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_step")
+		os.Exit(1)
+	case OP_RELU:
+		////ggml_compute_forward_relu(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_relu")
+		os.Exit(1)
+	case OP_GELU:
+		////ggml_compute_forward_gelu(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_gelu")
+		os.Exit(1)
+	case OP_SILU:
+		////ggml_compute_forward_silu(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_silu")
+		os.Exit(1)
+	case OP_NORM:
+		////ggml_compute_forward_norm(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_norm")
+		os.Exit(1)
+	case OP_RMS_NORM:
+		////ggml_compute_forward_rms_norm(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_rsm_norm")
+		os.Exit(1)
+	case OP_MUL_MAT:
+		////ggml_compute_forward_mul_mat(params, tensor->src0, tensor->src1, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_mul_mat")
+		os.Exit(1)
+	case OP_SCALE:
+		////ggml_compute_forward_scale(params, tensor->src0, tensor->src1, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_scale")
+		os.Exit(1)
+	case OP_CPY:
+		////ggml_compute_forward_cpy(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_cpy")
+		os.Exit(1)
+	case OP_RESHAPE:
+		////ggml_compute_forward_reshape(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_reshape")
+		os.Exit(1)
+	case OP_VIEW:
+		////ggml_compute_forward_view(params, tensor->src0);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_view")
+		os.Exit(1)
+	case OP_PERMUTE:
+		////ggml_compute_forward_permute(params, tensor->src0);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_permute")
+		os.Exit(1)
+	case OP_TRANSPOSE:
+		////ggml_compute_forward_transpose(params, tensor->src0);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_transpose")
+		os.Exit(1)
+	case OP_GET_ROWS:
+		////ggml_compute_forward_get_rows(params, tensor->src0, tensor->src1, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_rows")
+		os.Exit(1)
+	case OP_DIAG_MASK_INF:
+		////ggml_compute_forward_diag_mask_inf(params, tensor->src0, tensor->src1, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_diag_mask_inf")
+		os.Exit(1)
+	case OP_SOFT_MAX:
+		////ggml_compute_forward_soft_max(params, tensor->src0, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_soft_max")
+		os.Exit(1)
+	case OP_ROPE:
+		////ggml_compute_forward_rope(params, tensor->src0, tensor->src1, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_rope")
+		os.Exit(1)
+	case OP_CONV_1D_1S:
+		////ggml_compute_forward_conv_1d_1s(params, tensor->src0, tensor->src1, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_conv_1d_1s")
+		os.Exit(1)
+	case OP_CONV_1D_2S:
+		////ggml_compute_forward_conv_1d_2s(params, tensor->src0, tensor->src1, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_conv_1d_2s")
+		os.Exit(1)
+	case OP_FLASH_ATTN:
+		////int32_t t = ggml_get_i32_1d(tensor->opt[1], 0);
+		////ASSERT(t == 0 || t == 1);
+		////bool masked = t != 0;
+		////ggml_compute_forward_flash_attn(params, tensor->src0, tensor->src1, tensor->opt[0], masked, tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_flash_attn")
+		os.Exit(1)
+	case OP_FLASH_FF:
+		////ggml_compute_forward_flash_ff(params, tensor->src0, tensor->src1, tensor->opt[0], tensor->opt[1], tensor->opt[2], tensor);
+		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_flash_ff")
+		os.Exit(1)
+	case OP_NONE:
+		// nop
+	case OP_COUNT:
+		////ASSERT(false);
+		////fmt.Printf("\n[HALT] ")
+		////os.Exit(1)
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
 
 // ---
 
