@@ -362,6 +362,43 @@ func DivInplace(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	return DivImpl(ctx, a, b, true)
 }
 
+// ggml_sgn
+
+func SgnImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
+	isNode := false
+
+	if !inplace && a.grad != nil {
+		isNode = true
+	}
+
+	var result *Tensor
+	if inplace {
+		result = ViewTensor(ctx, a)
+	} else {
+		result = DupTensor(ctx, a)
+	}
+
+	result.op = OP_SGN
+	result.src0 = a
+	result.src1 = nil
+
+	if isNode {
+		result.grad = DupTensor(ctx, result)
+	} else {
+		result.grad = nil
+	}
+
+	return result
+}
+
+func Sgn(ctx *Context, a *Tensor) *Tensor {
+	return SgnImpl(ctx, a, false)
+}
+
+func SgnInplace(ctx *Context, a *Tensor) *Tensor {
+	return SgnImpl(ctx, a, true)
+}
+
 // Repeat
 
 // struct ggml_tensor * Repeat(
@@ -1165,6 +1202,43 @@ func Silu(ctx *Context, a *Tensor) *Tensor {
 
 func SiluInplace(ctx *Context, a *Tensor) *Tensor {
 	return SiluImpl(ctx, a, true)
+}
+
+// ggml_step
+
+func StepImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
+	isNode := false
+
+	if !inplace && a.grad != nil {
+		isNode = true
+	}
+
+	var result *Tensor
+	if inplace {
+		result = ViewTensor(ctx, a)
+	} else {
+		result = DupTensor(ctx, a)
+	}
+
+	result.op = OP_STEP
+	result.src0 = a
+	result.src1 = nil
+
+	if isNode {
+		result.grad = DupTensor(ctx, result)
+	} else {
+		result.grad = nil
+	}
+
+	return result
+}
+
+func Step(ctx *Context, a *Tensor) *Tensor {
+	return StepImpl(ctx, a, false)
+}
+
+func StepInplace(ctx *Context, a *Tensor) *Tensor {
+	return StepImpl(ctx, a, true)
 }
 
 /*
