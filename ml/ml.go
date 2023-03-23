@@ -1817,8 +1817,10 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 		// FIXME
 		////graph.Work = NewTensor1D(ctx, TYPE_I8, graph.WorkSize)
+
 		fmt.Printf("\n[COMPUTE] graph.WorkSize = %d", graph.WorkSize)
-		graph.Work = NewTensor1D(ctx, TYPE_F16, graph.WorkSize)
+		////graph.Work = NewTensor1D(ctx, TYPE_F16, graph.WorkSize)
+		graph.Work = NewTensor1D(ctx, TYPE_F32, graph.WorkSize)
 
 		////}
 	}
@@ -1848,6 +1850,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			////wdata: graph.work ? cgraph->work->data : NULL,
 		}
 
+		fmt.Printf("\n[COMPUTE] ComputeForward | TASK_INIT | ...")
 		ComputeForward(&params, node)
 
 		// --- COMPUTE
@@ -1886,6 +1889,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		////}
 
 		params.Type = TASK_COMPUTE
+		fmt.Printf("\n[COMPUTE] ComputeForward | TASK_COMPUTE | ...")
 		ComputeForward(&params, node)
 
 		// wait for thread pool
@@ -1942,6 +1946,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		////}
 
 		params.Type = TASK_FINALIZE
+		fmt.Printf("\n[COMPUTE] ComputeForward | TASK_FINALIZE | ...")
 		ComputeForward(&params, node)
 
 		// wait for thread pool
@@ -2009,6 +2014,9 @@ func GraphCompute(ctx *Context, graph *Graph) {
 /////////////////////////////////
 
 func ComputeForward(params *ComputeParams, tensor *Tensor) {
+
+	fmt.Printf("\n[COMPUTE] ComputeForward...")
+
 	////ASSERT(params);
 
 	switch tensor.op {
