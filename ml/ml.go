@@ -2127,8 +2127,9 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 		os.Exit(1)
 	case OP_GET_ROWS:
 		////ggml_compute_forward_get_rows(params, tensor->src0, tensor->src1, tensor);
-		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_rows")
-		os.Exit(1)
+		//fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_rows")
+		//os.Exit(1)
+		ComputeForwardGetRows(params, tensor.src0, tensor.src1, tensor)
 	case OP_DIAG_MASK_INF:
 		////ggml_compute_forward_diag_mask_inf(params, tensor->src0, tensor->src1, tensor);
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_diag_mask_inf")
@@ -2170,6 +2171,145 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// ---
+
+////func VecCopyFP32(n uint32, y, x float32) {
+////for i := uint32(0); i < n; i++ {
+////y[i]  = x[i]
+////}
+////}
+
+// NB! Only FP32
+// ggml_compute_forward_get_rows_f32
+func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
+	////assert(params->ith == 0);
+
+	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
+		return
+	}
+
+	nc := src0.NE[0]
+	nr := src1.Nelements()
+
+	////assert( dst->ne[0] == nc);
+	////assert( dst->ne[1] == nr);
+	////assert(src0->nb[0] == sizeof(float));
+
+	if dst.NE[0] != nc || dst.NE[1] != nr {
+		fmt.Printf("[HALT]ComputeForwardGetRows : wrong dimensions!")
+		os.Exit(1)
+	}
+
+	// FIXME Speed-up
+	for row := uint32(0); row < nr; row++ {
+		for column := uint32(0); column < nc; column++ {
+			dst.Data[row*nr+column] = src0.Data[row*nr+column]
+		}
+
+		/////VecCopyFP32(nc,
+		////(float *) ((char *)  dst->data + i*dst->nb[1]),
+		////(float *) ((char *) src0->data + r*src0->nb[1]));
+
+		/*
+		   r := int(src1.data[i])
+		   ggml_vec_cpy_f32(nc,
+		           (float *) ((char *)  dst->data + i*dst->nb[1]),
+		           (float *) ((char *) src0->data + r*src0->nb[1]));
+		*/
+	}
+}
+
+// NB! FP32 Only
+// ggml_compute_forward_rms_norm_f32
+func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
+	////GGML_ASSERT(ggml_are_same_shape(src0, dst));
+
+	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
+		return
+	}
+
+	////GGML_ASSERT(src0->nb[0] == sizeof(float));
+
+	ith := params.ith
+	nth := params.nth
+
+	ne00 := src0.NE[0]
+	ne01 := src0.NE[1]
+	ne02 := src0.NE[2]
+	ne03 := src0.NE[3]
+
+	////const size_t nb01 = src0->nb[1];
+	////const size_t nb02 = src0->nb[2];
+	////const size_t nb03 = src0->nb[3];
+
+	////const size_t nb1 = dst->nb[1];
+	////const size_t nb2 = dst->nb[2];
+	////const size_t nb3 = dst->nb[3];
+
+	////eps := 1e-5 // TODO: make this a parameter
+
+	// TODO: optimize
+	for i03 := uint32(0); i03 < ne03; i03++ {
+		for i02 := uint32(0); i02 < ne02; i02++ {
+			for i01 := uint32(ith); i01 < ne01; i01 += nth {
+				////var x float = (float *) ((char *) src0->data + i01*nb01 + i02*nb02 + i03*nb03);
+				////x := src0.Data[i01+i02+i03] // FIXME ASAP
+
+				mean := 0.0
+				for i00 := uint32(0); i00 < ne00; i00++ {
+					////mean += x[i00] * x[i00] // FIXME ASAP
+				}
+
+				mean /= float64(ne00)
+
+				////var y float = (float *) ((char *) dst->data + i01*nb1 + i02*nb2 + i03*nb3);
+				////y := dst.Data[i01+i02+i03]
+
+				////memcpy(y, x, ne00 * sizeof(float));
+
+				// WAS COMMENTED
+				// for (int i00 = 0; i00 < ne00; i00++) {
+				//     y[i00] = x[i00];
+				// }
+
+				////scale := float32(1.0 / math.Sqrt(mean+eps))
+
+				////VecScaleFP32(ne00, y, scale) // FIXME ASAP
+			}
+		}
+	}
+}
+
+// inline static void ggml_vec_scale_f32(const int n, float * y, const float   v) {
+func VecScaleFP32(n uint32, y []float32, v float32) {
+	////#if defined(GGML_SIMD)
+	////const int np = (n & ~(GGML_F32_STEP - 1));
+
+	////GGML_F32_VEC vx = GGML_F32_VEC_SET1(v);
+
+	////GGML_F32_VEC ay[GGML_F32_ARR];
+
+	////for (int i = 0; i < np; i += GGML_F32_STEP) {
+	////for (int j = 0; j < GGML_F32_ARR; j++) {
+	////ay[j] = GGML_F32_VEC_LOAD(y + i + j*GGML_F32_EPR);
+	////ay[j] = GGML_F32_VEC_MUL(ay[j], vx);
+
+	////GGML_F32_VEC_STORE(y + i + j*GGML_F32_EPR, ay[j]);
+	////}
+	////}
+
+	// leftovers
+	////for (int i = np; i < n; ++i) {
+	////y[i] *= v;
+	////}
+	////#else
+	// scalar
+	for i := uint32(0); i < n; i++ {
+		y[i] *= v
+	}
+	////#endif
+}
 
 // ---
 
