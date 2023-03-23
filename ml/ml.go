@@ -1100,6 +1100,90 @@ func SiluInplace(ctx *Context, a *Tensor) *Tensor {
 	return SiluImpl(ctx, a, true)
 }
 
+func BuildForwardImpl(graph *Graph, tensor *Tensor, expand bool) {
+
+    if !expand {
+        graph.NodesCount = 0
+        graph.LeafsCount = 0
+    }
+
+    n0 := graph.NodesCount
+    ////UNUSED(n0); FIXME ASAP
+
+    VisitParents(graph, tensor)
+
+    newCount := graph.NodesCount - n0
+    ////GGML_PRINT_DEBUG("%s: visited %d new nodes\n", __func__, n_new);
+
+    if newCount > 0 {
+        // the last added node should always be starting point
+        ////GGML_ASSERT(cgraph->nodes[cgraph->n_nodes - 1] == tensor);
+    }
+}
+
+func BuildForwardExpand(graph *Graph, tensor *Tensor) {
+    BuildForwardImpl(graph, tensor, true)
+}
+
+func BuildForward(tensor *Tensor) {
+    result := {
+        NodesCount: 0,
+        LeafsCount: 0,
+        // .n_threads    = 0,
+        // .work_size    = 0,
+        // *.work         = NULL,
+        nodes: nil,
+        grads: nil,
+        leafs: nil,
+        //.perf_runs    = 0,
+        //.perf_cycles  = 0,
+        //.perf_time_us = 0,
+    };
+
+    BuildForwardImpl(&result, tensor, false)
+
+    return result
+}
+
+struct ggml_cgraph ggml_build_backward(struct ggml_context * ctx, struct ggml_cgraph * gf, bool keep) {
+    struct ggml_cgraph result = *gf;
+
+    GGML_ASSERT(gf->n_nodes > 0);
+
+    // if we are keeping the gradient graph, we have to detach the gradient nodes from the original graph
+    if (keep) {
+        for (int i = 0; i < gf->n_nodes; i++) {
+            struct ggml_tensor * node = gf->nodes[i];
+
+            if (node->grad) {
+                node->grad = ggml_dup_tensor(ctx, node);
+                gf->grads[i] = node->grad;
+            }
+        }
+    }
+
+    for (int i = gf->n_nodes - 1; i >= 0; i--) {
+        struct ggml_tensor * node = gf->nodes[i];
+
+        // because we detached the grad nodes from the original graph, we can afford inplace operations
+        if (node->grad) {
+            ggml_compute_backward(ctx, node, keep);
+        }
+    }
+
+    for (int i = gf->n_nodes - 1; i >= 0; i--) {
+        struct ggml_tensor * node = gf->nodes[i];
+
+        if (node->is_param) {
+            GGML_PRINT_DEBUG("%s: found root node %p\n", __func__, (void *) node);
+            ggml_build_forward_impl(&result, node->grad, true);
+        }
+    }
+
+    return result;
+}
+
+
 // uitils.h
 type GPTVocab struct {
 	Token2ID map[string]uint32
