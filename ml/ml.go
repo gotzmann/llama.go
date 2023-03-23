@@ -691,6 +691,69 @@ func NewTensor(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 	}
 }
 
+// ggml_permute
+
+func Permute(ctx *Context, a *Tensor, axis0, axis1, axis2, axis3 uint32) *Tensor {
+
+	////GGML_ASSERT(axis0 >= 0 && axis0 < GGML_MAX_DIMS);
+	////GGML_ASSERT(axis1 >= 0 && axis1 < GGML_MAX_DIMS);
+	////GGML_ASSERT(axis2 >= 0 && axis2 < GGML_MAX_DIMS);
+	////GGML_ASSERT(axis3 >= 0 && axis3 < GGML_MAX_DIMS);
+
+	////GGML_ASSERT(axis0 != axis1);
+	////GGML_ASSERT(axis0 != axis2);
+	////GGML_ASSERT(axis0 != axis3);
+	////GGML_ASSERT(axis1 != axis2);
+	////GGML_ASSERT(axis1 != axis3);
+	////GGML_ASSERT(axis2 != axis3);
+
+	isNode := false
+
+	if a.grad != nil {
+		////GGML_ASSERT(false); // TODO: implement backward
+		isNode = true
+		fmt.Printf("\n[STOP] Permute error")
+		os.Exit(1)
+	}
+
+	result := ViewTensor(ctx, a)
+
+	var ne [MAX_DIMS]uint32
+	////int nb[GGML_MAX_DIMS];
+
+	ne[axis0] = a.NE[0]
+	ne[axis1] = a.NE[1]
+	ne[axis2] = a.NE[2]
+	ne[axis3] = a.NE[3]
+
+	////nb[axis0] = a.NB[0]
+	////nb[axis1] = a.NB[1]
+	////nb[axis2] = a.NB[2]
+	////nb[axis3] = a.NB[3]
+
+	result.NE[0] = ne[0]
+	result.NE[1] = ne[1]
+	result.NE[2] = ne[2]
+	result.NE[3] = ne[3]
+
+	////result->nb[0] = nb[0];
+	////result->nb[1] = nb[1];
+	////result->nb[2] = nb[2];
+	////result->nb[3] = nb[3];
+
+	result.op = OP_PERMUTE
+	result.src0 = a
+	result.src1 = nil // TODO: maybe store the permutation here?
+
+	if isNode {
+		result.grad = DupTensor(ctx, result)
+	} else {
+		result.grad = nil
+	}
+
+	return result
+}
+
 // uitils.h
 type GPTVocab struct {
 	Token2ID map[string]uint32
