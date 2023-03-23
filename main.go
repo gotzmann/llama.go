@@ -860,7 +860,7 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 			Kcur := ml.MulMat(ctx0, model.layers[il].wk, cur)
 			Vcur := ml.MulMat(ctx0, model.layers[il].wv, cur)
 
-			fmt.Printf("\n\nOK\n %+v %+v %+v", Qcur, Kcur, Vcur)
+			//fmt.Printf("\n\nOK\n %+v %+v %+v", Qcur, Kcur, Vcur)
 			//os.Exit(0)
 
 			// store key and value to memory
@@ -908,73 +908,72 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 					ml.NewFP32(ctx0, float32(1.0/math.Sqrt(float64(embdSize)/float64(heads)))),
 				)
 
-			// KQ_masked = mask_past(KQ_scaled)
-			////struct ggml_tensor * KQ_masked = ggml_diag_mask_inf(ctx0, KQ_scaled, n_past);
-            KQMasked := ml.DiagMaskInf(ctx0, KQScaled, n_past)
+				// KQ_masked = mask_past(KQ_scaled)
+				////struct ggml_tensor * KQ_masked = ggml_diag_mask_inf(ctx0, KQ_scaled, n_past);
+			KQMasked := ml.DiagMaskInf(ctx0, KQScaled, n_past)
 
 			// KQ = soft_max(KQ_masked)
 			////struct ggml_tensor * KQ_soft_max = ggml_soft_max(ctx0, KQ_masked);
-            KQSoftMax := ml.SoftMax(ctx0, KQMasked)
+			KQSoftMax := ml.SoftMax(ctx0, KQMasked)
 
-			
-			   // V_trans = Vmem.view(n_embd/n_head, n_head, n_past + N).permute(1, 2, 0, 3).contiguous()
-			   VTrans :=
-			       ml.Permute(ctx0,
-			               ml.Reshape3D(ctx0,
-			                   ml.View1D(ctx0, model.memoryV, /* (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_v)*n_embd)*/,
-			                   embdSize/heads, heads, n_past + N),
-			               1, 2, 0, 3)
-			
+			// V_trans = Vmem.view(n_embd/n_head, n_head, n_past + N).permute(1, 2, 0, 3).contiguous()
+			VTrans :=
+				ml.Permute(ctx0,
+					ml.Reshape3D(ctx0, // FIXME down ^^^
+						ml.View1D(ctx0, model.memoryV, (n_past+N)*embdSize), /* (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_v)*n_embd)*/
+						embdSize/heads, heads, n_past+N),
+					1, 2, 0, 3)
+
 			// KQV = transpose(V) * KQ_soft_max
-			KQV := ml.MulMat(ctx0, V_trans, KQ_soft_max)
+			KQV := ml.MulMat(ctx0, VTrans, KQSoftMax)
 
 			// KQV_merged = KQV.permute(0, 2, 1, 3)
 			KQVMerged := ml.Permute(ctx0, KQV, 0, 2, 1, 3)
 
 			// cur = KQV_merged.contiguous().view(n_embd, N)
 			cur = ml.Copy(ctx0,
-			    KQVMerged,
-			    ml.NewTensor2D(ctx0, ml.TYPE_F32, embdSize, N))
+				KQVMerged,
+				ml.NewTensor2D(ctx0, ml.TYPE_F32, embdSize, N))
 
 			// projection (no bias)
 			cur = ml.MulMat(ctx0,
-			        model.layers[il].wo,
-			        cur)
+				model.layers[il].wo,
+				cur)
 		}
 
-		////struct ggml_tensor * inpFF = ggml_add(ctx0, cur, inpSA);
+		inpFF := ml.Add(ctx0, cur, inpSA)
 
 		// feed-forward network
-		////{
-		// norm
-		////{
-		////cur = ggml_rms_norm(ctx0, inpFF);
+		{
+			// norm
+			{
+				cur = ml.RMSNorm(ctx0, inpFF)
 
-		// cur = ffn_norm*cur
-		////cur = ggml_mul(ctx0,
-		////        ggml_repeat(ctx0, model.layers[il].ffn_norm, cur),
-		////        cur);
-		////}
+				// cur = ffn_norm*cur
+				cur = ml.Mul(ctx0,
+					ml.Repeat(ctx0, model.layers[il].ffn_norm, cur),
+					cur)
+			}
 
-		////struct ggml_tensor * tmp = ggml_mul_mat(ctx0,
-		////        model.layers[il].w3,
-		////        cur);
+			tmp := ml.MulMat(ctx0,
+				model.layers[il].w3,
+				cur)
 
-		////cur = ggml_mul_mat(ctx0,
-		////        model.layers[il].w1,
-		////        cur);
+			cur = ml.MulMat(ctx0,
+				model.layers[il].w1,
+				cur)
 
-		// SILU activation
-		////cur = ggml_silu(ctx0, cur);
+			// SILU activation
+			cur = ml.Silu(ctx0, cur)
 
-		////cur = ggml_mul(ctx0, cur, tmp);
+			cur = ml.Mul(ctx0, cur, tmp)
 
-		////cur = ggml_mul_mat(ctx0,
-		////        model.layers[il].w2,
-		////        cur);
-		////}
+			cur = ml.MulMat(ctx0,
+				model.layers[il].w2,
+				cur)
+		}
 
-		////cur  = ggml_add(ctx0, cur, inpFF);
+		cur = ml.Add(ctx0, cur, inpFF)
 
 		// input for next layer
 		inpL = cur

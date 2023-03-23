@@ -228,6 +228,77 @@ func MulMat(ctx *Context, a, b *Tensor) *Tensor {
 	return result
 }
 
+// ggml_add
+
+func AddImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
+	////GGML_ASSERT(ggml_are_same_shape(a, b));
+
+	//bool is_node = false;
+
+	////if (!inplace && (a->grad || b->grad)) {
+	////is_node = true;
+	////}
+
+	////struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
+	var result *Tensor
+	if inplace {
+		result = ViewTensor(ctx, a)
+	} else {
+		result = DupTensor(ctx, a)
+	}
+
+	result.op = OP_ADD
+	////result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
+	result.grad = nil
+	result.src0 = a
+	result.src1 = b
+
+	return result
+}
+
+func Add(ctx *Context, a, b *Tensor) *Tensor {
+	return AddImpl(ctx, a, b, false)
+}
+
+func AddInplace(ctx *Context, a, b *Tensor) *Tensor {
+	return AddImpl(ctx, a, b, true)
+}
+
+// ggml_sub
+
+func SubImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
+	////GGML_ASSERT(ggml_are_same_shape(a, b));
+
+	////bool is_node = false;
+
+	////if (!inplace && (a->grad || b->grad)) {
+	////is_node = true;
+	////}
+
+	var result *Tensor
+	if inplace {
+		result = ViewTensor(ctx, a)
+	} else {
+		result = DupTensor(ctx, a)
+	}
+
+	result.op = OP_SUB
+	////result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
+	result.grad = nil
+	result.src0 = a
+	result.src1 = b
+
+	return result
+}
+
+func Sub(ctx *Context, a, b *Tensor) *Tensor {
+	return SubImpl(ctx, a, b, false)
+}
+
+func SubInplace(ctx *Context, a, b *Tensor) *Tensor {
+	return SubImpl(ctx, a, b, true)
+}
+
 // ggml_repeat
 
 // struct ggml_tensor * ggml_repeat(
