@@ -843,7 +843,7 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
 
 	for il := uint32(0); il < layers; il++ {
-		////inpSA := inpL
+		inpSA := inpL
 
 		//var cur *ml.Tensor
 
@@ -871,12 +871,12 @@ func llamaEval(model *llamaModel, n_threads, n_past uint32, embdInp []uint32, em
 				////struct ggml_tensor * k = ggml_view_1d(ctx0, model.memory_k, N*n_embd, (ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past));
 				k := ml.View1D(ctx0, model.memoryK, N*embdSize /*(ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past)*/)
 
-				////struct ggml_tensor * v = ggml_view_1d(ctx0, model.memory_v, N*n_embd, (ggml_element_size(model.memory_v)*n_embd)*(il*n_ctx + n_past));
+				v := ml.View1D(ctx0, model.memoryV, N*embdSize /*, (ggml_element_size(model.memory_v)*n_embd)*(il*n_ctx + n_past)*/)
 
 				////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
-				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Kcur, k))
+				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Kcur, k)) // K
 
-				////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Vcur, v));
+				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Vcur, v)) // V
 			}
 
 			// Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)

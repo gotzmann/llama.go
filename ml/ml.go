@@ -1067,6 +1067,39 @@ func SoftMax(ctx *Context, a *Tensor) *Tensor {
 	return result
 }
 
+// ggml_silu
+
+func SiluImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
+	////bool is_node = false;
+
+	////if (!inplace && (a->grad)) {
+	////is_node = true;
+	////}
+
+	var result *Tensor
+	if inplace {
+		result = ViewTensor(ctx, a)
+	} else {
+		result = DupTensor(ctx, a)
+	}
+
+	result.op = OP_SILU
+	////result.grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
+	result.grad = nil
+	result.src0 = a
+	result.src1 = nil
+
+	return result
+}
+
+func Silu(ctx *Context, a *Tensor) *Tensor {
+	return SiluImpl(ctx, a, false)
+}
+
+func SiluInplace(ctx *Context, a *Tensor) *Tensor {
+	return SiluImpl(ctx, a, true)
+}
+
 // uitils.h
 type GPTVocab struct {
 	Token2ID map[string]uint32
