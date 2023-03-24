@@ -2131,8 +2131,9 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 		ComputeForwardMulMatFP32(params, tensor.src0, tensor.src1, tensor)
 	case OP_SCALE:
 		////ggml_compute_forward_scale(params, tensor->src0, tensor->src1, tensor);
-		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_scale")
-		os.Exit(1)
+		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_scale")
+		////os.Exit(1)
+		ComputeForwardScaleFP32(params, tensor.src0, tensor.src1, tensor)
 	case OP_CPY:
 		////ggml_compute_forward_cpy(params, tensor->src0, tensor);
 		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_cpy")
@@ -2164,16 +2165,18 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 		ComputeForwardGetRows(params, tensor.src0, tensor.src1, tensor)
 	case OP_DIAG_MASK_INF:
 		////ggml_compute_forward_diag_mask_inf(params, tensor->src0, tensor->src1, tensor);
-		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_diag_mask_inf")
-		os.Exit(1)
+		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_diag_mask_inf")
+		////os.Exit(1)
+		ComputeForwardDiagMaskInfFP32(params, tensor.src0, tensor.src1, tensor)
 	case OP_SOFT_MAX:
 		////ggml_compute_forward_soft_max(params, tensor->src0, tensor);
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_soft_max")
 		os.Exit(1)
 	case OP_ROPE:
 		////ggml_compute_forward_rope(params, tensor->src0, tensor->src1, tensor);
-		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_rope")
-		os.Exit(1)
+		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_rope")
+		////os.Exit(1)
+		ComputeForwardRopeFP32(params, tensor.src0, tensor.src1, tensor)
 	case OP_CONV_1D_1S:
 		////ggml_compute_forward_conv_1d_1s(params, tensor->src0, tensor->src1, tensor);
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_conv_1d_1s")
@@ -2814,6 +2817,130 @@ func ComputeForwardPermute(params *ComputeParams, src0 *Tensor) {
 	// NOP
 	////UNUSED(params);
 	////UNUSED(src0);
+}
+
+// FIXME ASAP
+// ggml_compute_forward_rope
+func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
+	////assert(params->ith == 0);
+	////assert(src1->type == GGML_TYPE_I32);
+	////assert(ggml_nelements(src1) == 3);
+
+	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
+		return
+	}
+	/*
+	   n_past = ((int32_t *) src1->data)[0];
+	   n_dims = ((int32_t *) src1->data)[1];
+	   mode   = ((int32_t *) src1->data)[2];
+
+	   //const int ne0 = src0->ne[0];
+	   ne1 := src0.NE[1]
+	   ne2 := src0.NE[2]
+	   ne3 := src0.NE[3]
+	*/
+
+	////const int nb0 = src0->nb[0];
+	////const int nb1 = src0->nb[1];
+	////const int nb2 = src0->nb[2];
+	////const int nb3 = src0->nb[3];
+
+	//printf("ne0: %d, ne1: %d, ne2: %d, ne3: %d\n", ne0, ne1, ne2, ne3);
+	//printf("n_past = %d, ne2 = %d\n", n_past, ne2);
+
+	////assert(nb0 == sizeof(float));
+	/*
+	   // TODO: optimize
+	   for (int i3 = 0; i3 < ne3; i3++) {
+	       for (int i2 = (mode == 0 ? 0 : n_past); i2 < ne2; i2++) {
+	           const int p = (mode == 0 ? n_past + i2 : i2);
+	           for (int i1 = 0; i1 < ne1; i1++) {
+	               for (int i0 = 0; i0 < n_dims; i0 += 2) {
+	                   const double theta = pow(10000.0, ((double)-i0)/n_dims);
+
+	                   const double cos_theta = cos(p*theta);
+	                   const double sin_theta = sin(p*theta);
+
+	                   const float * const src = (float *)((char *) src0->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
+	                       float * dst_data  = (float *)((char *)  dst->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
+
+	                   double x0 = src[0];
+	                   double x1 = src[1];
+
+	                   dst_data[0] = x0*cos_theta - x1*sin_theta;
+	                   dst_data[1] = x0*sin_theta + x1*cos_theta;
+	               }
+	           }
+	       }
+	   } */
+}
+
+// FIXME ASAP
+// ggml_compute_forward_scale
+func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
+	////GGML_ASSERT(ggml_is_contiguous(src0));
+	////GGML_ASSERT(ggml_is_contiguous(dst));
+	////GGML_ASSERT(ggml_are_same_shape(src0, dst));
+	////GGML_ASSERT(ggml_is_scalar(src1));
+
+	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
+		return
+	}
+	/*
+	   // scale factor
+	   const float v = *(float *) src1->data;
+
+	   const int ith = params->ith;
+	   const int nth = params->nth;
+
+	   const int nc = src0->ne[0];
+	   const int nr = ggml_nrows(src0);
+
+	   // rows per thread
+	   const int dr = (nr + nth - 1)/nth;
+
+	   // row range for this thread
+	   const int ir0 = dr*ith;
+	   const int ir1 = MIN(ir0 + dr, nr);
+
+	   	for (int i1 = ir0; i1 < ir1; i1++) {
+	   	    ggml_vec_scale_f32(nc, (float *) ((char *) dst->data + i1*(dst->nb[1])), v);
+	   	}
+	*/
+}
+
+// FIXME ASAP
+// ggml_compute_forward_diag_mask_inf
+func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tensor) {
+	////assert(params->ith == 0);
+	////assert(src1->type == GGML_TYPE_I32);
+	////assert(ggml_nelements(src1) == 1);
+
+	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
+		return
+	}
+	/*
+	   const int n_past = ((int32_t *) src1->data)[0];
+
+	   // TODO: handle transposed/permuted matrices
+
+	   const int n  = ggml_nrows(src0);
+	   const int nc = src0->ne[0];
+	   const int nr = src0->ne[1];
+	   const int nz = n/nr;
+	*/
+	////assert( dst->nb[0] == sizeof(float));
+	////assert(src0->nb[0] == sizeof(float));
+	/*
+	   for (int k = 0; k < nz; k++) {
+	       for (int j = 0; j < nr; j++) {
+	           for (int i = n_past; i < nc; i++) {
+	               if (i > n_past + j) {
+	                   *(float *)((char *) dst->data + k*dst->nb[2] + j*dst->nb[1] + i*dst->nb[0]) = -INFINITY;
+	               }
+	           }
+	       }
+	   } */
 }
 
 // ---
