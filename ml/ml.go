@@ -3149,13 +3149,13 @@ func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
 // ---
 
 // uitils.h
-type GPTVocab struct {
+type Vocab struct {
 	Token2ID map[string]uint32
 	ID2Token map[uint32]string
 }
 
-func NewVocab() *GPTVocab {
-	return &GPTVocab{
+func NewVocab() *Vocab {
+	return &Vocab{
 		Token2ID: make(map[string]uint32),
 		ID2Token: make(map[uint32]string),
 	}
@@ -3171,7 +3171,7 @@ func min(a, b uint32) uint32 {
 // FIXME Would it work with UTF-8? Rewrite for runes
 // SentencePiece implementation after https://guillaume-be.github.io/2020-05-30/sentence_piece
 // std::vector<gpt_vocab::id> llamaTokenize(const gpt_vocab & vocab, const std::string & text, bool bos) {
-func Tokenize(vocab *GPTVocab, text string, bos bool) []uint32 {
+func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 
 	// TODO: Calculate this constant from the vocabulary
 	MAX_TOKEN_LEN := uint32(18)
