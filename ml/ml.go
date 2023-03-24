@@ -2143,8 +2143,9 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 		os.Exit(1)
 	case OP_VIEW:
 		////ggml_compute_forward_view(params, tensor->src0);
-		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_view")
-		os.Exit(1)
+		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_view")
+		////os.Exit(1)
+		ComputeForwardView(params, tensor.src0) // NOP
 	case OP_PERMUTE:
 		////ggml_compute_forward_permute(params, tensor->src0);
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_permute")
@@ -2673,6 +2674,14 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 	//	   printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX task %d/%d: %d us, acc = %d\n", ith, nth, (int) (t1 - t0), (int) acc);
 	//	}
+}
+
+// ggml_compute_forward_view
+
+func ComputeForwardView(params *ComputeParams, src0 *Tensor) {
+	// NOP
+	////UNUSED(params);
+	////UNUSED(src0);
 }
 
 // ---
