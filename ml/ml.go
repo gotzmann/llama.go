@@ -2051,8 +2051,9 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 		os.Exit(1)
 	case OP_ADD:
 		////ggml_compute_forward_add(params, tensor->src0, tensor->src1, tensor);
-		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_add")
-		os.Exit(1)
+		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_add")
+		////os.Exit(1)
+		ComputeForwardAddFP32(params, tensor.src0, tensor.src1, tensor)
 	case OP_SUB:
 		////ggml_compute_forward_sub(params, tensor->src0, tensor->src1, tensor);
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_sub")
@@ -2170,8 +2171,9 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 		ComputeForwardDiagMaskInfFP32(params, tensor.src0, tensor.src1, tensor)
 	case OP_SOFT_MAX:
 		////ggml_compute_forward_soft_max(params, tensor->src0, tensor);
-		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_soft_max")
-		os.Exit(1)
+		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_soft_max")
+		////os.Exit(1)
+		ComputeForwardSoftMaxFP32(params, tensor.src0, tensor)
 	case OP_ROPE:
 		////ggml_compute_forward_rope(params, tensor->src0, tensor->src1, tensor);
 		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_rope")
@@ -2941,6 +2943,133 @@ func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tenso
 	           }
 	       }
 	   } */
+}
+
+// FIXME ASAP
+// ggml_compute_forward_soft_max
+func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
+	////GGML_ASSERT(ggml_is_contiguous(src0));
+	////GGML_ASSERT(ggml_is_contiguous(dst));
+	////GGML_ASSERT(ggml_are_same_shape(src0, dst));
+
+	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
+		return
+	}
+	/*
+	   // TODO: handle transposed/permuted matrices
+
+	   const int ith = params->ith;
+	   const int nth = params->nth;
+
+	   const int nc = src0->ne[0];
+	   const int nr = ggml_nrows(src0);
+
+	   // rows per thread
+	   const int dr = (nr + nth - 1)/nth;
+
+	   // row range for this thread
+	   const int ir0 = dr*ith;
+	   const int ir1 = MIN(ir0 + dr, nr);
+
+	   	for (int i1 = ir0; i1 < ir1; i1++) {
+	   	    float *p = (float *)((char *) dst->data + i1*dst->nb[1]);
+
+	   ////#ifndef NDEBUG
+
+	   	////for (int i = 0; i < nc; ++i) {
+	   	    //printf("p[%d] = %f\n", i, p[i]);
+	   	    ////assert(!isnan(p[i]));
+	   	////}
+
+	   ////#endif
+
+	   	float max = -INFINITY;
+	   	ggml_vec_max_f32(nc, &max, p);
+
+	   	ggml_float sum = 0.0;
+
+	   	uint16_t scvt;
+	   	for (int i = 0; i < nc; i++) {
+	   	    if (p[i] == -INFINITY) {
+	   	        p[i] = 0.0f;
+	   	    } else {
+	   	        //const float val = (p[i] == -INFINITY) ? 0.0 : exp(p[i] - max);
+	   	        ggml_fp16_t s = GGML_FP32_TO_FP16(p[i] - max);
+	   	        memcpy(&scvt, &s, sizeof(scvt));
+	   	        const float val = GGML_FP16_TO_FP32(table_exp_f16[scvt]);
+	   	        sum += val;
+	   	        p[i] = val;
+	   	    }
+	   	}
+
+	   	assert(sum > 0.0f);
+
+	   	sum = 1.0/sum;
+	   	ggml_vec_scale_f32(nc, p, sum);
+
+	   ////#ifndef NDEBUG
+
+	   	////for (int i = 0; i < nc; ++i) {
+	   	    ////assert(!isnan(p[i]));
+	   	    ////assert(!isinf(p[i]));
+	   	////}
+
+	   ////#endif
+	   }
+	*/
+}
+
+// FIXME ASAP
+// ggml_compute_forward_add
+func ComputeForwardAddFP32(params *ComputeParams, src0, src1, dst *Tensor) {
+	////GGML_ASSERT(ggml_are_same_shape(src0, src1) && ggml_are_same_shape(src0, dst));
+
+	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
+		return
+	}
+	/*
+	   const int ith = params->ith;
+	   const int nth = params->nth;
+
+	   const int n  = ggml_nrows(src0);
+	   const int nc = src0->ne[0];
+
+	   const size_t nb00 = src0->nb[0];
+	   const size_t nb01 = src0->nb[1];
+
+	   const size_t nb10 = src1->nb[0];
+	   const size_t nb11 = src1->nb[1];
+
+	   const size_t nb0 = dst->nb[0];
+	   const size_t nb1 = dst->nb[1];
+
+	   GGML_ASSERT( nb0 == sizeof(float));
+	   GGML_ASSERT(nb00 == sizeof(float));
+
+	   	if (nb10 == sizeof(float)) {
+	   	    const int j0 = (n/nth)*ith;
+	   	    const int j1 = ith == nth - 1 ? n : (n/nth)*(ith + 1);
+
+	   	    for (int j = j0; j < j1; j++) {
+	   	        ggml_vec_add_f32(nc,
+	   	                (float *) ((char *) dst->data  + j*nb1),
+	   	                (float *) ((char *) src0->data + j*nb01),
+	   	                (float *) ((char *) src1->data + j*nb11));
+	   	    }
+	   	} else {
+
+	   	    // src1 is not contiguous
+	   	    for (int j = ith; j < n; j += nth) {
+	   	        float * dst_ptr  = (float *) ((char *) dst->data  + j*nb1);
+	   	        float * src0_ptr = (float *) ((char *) src0->data + j*nb01);
+	   	        for (int i = 0; i < nc; i++) {
+	   	            float * src1_ptr = (float *) ((char *) src1->data + j*nb11 + i*nb10);
+
+	   	            dst_ptr[i] = src0_ptr[i] + *src1_ptr;
+	   	        }
+	   	    }
+	   	}
+	*/
 }
 
 // ---
