@@ -2150,8 +2150,9 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 		ComputeForwardView(params, tensor.src0) // NOP
 	case OP_PERMUTE:
 		////ggml_compute_forward_permute(params, tensor->src0);
-		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_permute")
-		os.Exit(1)
+		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_permute")
+		////os.Exit(1)
+		ComputeForwardPermute(params, tensor.src0) // NOP
 	case OP_TRANSPOSE:
 		////ggml_compute_forward_transpose(params, tensor->src0);
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_transpose")
@@ -2806,6 +2807,13 @@ func ComputeForwardReshape(params *ComputeParams, src0, dst *Tensor) {
 	////UNUSED(params);
 	////UNUSED(src0);
 	////UNUSED(dst);
+}
+
+// ggml_compute_forward_permute
+func ComputeForwardPermute(params *ComputeParams, src0 *Tensor) {
+	// NOP
+	////UNUSED(params);
+	////UNUSED(src0);
 }
 
 // ---
