@@ -2135,12 +2135,14 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 		os.Exit(1)
 	case OP_CPY:
 		////ggml_compute_forward_cpy(params, tensor->src0, tensor);
-		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_cpy")
-		os.Exit(1)
+		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_cpy")
+		////os.Exit(1)
+		ComputeForwardDupFP32(params, tensor.src0, tensor) // FIXME Double Check
 	case OP_RESHAPE:
 		////ggml_compute_forward_reshape(params, tensor->src0, tensor);
-		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_reshape")
-		os.Exit(1)
+		///fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_reshape")
+		////os.Exit(1)
+		ComputeForwardReshape(params, tensor.src0, tensor) // NOP
 	case OP_VIEW:
 		////ggml_compute_forward_view(params, tensor->src0);
 		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_view")
@@ -2682,6 +2684,128 @@ func ComputeForwardView(params *ComputeParams, src0 *Tensor) {
 	// NOP
 	////UNUSED(params);
 	////UNUSED(src0);
+}
+
+func ComputeForwardCopy(params *ComputeParams, src0, dst *Tensor) {
+	////ggml_compute_forward_dup(params, src0, dst);
+	ComputeForwardDupFP32(params, src0, dst)
+}
+
+func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
+	////GGML_ASSERT(params->ith == 0);
+	////GGML_ASSERT(ggml_is_contiguous(dst));
+	////GGML_ASSERT(ggml_nelements(dst) == ggml_nelements(src0));
+
+	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
+		return
+	}
+
+	////ne00 := src0.NE[0]
+	////ne01 := src0.NE[1]
+	////ne02 := src0.NE[2]
+	////ne03 := src0.NE[3]
+	/*
+	   const size_t nb00 = src0->nb[0];
+	   const size_t nb01 = src0->nb[1];
+	   const size_t nb02 = src0->nb[2];
+	   const size_t nb03 = src0->nb[3];
+	*/
+
+	// FIXME ASAP Will it work for Golang?
+	////if (ggml_is_contiguous(src0) && src0->type == dst->type) {
+	////memcpy(dst->data, src0->data, ggml_nelements(dst) * GGML_TYPE_SIZE[src0->type]);
+	////return;
+	////}
+
+	copy(dst.Data, src0.Data)
+	return
+
+	/*
+		if (src0->nb[0] == sizeof(float)) {
+		    if (dst->type == GGML_TYPE_F32) {
+		        int id = 0;
+		        const size_t rs = ne00*nb00;
+
+		        for (int i03 = 0; i03 < ne03; i03++) {
+		            for (int i02 = 0; i02 < ne02; i02++) {
+		                for (int i01 = 0; i01 < ne01; i01++) {
+		                    const char * src0_ptr = (char *) src0->data + i01*nb01 + i02*nb02 + i03*nb03;
+		                    char * dst_ptr = (char *) dst->data + id*rs;
+
+		                    memcpy(dst_ptr, src0_ptr, rs);
+
+		                    id++;
+		                }
+		            }
+		        }
+		    } else if (dst->type == GGML_TYPE_F16) {
+		        int id = 0;
+		        ggml_fp16_t * dst_ptr = (ggml_fp16_t *) dst->data;
+
+		        for (int i03 = 0; i03 < ne03; i03++) {
+		            for (int i02 = 0; i02 < ne02; i02++) {
+		                for (int i01 = 0; i01 < ne01; i01++) {
+		                    for (int i00 = 0; i00 < ne00; i00++) {
+		                        const float * src0_ptr = (float *) ((char *) src0->data + i00*nb00 + i01*nb01 + i02*nb02 + i03*nb03);
+
+		                        dst_ptr[id] = GGML_FP32_TO_FP16(*src0_ptr);
+		                        id++;
+		                    }
+		                }
+		            }
+		        }
+		    } else {
+		        GGML_ASSERT(false); // TODO: implement
+		    }
+		} else {
+
+		    //printf("%s: this is not optimal - fix me\n", __func__);
+
+		    if (dst->type == GGML_TYPE_F32) {
+		        int id = 0;
+		        float * dst_ptr = (float *) dst->data;
+
+		        for (int i03 = 0; i03 < ne03; i03++) {
+		            for (int i02 = 0; i02 < ne02; i02++) {
+		                for (int i01 = 0; i01 < ne01; i01++) {
+		                    for (int i00 = 0; i00 < ne00; i00++) {
+		                        const float * src0_ptr = (float *) ((char *) src0->data + i00*nb00 + i01*nb01 + i02*nb02 + i03*nb03);
+
+		                        dst_ptr[id] = *src0_ptr;
+		                        id++;
+		                    }
+		                }
+		            }
+		        }
+		    } else if (dst->type == GGML_TYPE_F16) {
+		        int id = 0;
+		        ggml_fp16_t * dst_ptr = (ggml_fp16_t *) dst->data;
+
+		        for (int i03 = 0; i03 < ne03; i03++) {
+		            for (int i02 = 0; i02 < ne02; i02++) {
+		                for (int i01 = 0; i01 < ne01; i01++) {
+		                    for (int i00 = 0; i00 < ne00; i00++) {
+		                        const float * src0_ptr = (float *) ((char *) src0->data + i00*nb00 + i01*nb01 + i02*nb02 + i03*nb03);
+
+		                        dst_ptr[id] = GGML_FP32_TO_FP16(*src0_ptr);
+		                        id++;
+		                    }
+		                }
+		            }
+		        }
+		    } else {
+		        GGML_ASSERT(false); // TODO: implement
+		    }
+		}
+	*/
+}
+
+// ggml_compute_forward_reshape
+func ComputeForwardReshape(params *ComputeParams, src0, dst *Tensor) {
+	// NOP
+	////UNUSED(params);
+	////UNUSED(src0);
+	////UNUSED(dst);
 }
 
 // ---
