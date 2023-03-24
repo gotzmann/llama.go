@@ -126,9 +126,9 @@ func (t *Tensor) Nelements() uint32 {
 	return t.NE[0] * t.NE[1] * t.NE[2] * t.NE[3]
 }
 
-func Nrows(tensor *Tensor) uint32 {
+func (t *Tensor) Nrows() uint32 {
 	////static_assert(MAX_DIMS == 4, "MAX_DIMS is not 4 - update this function");
-	return tensor.NE[1] * tensor.NE[2] * tensor.NE[3]
+	return t.NE[1] * t.NE[2] * t.NE[3]
 }
 
 // struct ggml_tensor * ggml_view_tensor(
@@ -2059,8 +2059,9 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 		os.Exit(1)
 	case OP_MUL:
 		////ggml_compute_forward_mul(params, tensor->src0, tensor->src1, tensor);
-		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_mul")
-		os.Exit(1)
+		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_mul")
+		////os.Exit(1)
+		ComputeForwardMulFP32(params, tensor.src0, tensor.src1, tensor)
 	case OP_DIV:
 		////ggml_compute_forward_div(params, tensor->src0, tensor->src1, tensor);
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_div")
@@ -2125,8 +2126,9 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 		ComputeForwardRMSNormFP32(params, tensor.src0, tensor)
 	case OP_MUL_MAT:
 		////ggml_compute_forward_mul_mat(params, tensor->src0, tensor->src1, tensor);
-		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_mul_mat")
-		os.Exit(1)
+		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_mul_mat")
+		////os.Exit(1)
+		ComputeForwardMulMatFP32(params, tensor.src0, tensor.src1, tensor)
 	case OP_SCALE:
 		////ggml_compute_forward_scale(params, tensor->src0, tensor->src1, tensor);
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_scale")
@@ -2391,6 +2393,286 @@ func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 			}
 		}
 	}
+}
+
+func VecMulFP32(n uint32, z, x, y []float32) {
+	for i := uint32(0); i < n; i++ {
+		z[i] = x[i] * y[i]
+	}
+}
+
+// NB! FP32 Only
+// ggml_compute_forward_mul
+func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
+	////assert(params->ith == 0);
+	////assert(ggml_are_same_shape(src0, src1) && ggml_are_same_shape(src0, dst));
+
+	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
+		return
+	}
+
+	n := src0.Nrows()
+	nc := src0.NE[0]
+
+	////assert( dst->nb[0] == sizeof(float));
+	////assert(src0->nb[0] == sizeof(float));
+	////assert(src1->nb[0] == sizeof(float));
+
+	for i := uint32(0); i < n; i++ {
+
+		VecMulFP32(nc, dst.Data[i:], src0.Data[i:], src1.Data[i:])
+
+		////ggml_vec_mul_f32(nc,
+		////(float *) ((char *) dst->data  + i*( dst->nb[1])),
+		////(float *) ((char *) src0->data + i*(src0->nb[1])),
+		////(float *) ((char *) src1->data + i*(src1->nb[1])));
+	}
+}
+
+// NB! FP32 Only
+// ggml_compute_forward_mul_mat
+func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
+	////int64_t t0 = ggml_perf_time_us();
+	////UNUSED(t0);
+
+	////ne00 := src0.NE[0]
+	ne01 := src0.NE[1]
+	ne02 := src0.NE[2]
+	ne03 := src0.NE[3]
+
+	////ne10 := src1.NE[0]
+	ne11 := src1.NE[1]
+	////ne12 := src1.NE[2]
+	////ne13 := src1.NE[3]
+
+	////ne0 := dst.NE[0]
+	////ne1 := dst.NE[1]
+	////ne2 := dst.NE[2]
+	////ne3 := dst.NE[3]
+	////ne := ne0 * ne1 * ne2 * ne3
+	/*
+	   const int nb00 = src0->nb[0];
+	   const int nb01 = src0->nb[1];
+	   const int nb02 = src0->nb[2];
+	   const int nb03 = src0->nb[3];
+
+	   const int nb10 = src1->nb[0];
+	   const int nb11 = src1->nb[1];
+	   const int nb12 = src1->nb[2];
+	   const int nb13 = src1->nb[3];
+
+	   const int nb0  = dst->nb[0];
+	   const int nb1  = dst->nb[1];
+	   const int nb2  = dst->nb[2];
+	   const int nb3  = dst->nb[3];
+	*/
+	ith := params.ith
+	nth := params.nth
+
+	////assert(ne02 == ne12);
+	////assert(ne03 == ne13);
+	////assert(ne2  == ne12);
+	////assert(ne3  == ne13);
+	/*
+	   // TODO: we don't support permuted src0
+	   assert(nb00 == sizeof(float) || nb01 == sizeof(float));
+
+	   // dst cannot be transposed or permuted
+	   assert(nb0 == sizeof(float));
+	   assert(nb0 <= nb1);
+	   assert(nb1 <= nb2);
+	   assert(nb2 <= nb3);
+
+	   assert(ne0 == ne01);
+	   assert(ne1 == ne11);
+	   assert(ne2 == ne02);
+	   assert(ne3 == ne03);
+	*/
+	// nb01 >= nb00 - src0 is not transposed
+	//   compute by src0 rows
+	//
+	// nb00 <  nb01 - src0 is transposed
+	//   compute by src0 columns
+
+	////#if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS)
+	////if (ggml_compute_forward_mul_mat_use_blas(src0, src1, dst)) {
+	////GGML_ASSERT(nb10 == sizeof(float));
+
+	////if (params->ith != 0) {
+	////return;
+	////}
+
+	////if (params->type == GGML_TASK_INIT) {
+	////return;
+	////}
+
+	////if (params->type == GGML_TASK_FINALIZE) {
+	////return;
+	////}
+
+	////for (int i03 = 0; i03 < ne03; i03++) {
+	////for (int i02 = 0; i02 < ne02; i02++) {
+	////const float * x = (float *) (src0->data);
+	////const float * y = (float *) ((char *) src1->data + i02*nb12 + i03*nb13);
+
+	////float * d = (float *) ((char *) dst->data + i02*nb2 + i03*nb3);
+
+	// zT = y * xT
+	////{
+	////cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+	////ne11, ne01, ne10,
+	////1.0f,    y, ne10,
+	////         x, ne10,
+	////0.0f,    d, ne01);
+	////}
+	////}
+	////}
+
+	//printf("CBLAS F32 = %f ms, %d x %d x %d x %d\n", (ggml_perf_time_us() - t0)/1000.0, ne0, ne1, ne2, ne3);
+
+	////return;
+	////}
+	////#endif
+
+	if params.Type == TASK_INIT {
+		////if (nb01 >= nb00) {
+		////return;
+		////}
+
+		// TODO: fix this memset (wsize is overestimated)
+		////memset(params->wdata, 0, params->wsize);
+		return
+	}
+
+	if params.Type == TASK_FINALIZE {
+		////if (nb01 >= nb00) {
+		////return;
+		////}
+
+		// TODO: fix this memset (wsize is overestimated)
+		//assert(params->wsize == (ggml_nbytes(dst) + CACHE_LINE_SIZE)*nth);
+
+		////float * const wdata = params->wdata;
+
+		// cols per thread
+		////dc := (ne + nth - 1) / nth
+
+		// col range for this thread
+		////ic0 := dc * ith
+		////ic1 := min(ic0+dc, ne)
+
+		////ggml_vec_cpy_f32(ic1 - ic0, (float *) dst->data + ic0, wdata + ic0);
+		////VecCopyFP32(ic1-ic0, dst.Data[ic0], wdata+ic0)
+
+		for k := uint32(1); k < nth; k++ {
+			////ggml_vec_acc_f32(ic1 - ic0, (float *) dst->data + ic0, wdata + (ne + CACHE_LINE_SIZE_F32)*k + ic0);
+			////VecAccFP32(ic1-ic0, dst.Data[ic0], wdata+(ne+CACHE_LINE_SIZE_F32)*k+ic0) // FIXME ASAP
+		}
+
+		return
+	}
+
+	////if (nb01 >= nb00) {
+	// TODO: do not support transposed src1
+	////assert(nb10 == sizeof(float));
+
+	// parallelize by src0 rows using ggml_vec_dot_f32
+
+	// total rows in src0
+	nr := ne01 * ne02 * ne03
+
+	// rows per thread
+	dr := (nr + nth - 1) / nth
+
+	// row range for this thread
+	ir0 := dr * ith
+	ir1 := min(ir0+dr, nr)
+
+	for ir := uint32(ir0); ir < ir1; ir++ {
+		// src0 indices
+		////i03 := ir / (ne02 * ne01)
+		////i02 := (ir - i03*ne02*ne01) / ne01
+		////i01 := (ir - i03*ne02*ne01 - i02*ne01)
+
+		for ic := uint32(0); ic < ne11; ic++ {
+			// src1 indices
+			////i13 := i03
+			////i12 := i02
+			////i11 := ic
+
+			// dst indices
+			////i0 := i01
+			////i1 := i11
+			////i2 := i02
+			////i3 := i03
+
+			// FIXME ASAP
+			////ggml_vec_dot_f32(ne00,
+			////    (float *) ((char *)  dst->data + (i0*nb0 + i1*nb1 + i2*nb2 + i3*nb3)),
+			////(float *) ((char *) src0->data + (i01*nb01 + i02*nb02 + i03*nb03)),
+			////(float *) ((char *) src1->data + (i11*nb11 + i12*nb12 + i13*nb13)));
+		}
+	}
+	////} else {
+	// parallelize by src1 columns using ggml_vec_mad_f32
+	// each thread has its own work data
+	// during FINALIZE we accumulate all work data into dst
+
+	// total columns in src1
+	////const int nc = ne10;
+
+	// columns per thread
+	////const int dc = (nc + nth - 1)/nth;
+
+	// column range for this thread
+	////const int ic0 = dc*ith;
+	////const int ic1 = MIN(ic0 + dc, nc);
+
+	// work data for thread
+	////const int wo = (ne + CACHE_LINE_SIZE_F32)*ith;
+	////float * const wdata = params->wdata;
+
+	////for (int i13 = 0; i13 < ne13; ++i13) {
+	////for (int i12 = 0; i12 < ne12; ++i12) {
+	////for (int i11 = 0; i11 < ne11; ++i11) {
+	////for (int ic = ic0; ic < ic1; ++ic) {
+	// src1 indices
+	////const int i10 = ic;
+
+	// src0 indices
+	////const int i03 = i13;
+	////const int i02 = i12;
+	////const int i00 = ic;
+
+	// dst indices
+	////const int i1 = i11;
+	////const int i2 = i12;
+	////const int i3 = i13;
+
+	////assert(sizeof(float)*(wo + i3*ne2*ne1*ne0 + i2*ne1*ne0 + i1*ne0 + ne01) <= params->wsize);
+
+	////ggml_vec_mad_f32(ne01,
+	////    (float *) (wdata + wo + i3*ne2*ne1*ne0 + i2*ne1*ne0 + i1*ne0),
+	////    (float *) ((char *) src0->data + (i00*nb00 + i02*nb02 + i03*nb03)),
+	////   *(float *) ((char *) src1->data + (i10*nb10 + i11*nb11 + i12*nb12 + i13*nb13)));
+	////}
+	////}
+	////}
+	////}
+	////}
+
+	//int64_t t1 = ggml_perf_time_us();
+	//static int64_t acc = 0;
+	//acc += t1 - t0;
+	//if (t1 - t0 > 10) {
+	//    printf("\n");
+	//    printf("ne00 = %5d, ne01 = %5d, ne02 = %5d, ne03 = %5d\n", ne00, ne01, ne02, ne03);
+	//    printf("nb00 = %5d, nb01 = %5d, nb02 = %5d, nb03 = %5d\n", nb00, nb01, nb02, nb03);
+	//    printf("ne10 = %5d, ne11 = %5d, ne12 = %5d, ne13 = %5d\n", ne10, ne11, ne12, ne13);
+	//    printf("nb10 = %5d, nb11 = %5d, nb12 = %5d, nb13 = %5d\n", nb10, nb11, nb12, nb13);
+
+	//	   printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX task %d/%d: %d us, acc = %d\n", ith, nth, (int) (t1 - t0), (int) acc);
+	//	}
 }
 
 // ---
