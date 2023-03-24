@@ -2083,8 +2083,9 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 		os.Exit(1)
 	case OP_REPEAT:
 		////ggml_compute_forward_repeat(params, tensor->src0, tensor);
-		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_repeat")
-		os.Exit(1)
+		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_repeat")
+		////os.Exit(1)
+		ComputeForwardRepeatFP32(params, tensor.src0, tensor)
 	case OP_ABS:
 		////ggml_compute_forward_abs(params, tensor->src0, tensor);
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_abs")
@@ -2199,11 +2200,12 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 
 // ---
 
-////func VecCopyFP32(n uint32, y, x float32) {
-////for i := uint32(0); i < n; i++ {
-////y[i]  = x[i]
-////}
-////}
+// FIXME ASAP Play with it!
+func VecCopyFP32(n uint32, y, x []float32) {
+	for i := uint32(0); i < n; i++ {
+		y[i] = x[i]
+	}
+}
 
 // NB! Only FP32
 // ggml_compute_forward_get_rows_f32
@@ -2375,9 +2377,13 @@ func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 		for j := uint32(0); j < ncr; j++ {
 			for k := uint32(0); k < nr0; k++ {
 
-				dst.Data[i*nr0+k+j*nc0] = src0.Data[k]
+				////dst.Data[i*nr0+k+j*nc0] = src0.Data[k]
 
 				// FIXME ASAP Use nc0
+
+				VecCopyFP32(nc0,
+					dst.Data[i*nr0+k+j*nc0:],
+					src0.Data[k:])
 
 				////ggml_vec_cpy_f32(nc0,
 				////(float *) ((char *)  dst->data + (i*nr0 + k)*( dst->nb[1]) + j*nc0*( dst->nb[0])),
