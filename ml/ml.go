@@ -2114,8 +2114,9 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 		os.Exit(1)
 	case OP_SILU:
 		////ggml_compute_forward_silu(params, tensor->src0, tensor);
-		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_silu")
-		os.Exit(1)
+		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_silu")
+		////os.Exit(1)
+		ComputeForwardSiluFP32(params, tensor.src0, tensor)
 	case OP_NORM:
 		////ggml_compute_forward_norm(params, tensor->src0, tensor);
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_norm")
@@ -2130,6 +2131,7 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_mul_mat")
 		////os.Exit(1)
 		ComputeForwardMulMatFP32(params, tensor.src0, tensor.src1, tensor)
+		fmt.Printf("[ return ]")
 	case OP_SCALE:
 		////ggml_compute_forward_scale(params, tensor->src0, tensor->src1, tensor);
 		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_scale")
@@ -2359,6 +2361,8 @@ func VecScaleFP32(n uint32, y []float32, v float32) {
 // ggml_compute_forward_repeat
 func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 
+	fmt.Printf(" [ ComputeForwardRepeatFP32 ] ")
+
 	////assert(params->ith == 0);
 	////assert(ggml_can_repeat(src0, dst));
 
@@ -2413,6 +2417,9 @@ func VecMulFP32(n uint32, z, x, y []float32) {
 // NB! FP32 Only
 // ggml_compute_forward_mul
 func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
+
+	fmt.Printf(" [ ComputeForwardMulFP32 ] ")
+
 	////assert(params->ith == 0);
 	////assert(ggml_are_same_shape(src0, src1) && ggml_are_same_shape(src0, dst));
 
@@ -2441,6 +2448,9 @@ func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 // NB! FP32 Only
 // ggml_compute_forward_mul_mat
 func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
+
+	fmt.Printf(" [ ComputeForwardMulMatFP32 ] ")
+
 	////int64_t t0 = ggml_perf_time_us();
 	////UNUSED(t0);
 
@@ -2698,6 +2708,9 @@ func ComputeForwardCopy(params *ComputeParams, src0, dst *Tensor) {
 }
 
 func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
+
+	fmt.Printf(" [ ComputeForwardDupFP32 ] ")
+
 	////GGML_ASSERT(params->ith == 0);
 	////GGML_ASSERT(ggml_is_contiguous(dst));
 	////GGML_ASSERT(ggml_nelements(dst) == ggml_nelements(src0));
@@ -2824,6 +2837,9 @@ func ComputeForwardPermute(params *ComputeParams, src0 *Tensor) {
 // FIXME ASAP
 // ggml_compute_forward_rope
 func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
+
+	fmt.Printf(" [ ComputeForwardRopeFP32 ] ")
+
 	////assert(params->ith == 0);
 	////assert(src1->type == GGML_TYPE_I32);
 	////assert(ggml_nelements(src1) == 3);
@@ -2880,6 +2896,9 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 // FIXME ASAP
 // ggml_compute_forward_scale
 func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
+
+	fmt.Printf(" [ ComputeForwardScaleFP32 ] ")
+
 	////GGML_ASSERT(ggml_is_contiguous(src0));
 	////GGML_ASSERT(ggml_is_contiguous(dst));
 	////GGML_ASSERT(ggml_are_same_shape(src0, dst));
@@ -2914,6 +2933,9 @@ func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 // FIXME ASAP
 // ggml_compute_forward_diag_mask_inf
 func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tensor) {
+
+	fmt.Printf(" [ ComputeForwardDiagMaskInfFP32 ] ")
+
 	////assert(params->ith == 0);
 	////assert(src1->type == GGML_TYPE_I32);
 	////assert(ggml_nelements(src1) == 1);
@@ -2948,6 +2970,9 @@ func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tenso
 // FIXME ASAP
 // ggml_compute_forward_soft_max
 func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
+
+	fmt.Printf(" [ ComputeForwardSoftMaxFP32 ] ")
+
 	////GGML_ASSERT(ggml_is_contiguous(src0));
 	////GGML_ASSERT(ggml_is_contiguous(dst));
 	////GGML_ASSERT(ggml_are_same_shape(src0, dst));
@@ -3022,6 +3047,9 @@ func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 // FIXME ASAP
 // ggml_compute_forward_add
 func ComputeForwardAddFP32(params *ComputeParams, src0, src1, dst *Tensor) {
+
+	fmt.Printf(" [ ComputeForwardAddFP32 ] ")
+
 	////GGML_ASSERT(ggml_are_same_shape(src0, src1) && ggml_are_same_shape(src0, dst));
 
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
@@ -3069,6 +3097,52 @@ func ComputeForwardAddFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	   	        }
 	   	    }
 	   	}
+	*/
+}
+
+// FIXME ASAP
+// ggml_compute_forward_silu
+func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
+
+	fmt.Printf(" [ ComputeForwardSiluFP32 ] ")
+
+	////GGML_ASSERT(ggml_is_contiguous(src0));
+	////GGML_ASSERT(ggml_is_contiguous(dst));
+	////GGML_ASSERT(ggml_are_same_shape(src0, dst));
+
+	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
+		return
+	}
+	/*
+	   const int ith = params->ith;
+	   const int nth = params->nth;
+
+	   const int nc = src0->ne[0];
+	   const int nr = ggml_nrows(src0);
+
+	   // rows per thread
+	   const int dr = (nr + nth - 1)/nth;
+
+	   // row range for this thread
+	   const int ir0 = dr*ith;
+	   const int ir1 = MIN(ir0 + dr, nr);
+
+	   	for (int i1 = ir0; i1 < ir1; i1++) {
+	   	    ggml_vec_silu_f32(nc,
+	   	            (float *) ((char *) dst->data  + i1*( dst->nb[1])),
+	   	            (float *) ((char *) src0->data + i1*(src0->nb[1])));
+
+	   ////#ifndef NDEBUG
+
+	   	////for (int k = 0; k < nc; k++) {
+	   	    ////const float x = ((float *) ((char *) dst->data + i1*( dst->nb[1])))[k];
+	   	    ////UNUSED(x);
+	   	    ////assert(!isnan(x));
+	   	    ////assert(!isinf(x));
+	   	////}
+
+	   ////#endif
+	   }
 	*/
 }
 

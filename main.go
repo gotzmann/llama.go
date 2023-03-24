@@ -8,10 +8,12 @@ import (
 	"math"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
 	"unsafe"
 
 	"github.com/x448/float16"
+	"golang.org/x/exp/slices"
 
 	"github.com/gotzmann/llama.go/ml"
 )
@@ -1190,10 +1192,13 @@ func main() {
 
 	// determine the required inference memory per token:
 	memPerToken := uint32(0)
+	fmt.Printf("\nllamaEval #1")
 	llamaEval(&model, 1 /* FIXME n_threads*/, 0 /*&[]uint32{0, 1, 2, 3}*/, embdInp, logits, &memPerToken)
+	fmt.Printf("\nllamaEval #1 returned")
 
-	////int last_n_size = params.repeat_last_n;
+	lastNSize := 64 // utils.h // repeat_last_n = 64 // params.repeat_last_n;
 	////std::vector<gpt_vocab::id> last_n_tokens(last_n_size);
+	lastNTokens := make([]uint32, 0, lastNSize)
 	///std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
 
 	////if (params.interactive) {
@@ -1226,10 +1231,12 @@ func main() {
 		if len(embd) > 0 {
 			////const int64_t t_start_us = ggml_time_us();
 
+			fmt.Printf("\nllamaEval #2")
 			if err := llamaEval(&model, 1 /* FIXME params.n_threads*/, n_past, embd, logits, &memPerToken); err != nil {
 				fmt.Printf("\n[ERRRO] Failed to predict")
 				os.Exit(1)
 			}
+			fmt.Printf("\nllamaEval #2 returned")
 
 			////t_predict_us += ggml_time_us() - t_start_us;
 		}
@@ -1240,28 +1247,29 @@ func main() {
 		if len(embdInp) <= int(inputConsumed) {
 
 			// out of user input, sample next token
-			////var top_k float32 = params.top_k
-			////var top_p float32 = params.top_p
-			////var temp float32 = params.temp
-			////var repeat_penalty float32 = params.repeat_penalty
+			topK := uint32(40)             // FIXME utils.h // top_k = 40;
+			topP := float64(0.95)          // FIXME utils.h // top_p = 0.95f;
+			temp := float64(0.80)          // FIXME utils.h // temp  = 0.80f;
+			repeatPenalty := float64(1.30) // utils.h // repeat_penalty  = 1.30f;
 
-			////vocabSize := hparamsVocabSize
+			vocabSize := hparamsVocabSize
 
 			////id := 0
 
-			{
-				////const int64_t t_start_sample_us = ggml_time_us();
+			////{
+			////const int64_t t_start_sample_us = ggml_time_us();
 
-				////id = llama_sample_top_p_top_k(vocab, logits.data() + (logits.size() - n_vocab), last_n_tokens, repeat_penalty, top_k, top_p, temp, rng);
+			////id = llama_sample_top_p_top_k(vocab, logits.data() + (logits.size() - n_vocab), last_n_tokens, repeat_penalty, top_k, top_p, temp, rng);
+			id := llamaSampleTopPTopK(vocab, logits[len(logits)-int(vocabSize):], lastNTokens, repeatPenalty, topK, topP, temp /*, rng*/)
 
-				////last_n_tokens.erase(last_n_tokens.begin());
-				////last_n_tokens.push_back(id);
+			lastNTokens = lastNTokens[1:] ////last_n_tokens.erase(last_n_tokens.begin());
+			lastNTokens = append(lastNTokens, id)
 
-				////t_sample_us += ggml_time_us() - t_start_sample_us;
-			}
+			////t_sample_us += ggml_time_us() - t_start_sample_us;
+			////}
 
 			// add it to the context
-			////embd.push_back(id);
+			embd = append(embd, id)
 
 			// echo this to console
 			inputNoEcho = false
@@ -1272,15 +1280,16 @@ func main() {
 		} else {
 
 			// some user input remains from prompt or interaction, forward it to processing
-			////while (embd_inp.size() > input_consumed) {
-			////embd.push_back(embd_inp[input_consumed]);
-			////last_n_tokens.erase(last_n_tokens.begin());
-			////last_n_tokens.push_back(embd_inp[input_consumed]);
-			////++input_consumed;
-			////if (embd.size() > params.n_batch) {
-			////break;
-			////}
-			////}
+			for len(embdInp) > int(inputConsumed) {
+				embd = append(embd, embdInp[inputConsumed])
+				////lastNTokens.erase(last_n_tokens.begin())
+				lastNTokens = lastNTokens[1:]
+				lastNTokens = append(lastNTokens, embdInp[inputConsumed])
+				inputConsumed++
+				if len(embd) > /*params.n_batch*/ 8 { // FIXME utils.h // n_batch = 8; // batch size for prompt processing
+					break
+				}
+			}
 
 			// reset color to default if we there is no pending user input
 			////if (!input_noecho && params.use_color && embd_inp.size() == input_consumed) {
@@ -1373,4 +1382,155 @@ func main() {
 	////}
 
 	return
+}
+
+type pair struct {
+	first  float64
+	second uint32
+}
+
+func max(a, b float64) float64 {
+	if a >= b {
+		return a
+	}
+	return b
+}
+
+func sampleTopK(logitsID []pair, topK uint32) []pair {
+	// find the top K tokens
+
+	// std::partial_sort
+	// Rearranges elements such that the range [first, middle) contains
+	// the sorted middle − first smallest elements in the range [first, last).
+	// The order of equal elements is not guaranteed to be preserved.
+	// The order of the remaining elements in the range [middle, last) is unspecified.
+
+	/*std::partial_sort(
+	        logits_id.begin(),
+	        logits_id.begin() + top_k, logits_id.end(),
+	        [](const std::pair<double, gpt_vocab::id> & a, const std::pair<double, gpt_vocab::id> & b) {
+	    return a.first > b.first;
+	});*/
+
+	//keys := make([]double, 0, len(logitsID))
+	//for k := range logitsID {
+	//	keys = append(keys, k)
+	//}
+	//sort.Float64s(keys)
+
+	sort.Slice(logitsID[:topK], func(i, j int) bool {
+		return logitsID[i].first < logitsID[j].first
+	})
+
+	// logits_id.resize(top_k);
+	//for i := uint32(0); i < len(keys)-topK; i++ {
+	//delete(logitsID, keys[i])
+	//}
+
+	ret := make([]pair, 0, topK)
+	copy(ret, logitsID)
+
+	return ret
+}
+
+// std::mt19937 = A Mersenne Twister pseudo-random generator of 32-bit numbers with a state size of 19937 bits.
+func llamaSampleTopPTopK(
+	vocab *ml.GPTVocab,
+	logits []float32,
+	lastNTokens []uint32,
+	repeatPenalty float64,
+	topK uint32,
+	topP float64,
+	temp float64,
+	/* FIXME std::mt19937 & rng*/) uint32 {
+
+	n_logits := uint32(len(vocab.ID2Token))
+
+	////std::vector<std::pair<double, gpt_vocab::id>> logits_id;
+	////logits_id.reserve(n_logits);
+	////logitsID := make(map[float64]uint32, n_logits)
+	logitsID := make([]pair, n_logits)
+
+	{
+		scale := float64(1.0) / temp
+		for i := uint32(0); i < n_logits; i++ {
+			// repetition penalty from CTRL paper (https://arxiv.org/abs/1909.05858)
+			// credit https://github.com/facebookresearch/llama/compare/main...shawwn:llama:main
+			////if (std::find(last_n_tokens.begin(), last_n_tokens.end(), i) != last_n_tokens.end()) {
+			if slices.IndexFunc(lastNTokens, func(el uint32) bool { return el == i }) != -1 {
+				// if score < 0 then repetition penalty has to multiplied to reduce the previous token probability
+				if logits[i] < 0.0 {
+					////logits_id.push_back(std::make_pair(logits[i]*scale*repeat_penalty, i));
+					logitsID = append(logitsID, pair{float64(logits[i]) * scale * repeatPenalty, i})
+				} else {
+					////logits_id.push_back(std::make_pair(logits[i]*scale/repeat_penalty, i));
+					logitsID = append(logitsID, pair{float64(logits[i]) * scale / repeatPenalty, i})
+				}
+			} else {
+				logitsID = append(logitsID, pair{float64(logits[i]) * scale, i})
+			}
+		}
+	}
+
+	sampleTopK(logitsID, topK)
+
+	////double maxl = -INFINITY;
+	maxl := math.Inf(-1)
+	////for (const auto & kv : logits_id) {
+	for _, kv := range logitsID {
+		//// maxl = std::max(maxl, kv.first);
+		maxl = max(maxl, kv.first)
+	}
+
+	// compute probs for the top K tokens
+	probs := make([]float64, 0, uint32(len(logitsID)))
+	////probs.reserve(logits_id.size());
+
+	sum := float64(0.0)
+	////for (const auto & kv : logits_id) {
+	for _, kv := range logitsID {
+		// double p = exp(kv.first - maxl);
+		p := math.Exp(kv.first - maxl)
+		probs = append(probs, p)
+		sum += p
+	}
+
+	// normalize the probs
+	for i, _ := range probs {
+		probs[i] = probs[i] / sum
+	}
+
+	if topP < 1.0 {
+		cumsum := float64(0.0)
+		for i := uint32(0); i < uint32(len(probs)); i++ {
+			cumsum += probs[i]
+			if cumsum >= topP {
+				////probs.resize(i + 1)
+				////logits_id.resize(i + 1)
+				break
+			}
+		}
+
+		cumsum = 1.0 / cumsum
+		for i := uint32(0); i < uint32(len(probs)); i++ {
+			probs[i] *= cumsum
+		}
+	}
+
+	//printf("\n");
+	//for (int i = 0; i < (int) 10; i++) {
+	//    printf("%d: '%s' %f\n", i, vocab.id_to_token.at(logits_id[i].second).c_str(), probs[i]);
+	//}
+	//printf("\n\n");
+	//exit(0);
+
+	////std::discrete_distribution<> dist(probs.begin(), probs.end());
+
+	// std::mt19937(since C++11) class is a very efficient pseudo-random number generator
+	// and is defined in a random header file. It produces 32-bit pseudo-random numbers
+	////idx := dist(rng)
+
+	////v, _ := logitsID[idx]
+	////return logitsID[idx].second;
+	return logitsID[0].second // FIXME ASAP
 }
