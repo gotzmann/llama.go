@@ -531,19 +531,18 @@ func Eval(
 	fmt.Printf("\n[EVAL] RMS Norm...")
 
 	// used at the end to optionally extract the embeddings
-	var embeddings *ml.Tensor
+	////var embeddings *ml.Tensor
 
 	// --- norm
-	{
-		inpL = ml.RMSNorm(ctx0, inpL)
 
-		// inpL = norm*inpL
-		inpL = ml.Mul(ctx0,
-			ml.Repeat(ctx0, model.norm, inpL),
-			inpL)
+	inpL = ml.RMSNorm(ctx0, inpL)
 
-		embeddings = inpL
-	}
+	// inpL = norm*inpL
+	inpL = ml.Mul(ctx0,
+		ml.Repeat(ctx0, model.norm, inpL),
+		inpL)
+
+	////embeddings := inpL
 
 	fmt.Printf("\n[EVAL] LM Head...")
 
@@ -874,63 +873,63 @@ func LoadModel(
 
 	///////////////////////////////////////////////////////////////////////var n_ff, n_parts uint32
 
-	// load hparams
-	{
-		hparamsVocabSize, _ = readInt(reader) // vocab_size
-		hparamsEmbd, _ = readInt(reader)      // dim
-		hparamsMult, _ = readInt(reader)      // multiple_of
-		hparamsHeads, _ = readInt(reader)     // n_heads
-		hparamsLayers, _ = readInt(reader)    // n_layers
-		hparamsRot, _ = readInt(reader)       // rot = dim // n_heads [obsolete]
-		hparamsF16, _ = readInt(reader)       // ftype
+	// --- load hparams
 
-		//hparamsCtx = n_ctx
+	vocabSize, _ := readInt(reader)   // vocab_size
+	embdSize, _ := readInt(reader)    // dim
+	multSize, _ := readInt(reader)    // multiple_of
+	headsCount, _ := readInt(reader)  // n_heads
+	layersCount, _ := readInt(reader) // n_layers
+	rotCount, _ := readInt(reader)    // rot = dim // n_heads [obsolete]
+	f16, _ := readInt(reader)         // ftype
 
-		//n_ff = ((2*(4*hparams.n_embd)/3 + hparams.n_mult - 1)/hparams.n_mult)*hparams.n_mult;
-		//n_ff := ((2*(4*hparamsEmbd)/3 + hparamsMult - 1) / hparamsMult) * hparamsMult
+	//hparamsCtx = n_ctx
 
-		//n_parts = LLAMA_N_PARTS.at(hparams.n_embd);
-		//////////////////////////////////////////////////n_parts = llamaParts[hparamsEmbd]
+	//n_ff = ((2*(4*hparams.n_embd)/3 + hparams.n_mult - 1)/hparams.n_mult)*hparams.n_mult;
+	//n_ff := ((2*(4*hparamsEmbd)/3 + hparamsMult - 1) / hparamsMult) * hparamsMult
 
-		////if (n_parts < 1) {
-		////n_parts = LLAMA_N_PARTS.at(hparams.n_embd);
-		////}
+	//n_parts = LLAMA_N_PARTS.at(hparams.n_embd);
+	//////////////////////////////////////////////////n_parts = llamaParts[hparamsEmbd]
 
-		// temp warning to tell the user to use "--n_parts"
-		////if (hparams.f16 == 4 && n_parts != 1) {
-		////fprintf(stderr, "%s: GPTQ model detected - are you sure n_parts should be %d? we normally expect it to be 1\n", __func__, n_parts);
-		////fprintf(stderr, "%s: use '--n_parts 1' if necessary\n", __func__);
-		////}
+	////if (n_parts < 1) {
+	////n_parts = LLAMA_N_PARTS.at(hparams.n_embd);
+	////}
 
-		////if (hparams.n_layer == 32) {
-		////model.type = e_model::MODEL_7B;
-		////}
+	// temp warning to tell the user to use "--n_parts"
+	////if (hparams.f16 == 4 && n_parts != 1) {
+	////fprintf(stderr, "%s: GPTQ model detected - are you sure n_parts should be %d? we normally expect it to be 1\n", __func__, n_parts);
+	////fprintf(stderr, "%s: use '--n_parts 1' if necessary\n", __func__);
+	////}
 
-		////if (hparams.n_layer == 40) {
-		////model.type = e_model::MODEL_13B;
-		////}
+	////if (hparams.n_layer == 32) {
+	////model.type = e_model::MODEL_7B;
+	////}
 
-		////if (hparams.n_layer == 60) {
-		////model.type = e_model::MODEL_30B;
-		////}
+	////if (hparams.n_layer == 40) {
+	////model.type = e_model::MODEL_13B;
+	////}
 
-		////if (hparams.n_layer == 80) {
-		////model.type = e_model::MODEL_65B;
-		////}
+	////if (hparams.n_layer == 60) {
+	////model.type = e_model::MODEL_30B;
+	////}
 
-		fmt.Printf("\nvocab  = %d", hparamsVocabSize)
-		//fmt.Printf("\nctx   = %d", hparamsCtx)
-		fmt.Printf("\nembd   = %d", hparamsEmbd)
-		fmt.Printf("\nmult   = %d", hparamsMult)
-		fmt.Printf("\nheads  = %d", hparamsHeads)
-		fmt.Printf("\nlayers = %d", hparamsLayers)
-		//fmt.Printf("\nrot   = %d", hparamsRot)
-		//fmt.Printf("\nf16     = %d", hparamsF16)
-		//fmt.Printf("\nn_ff    = %d", n_ff)
-		//fmt.Printf("\nn_parts = %d", n_parts)
-	}
+	////if (hparams.n_layer == 80) {
+	////model.type = e_model::MODEL_65B;
+	////}
 
-	n_ff := ((2*(4*hparamsEmbd)/3 + hparamsMult - 1) / hparamsMult) * hparamsMult
+	fmt.Printf("\nvocab  = %d", vocabSize)
+	fmt.Printf("\nembd   = %d", embdSize)
+	fmt.Printf("\nmult   = %d", multSize)
+	fmt.Printf("\nheads  = %d", headsCount)
+	fmt.Printf("\nlayers = %d", layersCount)
+	fmt.Printf("\nrot    = %d", rotCount)
+	fmt.Printf("\nf16    = %d", f16)
+
+	//fmt.Printf("\nctx   = %d", hparamsCtx)
+	//fmt.Printf("\nn_ff    = %d", n_ff)
+	//fmt.Printf("\nn_parts = %d", n_parts)
+
+	n_ff := ((2*(4*embdSize)/3 + multSize - 1) / multSize) * multSize
 
 	// --- load vocab
 
@@ -942,10 +941,10 @@ func LoadModel(
 	// fout.write(struct.pack("f", tokenizer.get_score(i)))
 
 	// Allocate memory and increase len / cap for the whole space
-	vocab.ID2Token = slices.Grow(vocab.ID2Token, int(hparamsVocabSize))
-	vocab.ID2Token = vocab.ID2Token[0:hparamsVocabSize:hparamsVocabSize]
+	vocab.ID2Token = slices.Grow(vocab.ID2Token, int(vocabSize))
+	vocab.ID2Token = vocab.ID2Token[0:vocabSize:vocabSize]
 
-	for i := uint32(0); i < hparamsVocabSize; i++ {
+	for i := uint32(0); i < vocabSize; i++ {
 
 		len, _ := readInt(reader)
 		//word := make([]byte, len)
@@ -999,7 +998,7 @@ func LoadModel(
 	//{
 	//typeSize := ml.TypeSizeFloat(wtype)
 	//////////////////////////////////////////////////////////////////typeSize := ml.TYPE_SIZE[wtype]
-	ctxSize := uint32(0)
+	////ctxSize := uint32(0)
 	////const auto & hparams = model.hparams;
 	/////////////////////////////////////////////////////////////////embd := hparamsEmbd
 	////////////////////////////////////////////////////////////////layers := hparamsLayers
@@ -1030,35 +1029,37 @@ func LoadModel(
 	////fmt.Printf("\nggml ctx size = %.2f MB", float32(ctxSize)/(1024*1024))
 	//}
 
-	// create the ggml context
-	{
-		params := ml.InitParams{
-			MemSize:   uint64(ctxSize),
-			MemBuffer: nil,
-		}
+	// --- create the ggml context
+	////{
+	//// lctx.model.buf.resize(ctx_size);
 
-		model.ctx = ml.Init(params)
-		if model.ctx == nil {
-			fmt.Printf("\nggml_init() failed")
-			return nil // FIXME ERR
-		}
-	}
+	////params := ml.InitParams{
+	////MemSize:   uint64(ctxSize),
+	////MemBuffer: nil,
+	////}
+
+	model.ctx = ml.Init(ml.InitParams{})
+	////if model.ctx == nil {
+	////fmt.Printf("\nggml_init() failed")
+	////return nil // FIXME ERR
+	////}
+	////}
 
 	// prepare memory for the weights
 	{
 		//const auto & hparams = model.hparams;
 
-		embd := hparamsEmbd
-		layers := hparamsLayers
+		////embd := EmbdSize
+		////layers := hparamsLayers
 		//ctxSize := hparamsCtx
-		vocabSize := hparamsVocabSize
+		////vocabSize := hparamsVocabSize
 
-		////model.layers.resize(layers) // FIXME
+		////model.layers.resize(layers) // FIXME ASAP
 
-		model.tokEmbeddings = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, vocabSize)
+		model.tokEmbeddings = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize)
 
-		model.norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embd)
-		model.output = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, vocabSize)
+		model.norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize)
+		model.output = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize)
 
 		// map by name
 		model.tensors["tok_embeddings.weight"] = model.tokEmbeddings
@@ -1066,22 +1067,22 @@ func LoadModel(
 		model.tensors["norm.weight"] = model.norm
 		model.tensors["output.weight"] = model.output
 
-		model.layers = make([]Layer, layers)
-		for i := uint32(0); i < layers; i++ {
+		model.layers = make([]Layer, layersCount)
+		for i := uint32(0); i < layersCount; i++ {
 			//auto & layer = model.layers[i];
 
-			model.layers[i].attentionNorm = ml.NewTensor1D(ctx, ml.TYPE_F32, embd)
+			model.layers[i].attentionNorm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize)
 
-			model.layers[i].wq = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, embd)
-			model.layers[i].wk = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, embd)
-			model.layers[i].wv = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, embd)
-			model.layers[i].wo = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, embd)
+			model.layers[i].wq = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize)
+			model.layers[i].wk = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize)
+			model.layers[i].wv = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize)
+			model.layers[i].wo = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize)
 
-			model.layers[i].ffn_norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embd)
+			model.layers[i].ffn_norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize)
 
-			model.layers[i].w1 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, n_ff)
-			model.layers[i].w2 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, n_ff, embd)
-			model.layers[i].w3 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embd, n_ff)
+			model.layers[i].w1 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, n_ff)
+			model.layers[i].w2 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, n_ff, embdSize)
+			model.layers[i].w3 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, n_ff)
 
 			// map by name
 			prefix := fmt.Sprintf("layers.%d.", i)
@@ -1101,16 +1102,22 @@ func LoadModel(
 		}
 	}
 
+	////if (progress_callback) {
+	////progress_callback(0.0, progress_callback_user_data);
+	////}
+
+	/* REMOVED FROM v2 ?
+
 	// key + value memory
 	{
 		//const auto & hparams = model.hparams;
 
-		embd := hparamsEmbd
-		layers := hparamsLayers
+		////embd := hparamsEmbd
+		////layers := hparamsLayers
 		//ctxSize := hparamsCtx
 		//mem := layers * ctxSize
 		//elements := embd * mem
-		elements := embd * layers // FIXME
+		elements := embdSize * layersCount // FIXME
 
 		model.memoryK = ml.NewTensor1D(ctx, ml.TYPE_F32, elements)
 		model.memoryV = ml.NewTensor1D(ctx, ml.TYPE_F32, elements)
@@ -1119,7 +1126,7 @@ func LoadModel(
 
 		////fmt.Printf("\nmemory_size = %8.2f MB, n_mem = %d\n", memorySize/1024.0/1024.0, mem);
 	}
-
+	*/
 	////const size_t file_offset = fin.tellg();
 
 	////fin.close();
@@ -1127,6 +1134,10 @@ func LoadModel(
 	//std::vector<uint8_t> tmp;
 
 	////tmp := []byte{}
+
+	////if (progress_callback) {
+	////progress_callback(0.0, progress_callback_user_data);
+	////}
 
 	for i := 0; i < int(n_parts); /*++i*/ i++ {
 
@@ -1432,7 +1443,17 @@ func LoadModel(
 				}
 
 				//fmt.Printf("%42s - [%5d, %5d], type = %6s, %6.2f MB\n", name.data(), ne[0], ne[1], ftype == 0 ? "float" : "f16", ggml_nbytes(tensor)/1024.0/1024.0);
+
 				n_tensors++
+				model.loadedCount++
+
+				// progress
+				////if (progress_callback) {
+				////double current_file_progress = double(size_t(fin.tellg()) - file_offset) / double(file_size - file_offset);
+				////double current_progress = (double(i) + current_file_progress) / double(n_parts);
+				////progress_callback(current_progress, progress_callback_user_data);
+				////}
+
 				////if n_tensors%8 == 0 {
 				////fmt.Printf(".")
 				////fflush(stderr);
@@ -1442,11 +1463,23 @@ func LoadModel(
 
 			////fmt.Printf("\ndone")
 
-			////fmt.Printf("\nmodel size = %.2f MB / num tensors = %d", total_size/1024.0/1024.0, n_tensors)
+			////fprintf(stderr, "%s: model size = %8.2f MB / num tensors = %d\n", __func__, total_size/1024.0/1024.0, model.n_loaded);
+			////if (model.n_loaded == 0) {
+			////fprintf(stderr, "%s: WARN no tensors loaded from model file - assuming empty model for testing\n", __func__);
+			////} else if (model.n_loaded != (int) model.tensors.size()) {
+			////fprintf(stderr, "%s: ERROR not all tensors loaded from model file - expected %zu, got %d\n", __func__, model.tensors.size(), model.n_loaded);
+			////return false;
+			////}
 		}
 
 		////fin.close();
 	}
+
+	////lctx.t_load_us = ggml_time_us() - t_start_us;
+
+	////if (progress_callback) {
+	////progress_callback(1.0, progress_callback_user_data);
+	////}
 
 	return nil
 }
