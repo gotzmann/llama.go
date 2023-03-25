@@ -143,7 +143,7 @@ func main() {
 
 	////int64_t t_load_us = 0;
 
-/* MY
+	/* MY
 
 	////gpt_vocab vocab;
 
@@ -157,29 +157,37 @@ func main() {
 		fmt.Printf("\n[main] Failed to load model from '%s'", modelName)
 		return
 	}
-*/
+	*/
 
-    ctx := llama.NewContext()
+	modelName := "./models/7B/ggml-model-fp32.bin"
+	ctx := llama.NewContext()
+	lparams := llama.ContextParams{}
 
-    // load the model
-    {
-        auto lparams = llama_context_default_params();
+	// --- load the model
 
-        lparams.n_ctx      = params.n_ctx;
-        lparams.n_parts    = params.n_parts;
-        lparams.seed       = params.seed;
-        lparams.f16_kv     = params.memory_f16;
-        lparams.logits_all = params.perplexity;
-        lparams.use_mlock  = params.use_mlock;
-        lparams.embedding  = params.embedding;
+	////auto lparams = llama_context_default_params();
 
-        ctx = llama_init_from_file(params.model.c_str(), lparams);
+	////lparams.n_ctx      = params.n_ctx;
+	////lparams.n_parts    = params.n_parts;
+	////lparams.seed       = params.seed;
+	////lparams.f16_kv     = params.memory_f16;
+	////lparams.logits_all = params.perplexity;
+	////lparams.use_mlock  = params.use_mlock;
+	////lparams.embedding  = params.embedding;
 
-        if (ctx == NULL) {
-            fprintf(stderr, "%s: error: failed to load model '%s'\n", __func__, params.model.c_str());
-            return 1;
-        }
-    }
+	lctx, err := llama.InitFromFile(modelName, &lparams)
+	if err != nil {
+		fmt.Printf("\n[ERROR] error: failed to load model '%s'", modelName)
+		os.Exit(1)
+	}
+
+	////if (ctx == NULL) {
+	////fprintf(stderr, "%s: error: failed to load model '%s'\n", __func__, params.model.c_str());
+	////return 1;
+	////}
+
+	vocab := lctx.Vocab
+	model := lctx.Model
 
 	// print system information
 	////{
@@ -187,38 +195,36 @@ func main() {
 	//    params.n_threads, std::thread::hardware_concurrency(), llama_print_system_info());
 	////}
 
+	// determine the maximum memory usage needed to do inference for the given n_batch and n_predict parameters
+	// uncomment the "used_mem" line in llama.cpp to see the results
+	////if (params.mem_test) {
+	////{
+	////const std::vector<llama_token> tmp(params.n_batch, 0);
+	////llama_eval(ctx, tmp.data(), tmp.size(), 0, params.n_threads);
+	////}
 
+	////{
+	////const std::vector<llama_token> tmp = { 0, };
+	////llama_eval(ctx, tmp.data(), tmp.size(), params.n_predict - 1, params.n_threads);
+	////}
 
-    // determine the maximum memory usage needed to do inference for the given n_batch and n_predict parameters
-    // uncomment the "used_mem" line in llama.cpp to see the results
-    ////if (params.mem_test) {
-        ////{
-            ////const std::vector<llama_token> tmp(params.n_batch, 0);
-            ////llama_eval(ctx, tmp.data(), tmp.size(), 0, params.n_threads);
-        ////}
+	////llama_print_timings(ctx);
+	////llama_free(ctx);
 
-        ////{
-            ////const std::vector<llama_token> tmp = { 0, };
-            ////llama_eval(ctx, tmp.data(), tmp.size(), params.n_predict - 1, params.n_threads);
-        ////}
+	////return 0;
+	////}
 
-        ////llama_print_timings(ctx);
-        ////llama_free(ctx);
-
-        ////return 0;
-    ////}
-
-    ////if (params.perplexity) {
-        ////perplexity(ctx, params);
-        ////exit(0);
-    ////}
+	////if (params.perplexity) {
+	////perplexity(ctx, params);
+	////exit(0);
+	////}
 
 	n_past := uint32(0)
 
-	////int64_t t_sample_us  = 0;
-	////int64_t t_predict_us = 0;
+	//logits := make([]float32, 0)
 
-	logits := make([]float32, 0)
+	// Add a space in front of the first character to match OG llama tokenizer behavior
+	////params.prompt.insert(0, 1, ' ');
 
 	// tokenize the prompt
 	prompt := "The best programming language to create general AI and profitable ML startup: "
@@ -228,10 +234,35 @@ func main() {
 	embdInp := ml.Tokenize(vocab, prompt, true)
 	fmt.Printf("\n\n=== TOKENIZER ===\n\n%+v", embdInp)
 
-	////params.n_predict = std::min(params.n_predict, model.hparams.n_ctx - (int) embd_inp.size());
+	// tokenize the prompt
+	////auto embd_inp = ::llama_tokenize(ctx, params.prompt, true);
 
-	// tokenize the reverse prompt
-	////std::vector<gpt_vocab::id> antiprompt_inp = ::llama_tokenize(vocab, params.antiprompt, false);
+	////const int n_ctx = llama_n_ctx(ctx);
+
+	////params.n_predict = std::min(params.n_predict, n_ctx - (int) embd_inp.size());
+
+	// prefix & suffix for instruct mode
+	////inpPrefix := ml.Tokenize(vocab, "\n\n### Instruction:\n\n", true)
+	////inpSuffix := ml.Tokenize(vocab, "\n\n### Response:\n\n", false)
+
+	// in instruct mode, we inject a prefix and a suffix to each input by the user
+	////if params.instruct {
+	////params.interactive = true
+	////params.antiprompt.push_back("### Instruction:\n\n");
+	////}
+
+	// enable interactive mode if reverse prompt is specified
+	////if params.antiprompt.size() != 0) {
+	////params.interactive = true;
+	////}
+
+	////if (params.interactive_start) {
+	////params.interactive = true;
+	////}
+
+	// determine newline token
+	tokenNewline := ml.Tokenize(vocab, "\n", false)
+	fmt.Printf("\n NEWLINE = %+v", tokenNewline)
 
 	fmt.Printf("\nPROMPT = '%s'\n", prompt)
 	fmt.Printf("\n#TOKENS = %d\n", len(embdInp))

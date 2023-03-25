@@ -61,25 +61,25 @@ type Context struct {
 	n_sample uint32 // number of tokens sampled
 	n_eval   uint32 // number of eval calls
 
-	model Model
-	vocab ml.Vocab
+	Model Model
+	Vocab ml.Vocab
 
 	////size_t mem_per_token = 0;
 
 	// decode output (2-dimensional array: [n_tokens][n_vocab])
-	logits    []float32
-	logitsAll bool
+	Logits    []float32
+	LogitsAll bool
 
 	// input embedding (1-dimensional array: [n_embd])
-	embedding []float32
+	Embedding []float32
 }
 
 func NewContext() *Context {
 	return &Context{
-		model:     NewModel(),
-		vocab:     *ml.NewVocab(),
-		logits:    make([]float32, 0), // TODO Cap?
-		embedding: make([]float32, 0), // TODO Cap?
+		Model:     NewModel(),
+		Vocab:     *ml.NewVocab(),
+		Logits:    make([]float32, 0), // TODO Cap?
+		Embedding: make([]float32, 0), // TODO Cap?
 	}
 }
 
@@ -116,11 +116,11 @@ func InitFromFile(fileName string, params ContextParams) (*Context, error) {
 	////}
 
 	////ctx->rng = std::mt19937(params.seed);
-	ctx.logitsAll = params.logitsAll
+	ctx.LogitsAll = params.logitsAll
 
 	////ggml_type memory_type = params.f16_kv ? GGML_TYPE_F16 : GGML_TYPE_F32;
 
-	err := LoadModel(fileName, ctx, params.n_ctx, params.n_parts, /*memory_type,*/
+	err := LoadModel(fileName, ctx /*params.n_ctx,*/, uint32(params.n_parts), /*memory_type,*/
 		params.vocabOnly, /*params.progress_callback,
 		params.progress_callback_user_data*/)
 
@@ -303,7 +303,7 @@ func Eval(
 	// FIXME Load hyper parameters into model itself
 	//const auto & hparams = model.hparams;
 
-	model := lctx.model
+	model := lctx.Model
 	////hparams := model.hparams
 
 	embdSize := hparamsEmbd
@@ -539,9 +539,9 @@ func Eval(
 
 	// extract logits
 	{
-		logitsOut := lctx.logits
+		logitsOut := lctx.Logits
 
-		if lctx.logitsAll {
+		if lctx.LogitsAll {
 			////logits_out.resize(n_vocab * N);
 			logitsOut = Resize(logitsOut, vocabSize*int(N))
 			////memcpy(logits_out.data(), (float *) ggml_get_data(inpL), sizeof(float)*n_vocab*N); // FIXME ASAP
@@ -555,8 +555,8 @@ func Eval(
 	}
 
 	// extract embeddings
-	if len(lctx.embedding) > 0 {
-		embeddingOut := lctx.embedding
+	if len(lctx.Embedding) > 0 {
+		embeddingOut := lctx.Embedding
 
 		////embedding_out.resize(n_embd);
 		embeddingOut = Resize(embeddingOut, int(embdSize))
@@ -635,9 +635,9 @@ func SampleTopPTopK(
 
 	//-//auto & rng = lctx.rng;
 	//-//const auto & vocab = lctx.vocab;
-	vocab := lctx.vocab
+	vocab := lctx.Vocab
 	//-//const auto & logits = lctx.logits;
-	logits := lctx.logits
+	logits := lctx.Logits
 
 	n_logits := uint32(len(vocab.ID2Token))
 
@@ -737,18 +737,18 @@ func SampleTopPTopK(
 func LoadModel(
 	fileName string, //const std::string & fname,
 	lctx *Context,
-	n_ctx int,
-	n_parts int,
-	//ggml_type memory_type,
+	////n_ctx uint32,
+	n_parts uint32,
+	////ggml_type memory_type,
 	vocabOnly bool,
-	//llama_progress_callback progress_callback,
-	//void *progress_callback_user_data
+	////llama_progress_callback progress_callback,
+	////void *progress_callback_user_data
 ) error {
 
 	fmt.Printf("\n[LoadModel] Loading model from '%s' - please wait ...\n", fileName)
 
-	model := lctx.model
-	vocab := lctx.vocab
+	model := lctx.Model
+	vocab := lctx.Vocab
 
 	data, err := os.Open(fileName)
 	if err != nil {
@@ -831,7 +831,8 @@ func LoadModel(
 		//hparamsCtx = n_ctx
 
 		//n_ff = ((2*(4*hparams.n_embd)/3 + hparams.n_mult - 1)/hparams.n_mult)*hparams.n_mult;
-		n_ff := ((2*(4*hparamsEmbd)/3 + hparamsMult - 1) / hparamsMult) * hparamsMult
+		//n_ff := ((2*(4*hparamsEmbd)/3 + hparamsMult - 1) / hparamsMult) * hparamsMult
+
 		//n_parts = LLAMA_N_PARTS.at(hparams.n_embd);
 		//////////////////////////////////////////////////n_parts = llamaParts[hparamsEmbd]
 
@@ -873,6 +874,8 @@ func LoadModel(
 		//fmt.Printf("\nn_parts = %d", n_parts)
 	}
 
+	n_ff := ((2*(4*hparamsEmbd)/3 + hparamsMult - 1) / hparamsMult) * hparamsMult
+
 	// --- load vocab
 
 	fmt.Printf("\n\n[LoadModel] Loading vocab...")
@@ -906,7 +909,7 @@ func LoadModel(
 
 	////case 1: wtype = GGML_TYPE_F16;  break;
 
-	wtype := ml.TYPE_F16 // FIXME dtype
+	/////////////////////////////////////////////////////////////////////wtype := ml.TYPE_F16 // FIXME dtype
 
 	////case 2: wtype = GGML_TYPE_Q4_0; break;
 	////case 3: wtype = GGML_TYPE_Q4_1; break;
@@ -926,34 +929,34 @@ func LoadModel(
 	// FIXME Context size calculations - do we need this ??
 	//{
 	//typeSize := ml.TypeSizeFloat(wtype)
-	typeSize := ml.TYPE_SIZE[wtype]
+	//////////////////////////////////////////////////////////////////typeSize := ml.TYPE_SIZE[wtype]
 	ctxSize := uint32(0)
 	////const auto & hparams = model.hparams;
-	embd := hparamsEmbd
-	layers := hparamsLayers
+	/////////////////////////////////////////////////////////////////embd := hparamsEmbd
+	////////////////////////////////////////////////////////////////layers := hparamsLayers
 	////const int n_ctx   = hparams.n_ctx;
-	vocabSize := hparamsVocabSize
+	///////////////////////////////////////////////////////////////////vocabSize := hparamsVocabSize
 
-	ctxSize += embd * vocabSize * typeSize                              /* ggml_type_sizef(wtype) */         // tok_embeddings
-	ctxSize += embd * 4                                                 /* ggml_type_sizef(GGML_TYPE_F32) */ // norm
-	ctxSize += embd * vocabSize * typeSize                              /* ggml_type_sizef(wtype) */         // output
-	ctxSize += layers * (embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */) // attention_norm
+	////ctxSize += embd * vocabSize * typeSize                              /* ggml_type_sizef(wtype) */         // tok_embeddings
+	////ctxSize += embd * 4                                                 /* ggml_type_sizef(GGML_TYPE_F32) */ // norm
+	////ctxSize += embd * vocabSize * typeSize                              /* ggml_type_sizef(wtype) */         // output
+	////ctxSize += layers * (embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */) // attention_norm
 
-	ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wq
-	ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wk
-	ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wv
-	ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wo
+	////ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wq
+	////ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wk
+	////ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wv
+	////ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wo
 
-	ctxSize += layers * (embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */) // ffn_norm
+	/////ctxSize += layers * (embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */) // ffn_norm
 
-	ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w1
-	ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w2
-	ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w3
+	////ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w1
+	////ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w2
+	////ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w3
 
-	ctxSize += ctxSize * layers * embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */ // memory_k
-	ctxSize += ctxSize * layers * embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */ // memory_v
+	////ctxSize += ctxSize * layers * embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */ // memory_k
+	/////ctxSize += ctxSize * layers * embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */ // memory_v
 
-	ctxSize += (5 + 10*layers) * 256 // object overhead
+	////ctxSize += (5 + 10*layers) * 256 // object overhead
 
 	////fmt.Printf("\nggml ctx size = %.2f MB", float32(ctxSize)/(1024*1024))
 	//}
@@ -1056,7 +1059,7 @@ func LoadModel(
 
 	////tmp := []byte{}
 
-	for i := uint32(0); i < n_parts; /*++i*/ i++ {
+	for i := 0; i < int(n_parts); /*++i*/ i++ {
 
 		part_id := i
 		//commented const int part_id = n_parts - i - 1;
@@ -1108,7 +1111,7 @@ func LoadModel(
 				nelements := uint32(1)
 				//int32_t ne[2] = { 1, 1 };
 				ne := [2]uint32{1, 1} // FIXME Why only 2 ??
-				for i = uint32(0); i < dims; i++ {
+				for i := uint32(0); i < dims; i++ {
 					////fin.read(reinterpret_cast<char *>(&ne[i]), sizeof(ne[i]));
 					ne[i], _ = readInt(reader)
 					////nelements *= ne[i]
@@ -1331,7 +1334,7 @@ func LoadModel(
 							offset_row := i1 * row_size
 							////offset = offset_row + ((part_id*np0)/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
 
-							offset := offset_row + part_id*np0*ml.TYPE_SIZE[tensor.Type]
+							offset := offset_row + uint32(part_id)*np0*ml.TYPE_SIZE[tensor.Type]
 							fmt.Print(offset)
 
 							////fin.read(reinterpret_cast<char *>(tensor->data) + offset, row_size/n_parts);
@@ -1344,7 +1347,7 @@ func LoadModel(
 
 						for i1 := uint32(0); i1 < ne[1]; i1++ {
 							////const size_t offset_row = (i1 + part_id*np1)*row_size;
-							offset_row := (i1 + part_id*np1) * row_size
+							offset_row := (i1 + uint32(part_id)*np1) * row_size
 							////fin.read(reinterpret_cast<char *>(tensor->data) + offset_row, row_size);
 							fmt.Print(offset_row)
 						}

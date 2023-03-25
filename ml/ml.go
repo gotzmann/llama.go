@@ -3395,8 +3395,8 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 func TokenizeOld(vocab *Vocab, text string, bos bool) []uint32 {
 
 	// TODO: Calculate this constant from the vocabulary
-	MAX_TOKEN_LEN := uint32(18)
-	length := uint32(len(text))
+	MAX_TOKEN_LEN := 18
+	length := len(text)
 
 	////std::vector<gpt_vocab::id> res;
 	res := make([]uint32, 0)
@@ -3412,9 +3412,9 @@ func TokenizeOld(vocab *Vocab, text string, bos bool) []uint32 {
 	prev := make([]uint32, length+1)
 
 	// Forward pass
-	for i := uint32(0); i < length; i++ {
+	for i := 0; i < length; i++ {
 		maxLen := min(length-i, MAX_TOKEN_LEN)
-		for subLen := uint32(1); subLen <= maxLen; subLen++ {
+		for subLen := 1; subLen <= maxLen; subLen++ {
 			////auto sub = text.substr(i, sub_len);
 			sub := text[i : i+subLen]
 			////auto token = vocab.token_to_id.find(sub);
@@ -3446,7 +3446,7 @@ func TokenizeOld(vocab *Vocab, text string, bos bool) []uint32 {
 		////res.push_back(token_id);
 		res = append(res, tokenID)
 		////auto token = (*vocab.id_to_token.find(token_id)).second;
-		token, _ := vocab.ID2Token[tokenID]
+		token := vocab.ID2Token[tokenID].Token
 		i -= len(token)
 	}
 
