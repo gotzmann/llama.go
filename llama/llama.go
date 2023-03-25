@@ -318,22 +318,11 @@ func ResizeInplace(slice *[]float32, size int) {
 
 // evaluate the transformer
 //
-//   - model:     the model
-//   - n_threads: number of threads to use
+//   - lctx:      llama context
+//   - tokens:    new batch of tokens to process
 //   - n_past:    the context size so far
-//   - embd_inp:  the embeddings of the tokens in the context
-//   - embd_w:    the predicted logits for the next token
+//   - n_threads: number of threads to use
 //
-// The GPT-J model requires about 16MB of memory per input token.
-//
-
-//bool llama_eval(
-//    const llama_model & model,
-//    const int n_threads,
-//    const int n_past,
-//    const std::vector<gpt_vocab::id> & embd_inp,
-//          std::vector<float>         & embd_w,
-//          size_t                     & mem_per_token) {
 
 func Eval(
 
@@ -344,61 +333,53 @@ func Eval(
 	threadsCount uint32) error {
 
 	N := tokensCount
-
 	model := lctx.Model
+	kvSelf := model.kvSelf
+
+	//// LLAMA_ASSERT(!!kv_self.ctx);
 
 	embdSize := model.hparams.embdSize
-	layers := model.hparams.layersCount
+	layersCount := model.hparams.layersCount
 	////ctx := hparamsCtx
 	headsCount := model.hparams.headsCount
 	vocabSize := model.hparams.vocabSize
-	rot := model.hparams.embdSize / model.hparams.headsCount
+	rotCount := model.hparams.embdSize / model.hparams.headsCount
 
 	////auto & mem_per_token = lctx.mem_per_token;
-
-	// TODO: fix this hardcoded size
-	////static size_t buf_size = 2048u*1024*1024; // TMP !!!
-	////static void * buf = malloc(buf_size);
-
-	////if (mem_per_token > 0 && mem_per_token*N > buf_size) {
-	////    const size_t buf_size_new = 1.3*(mem_per_token*N); // add 30% to account for ggml object overhead
-
-	//fmt.Printf("\n%s: reallocating buffer from %zu to %zu bytes\n", __func__, buf_size, buf_size_new);
-
-	// reallocate
-	////    buf_size = buf_size_new;
-	////    buf = realloc(buf, buf_size);
-	////    if (buf == nullptr) {
-	////        fmt.Printf("%s: failed to allocate %zu bytes\n", __func__, buf_size);
-	////        return false;
-	////    }
-	////}
+	////auto & buf_compute   = lctx.buf_compute;
 
 	////struct ggml_init_params params = {
-	////    / *.mem_size   =* / buf_size,
-	////    / *.mem_buffer =* / buf,
+	////    /*.mem_size   =*/ buf_compute.size(),
+	////    /*.mem_buffer =*/ buf_compute.data(),
 	////};
 
 	////struct ggml_context * ctx0 = ggml_init(params);
 	ctx0 := ml.Init(ml.InitParams{})
+
+	// for big prompts, if BLAS is enabled, it is better to use only one thread
+	// otherwise, the threads are spin-lock waiting for the BLAS calls and are degrading the performance
 	////ggml_cgraph gf = {};
+	////gf.n_threads = N > 255 && ggml_cpu_has_blas() ? 1 : n_threads;
 	gf := ml.Graph{Threads: threadsCount}
 
 	embd := ml.NewTensor1D(ctx0, ml.TYPE_I32, N) // FIXME Will be created as FP32 anyway
-
 	////memcpy(embd->data, tokens, N*ggml_element_size(embd));
 	// FIXME Refactore inline initialization
 	embd.Type = ml.TYPE_F32
-	for em := uint32(0); em < N; em++ {
-		embd.Data[em] = float32(tokens[em])
+	for id := uint32(0); id < N; id++ {
+		embd.Data[id] = float32(tokens[id])
 	}
 
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
 
-	for il := uint32(0); il < layers; il++ {
+	fmt.Printf("\n\nmodel.tokEmbeddings = %+v", model.tokEmbeddings) // DEBUG
+
+	for il := uint32(0); il < layersCount; il++ {
 		inpSA := inpL
 
 		//var cur *ml.Tensor
+
+		////lctx.use_buf(ctx0, 0);
 
 		// norm
 		cur := ml.RMSNorm(ctx0, inpL)
@@ -422,35 +403,40 @@ func Eval(
 			if N >= 1 {
 
 				// !!! FIXME !!!
+				/*
+					////struct ggml_tensor * k = ggml_view_1d(ctx0, model.memory_k, N*n_embd, (ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past));
+					k := ml.View1D(ctx0, model.memoryK, N*embdSize / *(ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past)* /)
+					v := ml.View1D(ctx0, model.memoryV, N*embdSize / *, (ggml_element_size(model.memory_v)*n_embd)*(il*n_ctx + n_past)* /)
+					////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
+					ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Kcur, k)) // K
+					ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Vcur, v)) // V
+				*/
+				k := ml.View1D(ctx0, kvSelf.k, N*embdSize /*, (ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past)*/)
+				v := ml.View1D(ctx0, kvSelf.v, N*embdSize /*, (ggml_element_size(kv_self.v)*n_embd)*(il*n_ctx + n_past)*/)
 
-				////struct ggml_tensor * k = ggml_view_1d(ctx0, model.memory_k, N*n_embd, (ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past));
-				k := ml.View1D(ctx0, model.memoryK, N*embdSize /*(ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past)*/)
-
-				v := ml.View1D(ctx0, model.memoryV, N*embdSize /*, (ggml_element_size(model.memory_v)*n_embd)*(il*n_ctx + n_past)*/)
-
-				////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
-				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Kcur, k)) // K
-
-				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Vcur, v)) // V
+				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Kcur, k))
+				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Vcur, v))
 			}
 
 			// Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)
-			Q := ml.Permute(ctx0,
-				ml.Rope(ctx0,
-					ml.Copy(ctx0,
-						Qcur,
-						ml.NewTensor3D(ctx0, ml.TYPE_F32, embdSize/headsCount, headsCount, N)),
-					pastCount, rot, 0),
-				0, 2, 1, 3)
+			Q :=
+				ml.Permute(ctx0,
+					ml.Rope(ctx0,
+						ml.Copy(ctx0,
+							Qcur,
+							ml.NewTensor3D(ctx0, ml.TYPE_F32, embdSize/headsCount, headsCount, N)),
+						pastCount, rotCount, 0),
+					0, 2, 1, 3)
 
 			// K = Kmem.view(n_embd/n_head, n_head, n_past + N).permute(0, 2, 1, 3)
-			K := ml.Permute(ctx0,
-				ml.Rope(ctx0,
-					ml.Reshape3D(ctx0,
-						ml.View1D(ctx0, model.memoryK, (pastCount+N)*embdSize /*, il*n_ctx*ggml_element_size(model.memory_k)*n_embd*/),
-						embdSize/headsCount, headsCount, pastCount+N),
-					pastCount, rot, 1),
-				0, 2, 1, 3)
+			K :=
+				ml.Permute(ctx0,
+					ml.Rope(ctx0,
+						ml.Reshape3D(ctx0,
+							ml.View1D(ctx0, kvSelf.k, (pastCount+N)*embdSize /*, il*n_ctx*ggml_element_size(model.memory_k)*n_embd*/),
+							embdSize/headsCount, headsCount, pastCount+N),
+						pastCount, rotCount, 1),
+					0, 2, 1, 3)
 
 			// K * Q
 			////struct ggml_tensor * KQ = ggml_mul_mat(ctx0, K, Q);
@@ -476,10 +462,10 @@ func Eval(
 				ml.Copy(ctx0,
 					ml.Permute(ctx0,
 						ml.Reshape3D(ctx0, // FIXME down ^^^
-							ml.View1D(ctx0, model.memoryV, (pastCount+N)*embdSize), /* (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_v)*n_embd)*/
+							ml.View1D(ctx0, kvSelf.v, (pastCount+N)*embdSize), /* (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_v)*n_embd)*/
 							embdSize/headsCount, headsCount, pastCount+N),
 						1, 2, 0, 3),
-					ml.NewTensor3D(ctx0, ml.TYPE_F32, pastCount+N, embdSize/headsCount, headsCount))
+					ml.NewTensor3D(ctx0, ml.TYPE_F32 /* kv_self.v->type */, pastCount+N, embdSize/headsCount, headsCount))
 
 			// KQV = transpose(V) * KQ_soft_max
 			KQV := ml.MulMat(ctx0, VTrans, KQSoftMax)
@@ -499,6 +485,8 @@ func Eval(
 		}
 
 		fmt.Printf("\n[EVAL] Feed-forward network #%d...", il)
+
+		////lctx.use_buf(ctx0, 1);
 
 		inpFF := ml.Add(ctx0, cur, inpSA)
 
@@ -538,10 +526,12 @@ func Eval(
 		inpL = cur
 	}
 
+	////lctx.use_buf(ctx0, 0);
+
 	fmt.Printf("\n[EVAL] RMS Norm...")
 
 	// used at the end to optionally extract the embeddings
-	////var embeddings *ml.Tensor
+	var embeddings *ml.Tensor
 
 	// --- norm
 	{
@@ -552,7 +542,7 @@ func Eval(
 			ml.Repeat(ctx0, model.norm, inpL),
 			inpL)
 
-		////embeddings = inpL
+		embeddings = inpL
 	}
 
 	fmt.Printf("\n[EVAL] LM Head...")
@@ -560,8 +550,10 @@ func Eval(
 	// lm_head
 	inpL = ml.MulMat(ctx0, model.output, inpL)
 
+	////lctx.use_buf(ctx0, -1);
+
 	// logits -> probs
-	//inpL = ggml_soft_max(ctx0, inpL);
+	// COMMentED inpL = ggml_soft_max(ctx0, inpL);
 
 	// run the computation
 	fmt.Printf("\n[EVAL] BuildForwardExpand...")
@@ -570,13 +562,13 @@ func Eval(
 	fmt.Printf("\n[EVAL] GraphCompute...")
 	ml.GraphCompute(ctx0, &gf)
 
-	//if (n_past%100 == 0) {
-	//    ggml_graph_print   (&gf);
-	//    ggml_graph_dump_dot(&gf, NULL, "gpt-2.dot");
-	//}
+	// COMMenteD  if (n_past%100 == 0) {
+	// COMMenteD    ggml_graph_print   (&gf);
+	// COMMenteD    ggml_graph_dump_dot(&gf, NULL, "gpt-2.dot");
+	// COMMenteD }
 
-	//embd_w.resize(n_vocab*N);
-	//memcpy(embd_w.data(), ggml_get_data(inpL), sizeof(float)*n_vocab*N);
+	// COMMenteD embd_w.resize(n_vocab*N);
+	// COMMenteD  memcpy(embd_w.data(), ggml_get_data(inpL), sizeof(float)*n_vocab*N);
 
 	// extract logits
 	{
@@ -584,14 +576,22 @@ func Eval(
 
 		if lctx.LogitsAll {
 			////logits_out.resize(n_vocab * N);
-			logitsOut = Resize(logitsOut, vocabSize*int(N))
-			////memcpy(logits_out.data(), (float *) ggml_get_data(inpL), sizeof(float)*n_vocab*N); // FIXME ASAP
+			logitsOut = Resize(logitsOut, int(vocabSize*N))
+			////memcpy(logits_out.data(), (float *) ggml_get_data(inpL), sizeof(float)*n_vocab*N);
+			// FIXME Double Check !!
+			for i := uint32(0); i < vocabSize*N; i++ {
+				logitsOut[i] = inpL.Data[i]
+			}
 		} else {
 
 			// return result for just the last token
 			////logits_out.resize(n_vocab);
-			logitsOut = Resize(logitsOut, vocabSize)
-			////memcpy(logits_out.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab); // FIXME ASAP
+			logitsOut = Resize(logitsOut, int(vocabSize))
+			////memcpy(logits_out.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
+			// FIXME Double Check !!
+			for i := uint32(0); i < vocabSize; i++ {
+				logitsOut[i] = inpL.Data[i]
+			}
 		}
 	}
 
@@ -601,7 +601,11 @@ func Eval(
 
 		////embedding_out.resize(n_embd);
 		embeddingOut = Resize(embeddingOut, int(embdSize))
-		////memcpy(embedding_out.data(), (float *) ggml_get_data(embeddings) + (n_embd*(N - 1)), sizeof(float)*n_embd); // FIXME ASAP
+		////memcpy(embedding_out.data(), (float *) ggml_get_data(embeddings) + (n_embd*(N - 1)), sizeof(float)*n_embd);
+		// FIXME ASAP
+		for i := uint32(0); i < embdSize; i++ {
+			embeddingOut[i] = lctx.Embedding[i]
+		}
 	}
 
 	////if (mem_per_token == 0) {
@@ -609,13 +613,24 @@ func Eval(
 	////}
 	//fmt.Printf("used_mem = %zu\n", ggml_used_mem(ctx0));
 
+	////#if 0
+	////    printf("\n%s: used_mem = %.3f MB, scratch -- %.3f MB %.3f MB\n", __func__,
+	////            ggml_used_mem(ctx0)/1024.0/1024.0,
+	////            lctx.get_buf_max_mem(0)/1024.0/1024.0,
+	////            lctx.get_buf_max_mem(1)/1024.0/1024.0);
+	////#endif
+
 	////ggml_free(ctx0);
 
 	// measure the performance only for the single-token evals
-	if N == 1 {
-		////lctx.t_eval_us += ggml_time_us() - t_start_us;
-		////lctx.n_eval++;
-	}
+	////if (N == 1) {
+	////    lctx.t_eval_us += ggml_time_us() - t_start_us;
+	////    lctx.n_eval++;
+	////}
+	////else if (N > 1) {
+	////    lctx.t_p_eval_us += ggml_time_us() - t_start_us;
+	////    lctx.n_p_eval += N;
+	////}
 
 	return nil
 }
