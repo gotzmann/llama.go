@@ -250,12 +250,11 @@ func main() {
 	*/
 
 	//modelName := "./models/7B/ggml-model-fp32.bin"
-	ctx := llama.NewContext()
-	lparams := llama.ContextParams{}
+	////ctx := llama.NewContext()
 
 	// --- load the model
 
-	////auto lparams = llama_context_default_params();
+	////autolparams = llama_context_default_params();
 
 	////lparams.n_ctx      = params.n_ctx;
 	////lparams.n_parts    = params.n_parts;
@@ -265,6 +264,7 @@ func main() {
 	////lparams.use_mlock  = params.use_mlock;
 	////lparams.embedding  = params.embedding;
 
+	lparams := llama.NewContextParams()
 	lctx, err := llama.InitFromFile(params.model, &lparams)
 	if err != nil {
 		fmt.Printf("\n[ERROR] error: failed to load model '%s'", params.model)
@@ -435,10 +435,12 @@ func main() {
 		embd = embdInp
 
 		if len(embd) > 0 {
-			if err := llama.Eval(ctx, embd, uint32(len(embd)), n_past, params.threadsCount); err != nil {
+			fmt.Printf("\nllamaEval #1")
+			if err := llama.Eval(lctx, embd, uint32(len(embd)), n_past, params.threadsCount); err != nil {
 				fmt.Printf("[HALT] Failed to eval")
 				return
 			}
+			fmt.Printf("\nllamaEval #1 returned")
 		}
 
 		/////////////////////////////////////////////////embeddings := llama.GetEmbeddings(ctx)
@@ -460,7 +462,7 @@ func main() {
 			fmt.Printf("\nllamaEval #2")
 			////if (llama_eval(ctx, embd.data(), embd.size(), n_past, params.n_threads)) {
 			////fprintf(stderr, "%s : failed to eval\n", __func__);
-			if err := llama.Eval(ctx, embd, uint32(len(embd)), n_past, params.threadsCount); err != nil {
+			if err := llama.Eval(lctx, embd, uint32(len(embd)), n_past, params.threadsCount); err != nil {
 				fmt.Printf("\n[ERROR] Failed to eval")
 				os.Exit(1)
 			}
@@ -484,7 +486,7 @@ func main() {
 
 			////id := 0
 
-			logits := ctx.Logits
+			logits := lctx.Logits
 
 			if params.ignoreEOS {
 				// set the logit of the eos token to zero to avoid sampling it
@@ -496,7 +498,7 @@ func main() {
 
 			////id = llama_sample_top_p_top_k(vocab, logits.data() + (logits.size() - n_vocab), last_n_tokens, repeat_penalty, top_k, top_p, temp, rng);
 			/////////////////////////////////id := llama.SampleTopPTopK(vocab, logits[len(logits)-int(vocabSize):], lastNTokens, repeatPenalty, topK, topP, temp /*, rng*/)
-			id := llama.SampleTopPTopK(ctx, lastNTokens /*len(lastNTokens),*/, topK, topP, temp, repeatPenalty)
+			id := llama.SampleTopPTopK(lctx, lastNTokens /*len(lastNTokens),*/, topK, topP, temp, repeatPenalty)
 
 			lastNTokens = lastNTokens[1:] ////last_n_tokens.erase(last_n_tokens.begin());
 			lastNTokens = append(lastNTokens, id)
@@ -530,7 +532,7 @@ func main() {
 				lastNTokens = lastNTokens[1:]
 				lastNTokens = append(lastNTokens, embdInp[inputConsumed])
 				inputConsumed++
-				if len(embd) > /*params.n_batch*/ 8 { // FIXME utils.h // n_batch = 8; // batch size for prompt processing
+				if len(embd) >= /*params.n_batch*/ 8 { // FIXME utils.h // n_batch = 8; // batch size for prompt processing
 					break
 				}
 			}

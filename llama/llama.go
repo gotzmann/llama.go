@@ -26,24 +26,12 @@ const (
 
 var (
 	// determine number of model parts based on the dimension
-	llamaParts = map[uint32]uint32{
+	LLAMA_N_PARTS = map[uint32]uint32{
 		4096: 1,
 		5120: 2,
 		6656: 4,
 		8192: 8,
 	}
-
-/*
-// default hparams (LLaMA 7B)
-hparamsVocabSize = uint32(32000)
-hparamsCtx       = uint32(512) // this is provided as user input?
-hparamsEmbd      = uint32(4096)
-hparamsMult      = uint32(256)
-hparamsHeads     = uint32(32)
-hparamsLayers    = uint32(32)
-hparamsRot       = uint32(64)
-hparamsF16       = uint32(1)
-*/
 )
 
 type pair struct {
@@ -87,11 +75,11 @@ func NewContext() *Context {
 
 // struct llama_context_params {
 type ContextParams struct {
-	n_ctx   int // text context
-	n_parts int // -1 for default
-	seed    int // RNG seed, 0 for random
+	////n_ctx   int // text context
+	partsCount int // -1 for default
+	seed       int // RNG seed, 0 for random
 
-	f16_kv    bool // use fp16 for KV cache
+	////f16_kv    bool // use fp16 for KV cache
 	logitsAll bool // the llama_eval() call computes all logits, not just the last one
 	vocabOnly bool // only load the vocabulary, no weights
 	use_mlock bool // force system to keep model in RAM
@@ -103,6 +91,12 @@ type ContextParams struct {
 	////void * progress_callback_user_data;
 }
 
+func NewContextParams() ContextParams {
+	return ContextParams{
+		partsCount: -1,
+	}
+}
+
 //
 // interface implementation
 //
@@ -111,6 +105,7 @@ type ContextParams struct {
 func InitFromFile(fileName string, params *ContextParams) (*Context, error) {
 	////ggml_time_init();
 
+	// FIXME Calculate model parts number from defaults ??
 	ctx := NewContext()
 
 	////if (params.seed <= 0) {
@@ -122,7 +117,7 @@ func InitFromFile(fileName string, params *ContextParams) (*Context, error) {
 
 	////ggml_type memory_type = params.f16_kv ? GGML_TYPE_F16 : GGML_TYPE_F32;
 
-	err := LoadModel(fileName, ctx /*params.n_ctx,*/, uint32(params.n_parts), /*memory_type,*/
+	err := LoadModel(fileName, ctx /*params.n_ctx,*/, params.partsCount, /*memory_type,*/
 		params.vocabOnly, /*params.progress_callback,
 		params.progress_callback_user_data*/)
 
@@ -793,7 +788,7 @@ func LoadModel(
 	fileName string, //const std::string & fname,
 	lctx *Context,
 	////n_ctx uint32,
-	n_parts uint32,
+	partsCount int,
 	////ggml_type memory_type,
 	vocabOnly bool,
 	////llama_progress_callback progress_callback,
@@ -883,17 +878,22 @@ func LoadModel(
 	rotCount, _ := readInt(reader)    // rot = dim // n_heads [obsolete]
 	f16, _ := readInt(reader)         // ftype
 
+	model.hparams.vocabSize = vocabSize
+	model.hparams.embdSize = embdSize
+	model.hparams.multSize = multSize
+	model.hparams.headsCount = headsCount
+	model.hparams.layersCount = layersCount
+	model.hparams.rotCount = rotCount
+	model.hparams.f16 = f16
+
 	//hparamsCtx = n_ctx
 
 	//n_ff = ((2*(4*hparams.n_embd)/3 + hparams.n_mult - 1)/hparams.n_mult)*hparams.n_mult;
 	//n_ff := ((2*(4*hparamsEmbd)/3 + hparamsMult - 1) / hparamsMult) * hparamsMult
 
-	//n_parts = LLAMA_N_PARTS.at(hparams.n_embd);
-	//////////////////////////////////////////////////n_parts = llamaParts[hparamsEmbd]
-
-	////if (n_parts < 1) {
-	////n_parts = LLAMA_N_PARTS.at(hparams.n_embd);
-	////}
+	if partsCount < 1 {
+		partsCount = int(LLAMA_N_PARTS[embdSize])
+	}
 
 	// temp warning to tell the user to use "--n_parts"
 	////if (hparams.f16 == 4 && n_parts != 1) {
@@ -933,7 +933,7 @@ func LoadModel(
 
 	// --- load vocab
 
-	fmt.Printf("\n\n[LoadModel] Loading vocab...")
+	fmt.Printf("\n\n[LoadModel] Loading vocab...\n")
 
 	// --- Python ---
 	// fout.write(struct.pack("i", len(text)))
@@ -963,7 +963,10 @@ func LoadModel(
 		vocab.Token2ID[token] = i
 		vocab.ID2Token[i] = ml.TokenScore{Token: token, Score: score}
 
-		// fmt.Printf(" | %+v | ", ml.TokenScore{Token: token, Score: score}) // DEBUG
+		// DEBUG
+		if i%1000 == 0 {
+			fmt.Printf("| %+v ", ml.TokenScore{Token: token, Score: score}) // DEBUG
+		}
 	}
 
 	//return nil
@@ -1038,7 +1041,7 @@ func LoadModel(
 	////MemBuffer: nil,
 	////}
 
-	model.ctx = ml.Init(ml.InitParams{})
+	///////////////////////////////////////////////////////////////model.ctx = ml.Init(ml.InitParams{})
 	////if model.ctx == nil {
 	////fmt.Printf("\nggml_init() failed")
 	////return nil // FIXME ERR
@@ -1139,7 +1142,7 @@ func LoadModel(
 	////progress_callback(0.0, progress_callback_user_data);
 	////}
 
-	for i := 0; i < int(n_parts); /*++i*/ i++ {
+	for i := 0; i < partsCount; /*++i*/ i++ {
 
 		part_id := i
 		//commented const int part_id = n_parts - i - 1;
@@ -1149,7 +1152,7 @@ func LoadModel(
 			fname_part += "." + fmt.Sprintf("%d", i)
 		}
 
-		fmt.Printf("\n\n[llamaModelLoad] Loading model part %d / %d from '%s'\n", i+1, n_parts, fname_part)
+		fmt.Printf("\n\n[llamaModelLoad] Loading model part %d / %d from '%s'\n", i+1, partsCount, fname_part)
 
 		// --- Python ---
 		// fout.write(struct.pack("iii", len(data.shape), len(sname), ftype_cur))
@@ -1275,7 +1278,7 @@ func LoadModel(
 						//return false;
 					}
 				} else {
-					if tensorSize/n_parts != nelements {
+					if tensorSize/uint32(partsCount) != nelements {
 						fmt.Printf("\n[ERROR] Tensor '%s' has wrong size in model file", name)
 						os.Exit(1)
 						//return false;
@@ -1291,16 +1294,16 @@ func LoadModel(
 					}
 				} else {
 					if splitType == 0 {
-						if tensor.NE[0]/n_parts != ne[0] || tensor.NE[1] != ne[1] {
+						if tensor.NE[0]/uint32(partsCount) != ne[0] || tensor.NE[1] != ne[1] {
 							fmt.Printf("\n[ERROR] Tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]",
-								name, tensor.NE[0]/n_parts, tensor.NE[1], ne[0], ne[1])
+								name, tensor.NE[0]/uint32(partsCount), tensor.NE[1], ne[0], ne[1])
 							os.Exit(1)
 							//return false;
 						}
 					} else {
-						if tensor.NE[0] != ne[0] || tensor.NE[1]/n_parts != ne[1] {
+						if tensor.NE[0] != ne[0] || tensor.NE[1]/uint32(partsCount) != ne[1] {
 							fmt.Printf("\n[ERROR] Tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]",
-								name, tensor.NE[0], tensor.NE[1]/n_parts, ne[0], ne[1])
+								name, tensor.NE[0], tensor.NE[1]/uint32(partsCount), ne[0], ne[1])
 							os.Exit(1)
 							//return false;
 						}
@@ -1329,7 +1332,7 @@ func LoadModel(
 						//return false;
 					}
 				*/
-				if dims == 1 || n_parts == 1 {
+				if dims == 1 || partsCount == 1 {
 					////if (nelements*bpe)/ggml_blck_size(tensor->type) != ggml_nbytes(tensor)) {
 					////fmt.Printf("\n[ERROR] tensor '%s' has wrong size in model file: got %zu, expected %zu",
 					////    __func__, name.data(), ggml_nbytes(tensor), nelements*bpe);
