@@ -61,8 +61,8 @@ type Context struct {
 	n_sample uint32 // number of tokens sampled
 	n_eval   uint32 // number of eval calls
 
-	Model Model
-	Vocab ml.Vocab
+	Model *Model
+	Vocab *ml.Vocab
 
 	////size_t mem_per_token = 0;
 
@@ -77,7 +77,7 @@ type Context struct {
 func NewContext() *Context {
 	return &Context{
 		Model:     NewModel(),
-		Vocab:     *ml.NewVocab(),
+		Vocab:     ml.NewVocab(),
 		Logits:    make([]float32, 0), // TODO Cap?
 		Embedding: make([]float32, 0), // TODO Cap?
 	}
@@ -106,7 +106,7 @@ type ContextParams struct {
 //
 
 // //struct llama_context * llama_init_from_file(
-func InitFromFile(fileName string, params ContextParams) (*Context, error) {
+func InitFromFile(fileName string, params *ContextParams) (*Context, error) {
 	////ggml_time_init();
 
 	ctx := NewContext()
@@ -227,8 +227,8 @@ type Model struct {
 	tensors map[string]*ml.Tensor //std::map<std::string, struct ggml_tensor *> tensors;
 }
 
-func NewModel() Model {
-	return Model{
+func NewModel() *Model {
+	return &Model{
 		layers:  make([]Layer, 0),
 		tensors: make(map[string]*ml.Tensor),
 	}
@@ -284,7 +284,7 @@ func ResizeInplace(slice *[]float32, size int) {
 //          size_t                     & mem_per_token) {
 
 func Eval(
-	lctx Context,
+	lctx *Context,
 	tokens []uint32,
 	n_tokens uint32,
 	n_past uint32,

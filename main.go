@@ -267,7 +267,9 @@ func main() {
 	fmt.Printf("\nPROMPT = '%s'\n", prompt)
 	fmt.Printf("\n#TOKENS = %d\n", len(embdInp))
 	for i := 0; i < len(embdInp); i++ {
-		fmt.Printf("\n%d => '%s'", embdInp[i], vocab.ID2Token[embdInp[i]])
+		////////////////////////////////////fmt.Printf("\n%d => '%s'", embdInp[i], vocab.ID2Token[embdInp[i]])
+		////llama_token_to_str(ctx, embd_inp[i]));
+		fmt.Printf("\n%d => '%s'", embdInp[i], ml.Token2Str(vocab, embdInp[i]))
 	}
 
 	////if (params.interactive) {
@@ -284,15 +286,15 @@ func main() {
 
 	////fmt.Printf("%s: interactive mode on.\n", __func__);
 
-	////if(antiprompt_inp.size()) {
-	////    fmt.Printf("%s: reverse prompt: '%s'\n", __func__, params.antiprompt.c_str());
-	////    fmt.Printf("%s: number of tokens in reverse prompt = %zu\n", __func__, antiprompt_inp.size());
-	////    for (int i = 0; i < (int) antiprompt_inp.size(); i++) {
-	////        fmt.Printf("%6d -> '%s'\n", antiprompt_inp[i], vocab.id_to_token.at(antiprompt_inp[i]).c_str());
-	////    }
-	////    fmt.Printf("\n");
+	////if(params.antiprompt.size()) {
+	////for (auto antiprompt : params.antiprompt) {
+	////fprintf(stderr, "Reverse prompt: '%s'\n", antiprompt.c_str());
+	////}
 	////}
 
+	////////if (!params.input_prefix.empty()) {
+	////fprintf(stderr, "Input prefix: '%s'\n", params.input_prefix.c_str());
+	////}
 	////}
 
 	////fmt.Printf("\n\nsampling parameters: temp = %f, top_k = %d, top_p = %f, repeat_last_n = %i, repeat_penalty = %f", params.temp, params.top_k, params.top_p, params.repeat_last_n, params.repeat_penalty)
@@ -304,7 +306,9 @@ func main() {
 	// determine the required inference memory per token:
 	memPerToken := uint32(0)
 	fmt.Printf("\nllamaEval #1")
-	llama.Eval(&model, 1 /* FIXME n_threads*/, 0 /*&[]uint32{0, 1, 2, 3}*/, embdInp, logits, &memPerToken)
+	///////////////////////////////////////////////////////llama.Eval(model, 1 /* FIXME n_threads*/, 0 /*&[]uint32{0, 1, 2, 3}*/, embdInp, logits, &memPerToken)
+	llama.Eval(model, 1 /*&[]uint32{0, 1, 2, 3}*/, embdInp, logits, &memPerToken)
+
 	fmt.Printf("\nllamaEval #1 returned")
 
 	lastNSize := 64 // utils.h // repeat_last_n = 64 // params.repeat_last_n;
@@ -319,32 +323,65 @@ func main() {
 	////#endif
 	////              " - Press Return to return control to LLaMa.\n"
 	////              " - If you want to submit another line, end your input in '\\'.\n");
+	////is_interacting = params.interactive_start || params.instruct;
 	////   }
 
-	////remainingTokens = params.n_predict
-	remainingTokens := uint32(100) // FIXME
 	inputConsumed := uint32(0)
 	inputNoEcho := false
+
+	remainingTokens := uint32(100) // FIXME ////remainingTokens = params.n_predict
 
 	// prompt user immediately after the starting prompt has been loaded
 	////if (params.interactive_start) {
 	////    is_interacting = true;
 	////}
 
-	// set the color for the prompt which will be output initially
+	////#if defined (_WIN32)
 	////if (params.use_color) {
-	////    printf(ANSI_COLOR_YELLOW);
+	////    // Enable ANSI colors on Windows 10+
+	////    unsigned long dwMode = 0;
+	////    void* hConOut = GetStdHandle((unsigned long)-11); // STD_OUTPUT_HANDLE (-11)
+	////    if (hConOut && hConOut != (void*)-1 && GetConsoleMode(hConOut, &dwMode) && !(dwMode & 0x4)) {
+	////        SetConsoleMode(hConOut, dwMode | 0x4); // ENABLE_VIRTUAL_TERMINAL_PROCESSING (0x4)
+	////    }
 	////}
+	////#endif
 
-	for remainingTokens > 0 {
+	// the first thing we will do is to output the prompt, so set color accordingly
+	////set_console_state(CONSOLE_STATE_PROMPT);
+
+	if params.Embedding {
+
+		embd = embdInp
+
+		if len(embd) > 0 {
+			if llama.Eval(ctx, embd, len(embd), n_past, params.ThreadsCount) {
+				fmt.Printf("[HALT] Failed to eval")
+				return
+			}
+		}
+
+		embeddings := llama.GetEmbeddings(ctx)
+
+		// TODO: print / use the embeddings
+
+		if params.UseColor {
+			////printf(ANSI_COLOR_RESET);
+		}
+
+		return
+	}
+
+	for remainingTokens > 0 || params.Interactive {
 
 		// predict
 		if len(embd) > 0 {
-			////const int64_t t_start_us = ggml_time_us();
 
 			fmt.Printf("\nllamaEval #2")
-			if err := llama.Eval(&model, 1 /* FIXME params.n_threads*/, n_past, embd, logits, &memPerToken); err != nil {
-				fmt.Printf("\n[ERRRO] Failed to predict")
+            ////if (llama_eval(ctx, embd.data(), embd.size(), n_past, params.n_threads)) {
+                ////fprintf(stderr, "%s : failed to eval\n", __func__);
+			if err := llama.Eval(ctx,  embd, len(embd), n_past, params.ThreadsCount); err != nil {
+				fmt.Printf("\n[ERROR] Failed to eval")
 				os.Exit(1)
 			}
 			fmt.Printf("\nllamaEval #2 returned")
@@ -355,7 +392,7 @@ func main() {
 		n_past += uint32(len(embd))
 		embd = []uint32{} ////embd.clear();
 
-		if len(embdInp) <= int(inputConsumed) {
+		if len(embdInp) <= int(inputConsumed) && !isInteracting {
 
 			// out of user input, sample next token
 			topK := uint32(40)             // FIXME utils.h // top_k = 40;
@@ -363,12 +400,20 @@ func main() {
 			temp := float64(0.80)          // FIXME utils.h // temp  = 0.80f;
 			repeatPenalty := float64(1.30) // utils.h // repeat_penalty  = 1.30f;
 
-			vocabSize := 32000 // hparamsVocabSize
+			///////////////////////////////////////////////////////////////vocabSize := 32000 // hparamsVocabSize
 
 			////id := 0
 
-			////{
-			////const int64_t t_start_sample_us = ggml_time_us();
+	
+            logits := llama_get_logits(ctx);
+
+            if params.ignoreEOS) {
+                // set the logit of the eos token to zero to avoid sampling it
+                //logits[logits.size() - n_vocab + EOS_TOKEN_ID] = 0;
+                // TODO: this does not work of params.logits_all == true
+                ////assert(params.perplexity == false);
+                logits[llama.TokenEOS()] = 0
+            }
 
 			////id = llama_sample_top_p_top_k(vocab, logits.data() + (logits.size() - n_vocab), last_n_tokens, repeat_penalty, top_k, top_p, temp, rng);
 			id := llama.SampleTopPTopK(vocab, logits[len(logits)-int(vocabSize):], lastNTokens, repeatPenalty, topK, topP, temp /*, rng*/)
@@ -376,8 +421,17 @@ func main() {
 			lastNTokens = lastNTokens[1:] ////last_n_tokens.erase(last_n_tokens.begin());
 			lastNTokens = append(lastNTokens, id)
 
-			////t_sample_us += ggml_time_us() - t_start_sample_us;
-			////}
+			
+            // replace end of text token with newline token when in interactive mode
+            if id == llama.TokenEOS() && params.Interactive && !params.Instruct {
+                id = llama.TokenNewline.front()
+                ////if params.antiprompt.size() != 0) {
+                    // tokenize and inject first reverse prompt
+                    ////const auto first_antiprompt = ::llama_tokenize(ctx, params.antiprompt.front(), false);
+                    ////embd_inp.insert(embd_inp.end(), first_antiprompt.begin(), first_antiprompt.end());
+                ////}
+
+			}
 
 			// add it to the context
 			embd = append(embd, id)
@@ -402,10 +456,6 @@ func main() {
 				}
 			}
 
-			// reset color to default if we there is no pending user input
-			////if (!input_noecho && params.use_color && embd_inp.size() == input_consumed) {
-			////printf(ANSI_COLOR_RESET);
-			////}
 		}
 
 		// display text
@@ -413,84 +463,114 @@ func main() {
 			//for (auto id : embd) {
 			////for (auto id : embd) {
 			for _, id := range embd { // FIXME Ordered / Unordered ??
-				fmt.Printf("%s", vocab.ID2Token[id])
+				////fmt.Printf("%s", vocab.ID2Token[id])
+                fmt.Printf("%s", ml.Token2Str(vocab, id)
 			}
 			////fflush(stdout);
 		}
+
+                // reset color to default if we there is no pending user input
+                ////if (!input_noecho && (int)embd_inp.size() == input_consumed) {
+                ////    set_console_state(CONSOLE_STATE_DEFAULT);
+                ////}
 
 		// in interactive mode, and not currently processing queued inputs;
 		// check if we should prompt the user for more
 		////if (params.interactive && embd_inp.size() <= input_consumed) {
 		// check for reverse prompt
-		////    if (antiprompt_inp.size() && std::equal(antiprompt_inp.rbegin(), antiprompt_inp.rend(), last_n_tokens.rbegin())) {
-		// reverse prompt found
-		////        is_interacting = true;
-		////    }
-		////    if (is_interacting) {
-		// currently being interactive
-		////        bool another_line=true;
-		////        while (another_line) {
-		////            fflush(stdout);
-		////            char buf[256] = {0};
-		////            int n_read;
-		////            if(params.use_color) printf(ANSI_BOLD ANSI_COLOR_GREEN);
-		////            if (scanf("%255[^\n]%n%*c", buf, &n_read) <= 0) {
-		////                // presumable empty line, consume the newline
-		////                std::ignore = scanf("%*c");
-		////                n_read=0;
-		////            }
-		////            if(params.use_color) printf(ANSI_COLOR_RESET);
 
-		////            if (n_read > 0 && buf[n_read-1]=='\\') {
-		////                another_line = true;
-		////                buf[n_read-1] = '\n';
-		////                buf[n_read] = 0;
-		////            } else {
-		////                another_line = false;
-		////                buf[n_read] = '\n';
-		////                buf[n_read+1] = 0;
-		////            }
+        ////std::string last_output;
+        ////for (auto id : last_n_tokens) {
+        ////    last_output += llama_token_to_str(ctx, id);
+        ////}
 
-		////            std::vector<gpt_vocab::id> line_inp = ::llama_tokenize(vocab, buf, false);
-		////            embd_inp.insert(embd_inp.end(), line_inp.begin(), line_inp.end());
+ // Check if each of the reverse prompts appears at the end of the output.
+ ////for (std::string & antiprompt : params.antiprompt) {
+    ////if (last_output.find(antiprompt.c_str(), last_output.length() - antiprompt.length(), antiprompt.length()) != std::string::npos) {
+        ////is_interacting = true;
+        ////set_console_state(CONSOLE_STATE_USER_INPUT);
+        ////fflush(stdout);
+        ////break;
+    ////}
+////}
+
+////if (n_past > 0 && is_interacting) {
+    // potentially set color to indicate we are taking user input
+    ////set_console_state(CONSOLE_STATE_USER_INPUT);
+
+    ////if (params.instruct) {
+        ////input_consumed = embd_inp.size();
+        ////embd_inp.insert(embd_inp.end(), inp_pfx.begin(), inp_pfx.end());
+
+        ////printf("\n> ");
+    ////}
+
+    ////std::string buffer;
+    ////if (!params.input_prefix.empty()) {
+        ////buffer += params.input_prefix;
+        ////printf(buffer.c_str());
+    /////}
+
+    ////std::string line;
+    ////bool another_line = true;
+    ////do {
+        ////std::getline(std::cin, line);
+        ////if (line.empty() || line.back() != '\\') {
+            ////another_line = false;
+        ////} else {
+            ////line.pop_back(); // Remove the continue character
+        ////}
+        ////buffer += line + '\n'; // Append the line to the result
+    ////} while (another_line);
+
+    // done taking input, reset color
+    ////set_console_state(CONSOLE_STATE_DEFAULT);
+
+    ////auto line_inp = ::llama_tokenize(ctx, buffer, false);
+    ////embd_inp.insert(embd_inp.end(), line_inp.begin(), line_inp.end());
+
+    ////if (params.instruct) {
+        ////embd_inp.insert(embd_inp.end(), inp_sfx.begin(), inp_sfx.end());
+    ////}
+
 
 		////            remaining_tokens -= line_inp.size();
 
 		////            input_noecho = true; // do not echo this again
 		////        }
 
+        ////if (n_past > 0) {
 		////        is_interacting = false;
+\
 		////    }
 		////}
 
-		// end of text token
-		////if (embd.back() == 2) {
-		////fmt.Printf(" [ EOF ]\n");
-		////break
-		////}
-	}
+        // end of text token
+        ////if (embd.back() == llama_token_eos()) {
+            ////if (params.instruct) {
+                ////is_interacting = true;
+            ////} else {
+                ////fprintf(stderr, " [end of text]\n");
+                ////break;
+            ////}
+        ////}
+
+        // In interactive mode, respect the maximum number of tokens and drop back to user input when reached.
+        ////if (params.interactive && remaining_tokens <= 0) {
+            ////remaining_tokens = params.n_predict;
+            ////is_interacting = true;
+        ////}
+    ////}
+
 
 	////#if defined (_WIN32)
 	////    signal(SIGINT, SIG_DFL);
 	////#endif
 
-	// report timing
-	////{
-	////    const int64_t t_main_end_us = ggml_time_us();
+    ////llama_print_timings(ctx);
+    ////llama_free(ctx);
 
-	////    fmt.Printf("\n\n");
-	////    fmt.Printf("%s: mem per token = %8zu bytes\n", __func__, mem_per_token);
-	////    fmt.Printf("%s:     load time = %8.2f ms\n", __func__, t_load_us/1000.0f);
-	////    fmt.Printf("%s:   sample time = %8.2f ms\n", __func__, t_sample_us/1000.0f);
-	////    fmt.Printf("%s:  predict time = %8.2f ms / %.2f ms per token\n", __func__, t_predict_us/1000.0f, t_predict_us/1000.0f/n_past);
-	////    fmt.Printf("%s:    total time = %8.2f ms\n", __func__, (t_main_end_us - t_main_start_us)/1000.0f);
-	////}
-
-	////ggml_free(model.ctx);
-
-	////if (params.use_color) {
-	////    printf(ANSI_COLOR_RESET);
-	////}
+    ////set_console_state(CONSOLE_STATE_DEFAULT);
 
 	return
 }

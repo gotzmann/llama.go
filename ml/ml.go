@@ -3243,6 +3243,14 @@ func utf8Len(src byte) uint32 {
 //}
 //}
 
+func Token2Str(vocab *Vocab, token uint32) string {
+	if int(token) >= len(vocab.ID2Token) {
+		return ""
+	}
+
+	return vocab.ID2Token[token].Token
+}
+
 func PopMax(queue *[]Bigram) Bigram {
 
 	max := 0 // index of max score element in queue
