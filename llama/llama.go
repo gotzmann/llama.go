@@ -367,7 +367,7 @@ func Eval(
 
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
 
-	fmt.Printf("\n\nmodel.tokEmbeddings = %+v", model.tokEmbeddings) // DEBUG
+	////fmt.Printf("\n\nmodel.tokEmbeddings = %+v", model.tokEmbeddings) // DEBUG
 
 	for il := uint32(0); il < layersCount; il++ {
 		inpSA := inpL
