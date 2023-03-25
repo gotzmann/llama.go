@@ -68,6 +68,15 @@ type Context struct {
 	embedding []float32
 }
 
+func NewContext() *Context {
+	return &Context{
+		model:     NewModel(),
+		vocab:     *ml.NewVocab(),
+		logits:    make([]float32, 0), // TODO Cap?
+		embedding: make([]float32, 0), // TODO Cap?
+	}
+}
+
 type Layer struct {
 
 	// normalization
@@ -178,7 +187,7 @@ func ResizeInplace(slice *[]float32, size int) {
 //          std::vector<float>         & embd_w,
 //          size_t                     & mem_per_token) {
 
-func EvalInternal(
+func Eval(
 	lctx Context,
 	tokens []uint32,
 	n_tokens uint32,
@@ -438,13 +447,13 @@ func EvalInternal(
 
 		if lctx.logitsAll {
 			////logits_out.resize(n_vocab * N);
-			logitsOut = logitsOut[:vocabSize*N]
+			logitsOut = Resize(logitsOut, vocabSize*int(N))
 			////memcpy(logits_out.data(), (float *) ggml_get_data(inpL), sizeof(float)*n_vocab*N); // FIXME ASAP
 		} else {
 
 			// return result for just the last token
 			////logits_out.resize(n_vocab);
-			logitsOut = logitsOut[:vocabSize]
+			logitsOut = Resize(logitsOut, vocabSize)
 			////memcpy(logits_out.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab); // FIXME ASAP
 		}
 	}
@@ -454,7 +463,7 @@ func EvalInternal(
 		embeddingOut := lctx.embedding
 
 		////embedding_out.resize(n_embd);
-		embeddingOut = embeddingOut[n_embd]
+		embeddingOut = Resize(embeddingOut, int(embdSize))
 		////memcpy(embedding_out.data(), (float *) ggml_get_data(embeddings) + (n_embd*(N - 1)), sizeof(float)*n_embd); // FIXME ASAP
 	}
 

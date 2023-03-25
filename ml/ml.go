@@ -211,7 +211,7 @@ func MulMat(ctx *Context, a, b *Tensor) *Tensor {
 	}
 
 	////const int ne[4] = { a.ne[1], b.ne[1], a.ne[2], b.ne[3] };
-	result := NewTensor(ctx, TYPE_F32, min(a.Dims, b.Dims), a.NE[1], b.NE[1], a.NE[2], b.NE[3], nil) // Check for indexes
+	result := NewTensor(ctx, TYPE_F32, min32(a.Dims, b.Dims), a.NE[1], b.NE[1], a.NE[2], b.NE[3], nil) // Check for indexes
 
 	result.op = OP_MUL_MAT
 	result.src0 = a
@@ -2605,7 +2605,7 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 	// row range for this thread
 	ir0 := dr * ith
-	ir1 := min(ir0+dr, nr)
+	ir1 := min32(ir0+dr, nr)
 
 	for ir := uint32(ir0); ir < ir1; ir++ {
 		// src0 indices
@@ -3148,30 +3148,251 @@ func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
 
 // ---
 
-// uitils.h
+/*
+struct llama_vocab {
+    using id    = int32_t;
+    using token = std::string;
+
+    struct token_score {
+        token tok;
+        float score;
+    };
+
+    std::unordered_map<token, id> token_to_id;
+    std::vector<token_score> id_to_token;
+};*/
+
+type TokenScore struct {
+	Token string
+	Score float32
+}
+
 type Vocab struct {
 	Token2ID map[string]uint32
-	ID2Token map[uint32]string
+	ID2Token []TokenScore
 }
 
 func NewVocab() *Vocab {
 	return &Vocab{
 		Token2ID: make(map[string]uint32),
-		ID2Token: make(map[uint32]string),
+		ID2Token: make([]TokenScore, 0),
 	}
 }
 
-func min(a, b uint32) uint32 {
+func min(a, b int) int {
 	if a <= b {
 		return a
 	}
 	return b
 }
 
+func min32(a, b uint32) uint32 {
+	if a <= b {
+		return a
+	}
+	return b
+}
+
+// ---- SentencePiece Tokenizer
+
+// struct llama_sp_symbol {
+type Symbol struct {
+	////using index = int;
+
+	// NB! Allow -1
+	Prev int
+	Next int
+
+	Text string //const char * text;
+	N    uint32 // size_t n;
+}
+
+// struct llama_sp_bigram {
+type Bigram struct {
+	////struct comparator {
+	////bool operator()(llama_sp_bigram & l, llama_sp_bigram & r) {
+	////return (l.score < r.score) || (l.score == r.score && l.left > r.left);
+	////}
+	////};
+	////using queue_storage = std::vector<llama_sp_bigram>;
+	////using queue = std::priority_queue<llama_sp_bigram, queue_storage, comparator>;
+
+	// NB! Allow -1
+	Left  int // llama_sp_symbol::index left;
+	Right int // llama_sp_symbol::index
+
+	Score float32
+	Size  uint32
+}
+
+func utf8Len(src byte) uint32 {
+	lookup := []uint32{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 4}
+	highbits := uint8(src) >> 4 // static_cast<uint8_t>(src) >> 4;
+	return lookup[highbits]
+}
+
+//type Tokenizer struct {
+//vocab *Vocab
+//symbols []Symbol // std::vector<llama_sp_symbol> symbols_;
+//work_queue []Bigram // llama_sp_bigram::queue work_queue_; // std::priority_queue<llama_sp_bigram, queue_storage, comparator>;
+//}
+
+//func NewTokenizer() *Tokenizer {
+//  return &{
+
+//}
+//}
+
+func PopMax(queue *[]Bigram) Bigram {
+
+	max := 0 // index of max score element in queue
+	for cur := 1; cur < len(*queue); cur++ {
+		if ((*queue)[max].Score < (*queue)[cur].Score) ||
+			((*queue)[max].Score == (*queue)[cur].Score &&
+				(*queue)[max].Left > (*queue)[cur].Left) {
+			max = cur // FIXME Double Check
+		}
+	}
+
+	pop := (*queue)[max]
+
+	// replace max element with last and shrink slice
+	(*queue)[max] = (*queue)[len(*queue)]
+	*queue = (*queue)[:len(*queue)-1]
+
+	return pop
+}
+
+////struct comparator {
+////bool operator()(llama_sp_bigram & l, llama_sp_bigram & r) {
+////return (l.score < r.score) || (l.score == r.score && l.left > r.left);
+////}
+////};
+
+func TryAddBigram(vocab *Vocab, symbols *[]Symbol, workQueue *[]Bigram, left, right int) {
+
+	if left == -1 || right == -1 {
+		return
+	}
+
+	////const std::string text = std::string(symbols_[left].text, symbols_[left].n + symbols_[right].n);
+	token := (*symbols)[left].Text[(*symbols)[left].N+(*symbols)[right].N:]
+	id, ok := vocab.Token2ID[token]
+	////if token == vocab.Token2ID.end()) {
+	//if (static_cast<size_t>((*token).second) >= vocab_.id_to_token.size()) {
+	if !ok || int(id) >= len(vocab.ID2Token) {
+		return
+	}
+
+	tokenScore := vocab.ID2Token[id]
+
+	bigram := Bigram{Left: left, Right: right, Score: tokenScore.Score, Size: uint32(len(token))}
+	////bigram.left = left
+	////bigram.right = right;
+	/////bigram.score = ;
+	////bigram.size = text.size();
+	////workQueue_.push(bigram);
+	*workQueue = append(*workQueue, bigram)
+}
+
+// void tokenize(const std::string & text, std::vector<llama_vocab::id> & output) {
+func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
+
+	output := make([]uint32, 0)
+	symbols := make([]Symbol, 0)   // std::vector<llama_sp_symbol> symbols_;
+	workQueue := make([]Bigram, 0) // llama_sp_bigram::queue work_queue_; // std::priority_queue<llama_sp_bigram, queue_storage, comparator>;
+
+	// split string into utf8 chars
+	index := 0
+	offs := 0
+	for offs < len(text) {
+		var sym Symbol
+		charLen := min(len(text)-offs, int(utf8Len(text[offs])))
+		sym.Text = text[offs:] // text.c_str() + offs // FIXME ASAP
+		sym.N = uint32(charLen)
+		offs += charLen
+		sym.Prev = index - 1
+		if offs == len(text) {
+			sym.Next = -1
+		} else {
+			sym.Next = index + 1
+		}
+		index++
+		symbols = append(symbols, sym) ////symbols_.emplace_back(std::move(sym));
+	}
+
+	// seed the work queue with all possible 2-character tokens.
+	for i := 1; i < len(symbols); i++ {
+		TryAddBigram(vocab, &symbols, &workQueue, i-1, i)
+	}
+
+	// keep substituting the highest frequency pairs for as long as we can.
+	for len(workQueue) > 0 {
+		////bigram := work_queue_.top();
+		////work_queue_.pop();
+		bigram := PopMax(&workQueue)
+
+		leftSym := symbols[bigram.Left]
+		rightSym := symbols[bigram.Right]
+
+		// if one of the symbols already got merged, skip it.
+		if leftSym.N == 0 || rightSym.N == 0 ||
+			leftSym.N+rightSym.N != bigram.Size {
+			continue
+		}
+
+		// merge the right sym into the left one
+		leftSym.N += rightSym.N
+		rightSym.N = 0
+
+		//printf("left = '%*s' size = %zu\n", (int) left_sym.n, left_sym.text, bigram.size);
+
+		// remove the right sym from the chain
+		leftSym.Next = rightSym.Next
+		if rightSym.Next >= 0 {
+			symbols[rightSym.Next].Prev = bigram.Left
+		}
+
+		// find more substitutions
+		////try_add_bigram(left_sym.prev, bigram.left);
+		TryAddBigram(vocab, &symbols, &workQueue, leftSym.Prev, bigram.Left)
+		////try_add_bigram(bigram.left, left_sym.next);
+		TryAddBigram(vocab, &symbols, &workQueue, bigram.Left, leftSym.Next)
+	}
+
+	for i := 0; i != -1; i = symbols[i].Next {
+		symbol := symbols[i]
+		id, ok := vocab.Token2ID[symbol.Text[symbol.N:]]
+
+		////if (token == vocab_.token_to_id.end()) {
+		if !ok {
+			// output any symbols that did not form tokens as bytes.
+			for j := uint32(0); j < symbol.N; j++ {
+				////llama_vocab::id token_id = static_cast<uint8_t>(symbol.text[j]) + 3;
+				tokenID := uint32(symbol.Text[j] + 3) // FIXME ASAP
+				////output.push_back(token_id);
+				output = append(output, tokenID)
+			}
+		} else {
+			////output.push_back((*token).second);
+			output = append(output, id)
+		}
+	}
+
+	////private:
+
+	////const llama_vocab & vocab_;
+	////std::vector<llama_sp_symbol> symbols_;
+	////llama_sp_bigram::queue work_queue_;
+
+	return output
+
+}
+
 // FIXME Would it work with UTF-8? Rewrite for runes
 // SentencePiece implementation after https://guillaume-be.github.io/2020-05-30/sentence_piece
 // std::vector<gpt_vocab::id> llamaTokenize(const gpt_vocab & vocab, const std::string & text, bool bos) {
-func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
+func TokenizeOld(vocab *Vocab, text string, bos bool) []uint32 {
 
 	// TODO: Calculate this constant from the vocabulary
 	MAX_TOKEN_LEN := uint32(18)

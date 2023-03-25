@@ -108,8 +108,8 @@ const char * llama_print_system_info(void) {
 func main() {
 	//int main(int argc, char ** argv) {
 
+	// has to be called once at the start of the program to init ggml stuff
 	////ggml_time_init();
-	////const int64_t t_main_start_us = ggml_time_us();
 
 	//var params gptParams//gpt_params params;
 	////params.model = "models/llama-7B/ggml-model.bin";
@@ -123,23 +123,29 @@ func main() {
 	////    "expect poor results\n", __func__, params.n_ctx);
 	////}
 
-	////if (params.seed < 0) {
+	////if (params.seed <= 0) {
 	////params.seed = time(NULL);
 	////}
 
 	//fmt.Printf("\n[main] seed = %d", params.seed)
-	/*
-	       std::mt19937 rng(params.seed);
-	       if (params.prompt.empty()) {
-	           params.prompt = gpt_random_prompt(rng);
-	       }
 
-	   //    params.prompt = R"(// this function checks if the number n is prime
-	   //bool is_prime(int n) {)";
+	////std::mt19937 rng(params.seed);
+	////if (params.random_prompt) {
+	////params.prompt = gpt_random_prompt(rng);
+	////}
 
-	       int64_t t_load_us = 0;
+	// save choice to use color for later
+	// (note for later: this is a slightly awkward choice)
+	////con_use_color = params.use_color;
 
-	       gpt_vocab vocab;*/
+	//    params.prompt = R"(// this function checks if the number n is prime
+	//bool is_prime(int n) {)";
+
+	////int64_t t_load_us = 0;
+
+/* MY
+
+	////gpt_vocab vocab;
 
 	//modelName := "./LLaMA/7B/ggml-model-f16.bin"
 	modelName := "./models/7B/ggml-model-fp32.bin"
@@ -151,12 +157,61 @@ func main() {
 		fmt.Printf("\n[main] Failed to load model from '%s'", modelName)
 		return
 	}
+*/
+
+    ctx := llama.NewContext()
+
+    // load the model
+    {
+        auto lparams = llama_context_default_params();
+
+        lparams.n_ctx      = params.n_ctx;
+        lparams.n_parts    = params.n_parts;
+        lparams.seed       = params.seed;
+        lparams.f16_kv     = params.memory_f16;
+        lparams.logits_all = params.perplexity;
+        lparams.use_mlock  = params.use_mlock;
+        lparams.embedding  = params.embedding;
+
+        ctx = llama_init_from_file(params.model.c_str(), lparams);
+
+        if (ctx == NULL) {
+            fprintf(stderr, "%s: error: failed to load model '%s'\n", __func__, params.model.c_str());
+            return 1;
+        }
+    }
 
 	// print system information
 	////{
 	//fmt.Printf("\nsystem_info: n_threads = %d / %d | %s\n",
 	//    params.n_threads, std::thread::hardware_concurrency(), llama_print_system_info());
 	////}
+
+
+
+    // determine the maximum memory usage needed to do inference for the given n_batch and n_predict parameters
+    // uncomment the "used_mem" line in llama.cpp to see the results
+    ////if (params.mem_test) {
+        ////{
+            ////const std::vector<llama_token> tmp(params.n_batch, 0);
+            ////llama_eval(ctx, tmp.data(), tmp.size(), 0, params.n_threads);
+        ////}
+
+        ////{
+            ////const std::vector<llama_token> tmp = { 0, };
+            ////llama_eval(ctx, tmp.data(), tmp.size(), params.n_predict - 1, params.n_threads);
+        ////}
+
+        ////llama_print_timings(ctx);
+        ////llama_free(ctx);
+
+        ////return 0;
+    ////}
+
+    ////if (params.perplexity) {
+        ////perplexity(ctx, params);
+        ////exit(0);
+    ////}
 
 	n_past := uint32(0)
 
