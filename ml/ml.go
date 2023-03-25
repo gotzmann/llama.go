@@ -18,11 +18,11 @@ const (
 	TOKEN_EOS = 2
 )
 
-type dtype uint8
+type DType uint8
 
 // TODO FP8, BFLOAT16
 const (
-	TYPE_Q4_0 dtype = iota
+	TYPE_Q4_0 DType = iota
 	TYPE_Q4_1
 	TYPE_I8
 	TYPE_I16
@@ -36,7 +36,7 @@ var BLCK_SIZE [TYPE_COUNT]uint32 = [TYPE_COUNT]uint32{QK, QK, 1, 1, 1, 1, 1}
 
 var TYPE_SIZE [TYPE_COUNT]uint32 = [TYPE_COUNT]uint32{ /* 4 + QK/2 */ 1 /* 4*2 + QK/2 */, 1, 1, 2, 4, 2, 4} // FIXME
 
-func TypeSizeFloat(dt dtype) float32 {
+func TypeSizeFloat(dt DType) float32 {
 	return float32(TYPE_SIZE[dt]) / float32(BLCK_SIZE[dt]) // FIXME
 }
 
@@ -88,7 +88,7 @@ const (
 
 // n-dimensional tensor
 type Tensor struct {
-	Type dtype
+	Type DType
 
 	Dims uint32
 	NE   [MAX_DIMS]uint32 // number of elements
@@ -739,34 +739,34 @@ type Context struct {
 
 /*
 // ggml_new_tensor
-func NewTensor(ctx *Context, dt dtype, dims, ne0, ne1, ne2, ne3 uint32) *Tensor {
+func NewTensor(ctx *Context, dt DType, dims, ne0, ne1, ne2, ne3 uint32) *Tensor {
 	return NewTensorImpl(ctx, dt, dims, ne0, ne1, ne2, ne3, nil)
 }
 */
 // ggml_new_tensor_1d
-func NewTensor1D(ctx *Context, dt dtype, ne uint32) *Tensor {
+func NewTensor1D(ctx *Context, dt DType, ne uint32) *Tensor {
 	return NewTensor(ctx, dt, 1, ne, 1, 1, 1, nil)
 }
 
 // ggml_new_tensor_2d
-func NewTensor2D(ctx *Context, dt dtype, ne0, ne1 uint32) *Tensor {
+func NewTensor2D(ctx *Context, dt DType, ne0, ne1 uint32) *Tensor {
 	//ne := []uint32{ne0, ne1}
 	//return NewTensor(ctx, typ, 2, ne)
 	return NewTensor(ctx, dt, 2, ne0, ne1, 1, 1, nil) // FIXME
 }
 
-func NewTensor3D(ctx *Context, dt dtype, ne0, ne1, ne2 uint32) *Tensor {
+func NewTensor3D(ctx *Context, dt DType, ne0, ne1, ne2 uint32) *Tensor {
 	return NewTensor(ctx, dt, 3, ne0, ne1, ne2, 1, nil) // FIXME
 }
 
-func NewTensor4D(ctx *Context, dt dtype, ne0, ne1, ne2, ne3 uint32) *Tensor {
+func NewTensor4D(ctx *Context, dt DType, ne0, ne1, ne2, ne3 uint32) *Tensor {
 	return NewTensor(ctx, dt, 4, ne0, ne1, ne2, ne3, nil) // FIXME
 }
 
 // TODO ne2 for 3D tensors?
 // ggml_new_tensor_impl
-// func NewTensorImpl(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
-func NewTensor(ctx *Context, dt dtype, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
+// func NewTensorImpl(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
+func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
 
 	if dt != TYPE_F32 && dt != TYPE_I32 {
 		fmt.Printf("\n[ERROR] NewTensorImpl got not supported type : %d", dt)
@@ -1845,7 +1845,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		////cgraph->work = ggml_new_tensor_1d(ctx, TYPE_I8, cgraph->work_size);
 
 		// FIXME
-		fmt.Printf("\n[COMPUTE] graph.WorkSize = %d", graph.WorkSize)
+		//////////////////////////////////////////////////////////////////fmt.Printf("\n[COMPUTE] graph.WorkSize = %d", graph.WorkSize)
 		////graph.Work = NewTensor1D(ctx, TYPE_I8, graph.WorkSize)
 		graph.Work = NewTensor1D(ctx, TYPE_F32, graph.WorkSize)
 
@@ -1877,7 +1877,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			////wdata: graph.work ? cgraph->work->data : NULL,
 		}
 
-		fmt.Printf("\n[COMPUTE] ComputeForward | TASK_INIT | ...")
+		/////////////////////////////////////////////////fmt.Printf("\n[COMPUTE] ComputeForward | TASK_INIT | ...")
 		ComputeForward(&params, node)
 
 		// --- COMPUTE
@@ -1916,7 +1916,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		}
 
 		params.Type = TASK_COMPUTE
-		fmt.Printf("\n[COMPUTE] ComputeForward | TASK_COMPUTE | ...")
+		//////////////////////////////////////////////////////////fmt.Printf("\n[COMPUTE] ComputeForward | TASK_COMPUTE | ...")
 		ComputeForward(&params, node)
 
 		// wait for thread pool
@@ -1973,7 +1973,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		}
 
 		params.Type = TASK_FINALIZE
-		fmt.Printf("\n[COMPUTE] ComputeForward | TASK_FINALIZE | ...")
+		///////////////////////////////////////////////////////fmt.Printf("\n[COMPUTE] ComputeForward | TASK_FINALIZE | ...")
 		ComputeForward(&params, node)
 
 		// wait for thread pool
@@ -2042,7 +2042,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 func ComputeForward(params *ComputeParams, tensor *Tensor) {
 
-	fmt.Printf("\n[COMPUTE] ComputeForward...")
+	///////////////////////////////////////////////////////////////////////////fmt.Printf("\n[COMPUTE] ComputeForward...")
 
 	////ASSERT(params);
 
@@ -2134,7 +2134,7 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_mul_mat")
 		////os.Exit(1)
 		ComputeForwardMulMatFP32(params, tensor.src0, tensor.src1, tensor)
-		fmt.Printf("[ return ]")
+		////fmt.Printf("[ return ]")
 	case OP_SCALE:
 		////ggml_compute_forward_scale(params, tensor->src0, tensor->src1, tensor);
 		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_scale")
@@ -2227,7 +2227,7 @@ func VecCopyFP32(n uint32, y, x []float32) {
 // ggml_compute_forward_get_rows_f32
 func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	fmt.Printf(" [ ComputeForwardGetRows ] ")
+	///////////////////////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardGetRows ] ")
 
 	////assert(params->ith == 0);
 
@@ -2271,10 +2271,10 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
 	////GGML_ASSERT(ggml_are_same_shape(src0, dst));
 
-	fmt.Printf(" [ ComputeForwardRMSNormFP32 ] ")
+	///////////////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardRMSNormFP32 ] ")
 
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
-		fmt.Printf(" [ return ] ")
+		////fmt.Printf(" [ return ] ")
 		return
 	}
 
@@ -2364,7 +2364,7 @@ func VecScaleFP32(n uint32, y []float32, v float32) {
 // ggml_compute_forward_repeat
 func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 
-	fmt.Printf(" [ ComputeForwardRepeatFP32 ] ")
+	///////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardRepeatFP32 ] ")
 
 	////assert(params->ith == 0);
 	////assert(ggml_can_repeat(src0, dst));
@@ -2421,7 +2421,7 @@ func VecMulFP32(n uint32, z, x, y []float32) {
 // ggml_compute_forward_mul
 func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	fmt.Printf(" [ ComputeForwardMulFP32 ] ")
+	//////////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardMulFP32 ] ")
 
 	////assert(params->ith == 0);
 	////assert(ggml_are_same_shape(src0, src1) && ggml_are_same_shape(src0, dst));
@@ -2452,7 +2452,7 @@ func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 // ggml_compute_forward_mul_mat
 func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	fmt.Printf(" [ ComputeForwardMulMatFP32 ] ")
+	//////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardMulMatFP32 ] ")
 
 	////int64_t t0 = ggml_perf_time_us();
 	////UNUSED(t0);
@@ -2712,7 +2712,7 @@ func ComputeForwardCopy(params *ComputeParams, src0, dst *Tensor) {
 
 func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 
-	fmt.Printf(" [ ComputeForwardDupFP32 ] ")
+	///////////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardDupFP32 ] ")
 
 	////GGML_ASSERT(params->ith == 0);
 	////GGML_ASSERT(ggml_is_contiguous(dst));
@@ -2841,7 +2841,7 @@ func ComputeForwardPermute(params *ComputeParams, src0 *Tensor) {
 // ggml_compute_forward_rope
 func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	fmt.Printf(" [ ComputeForwardRopeFP32 ] ")
+	///////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardRopeFP32 ] ")
 
 	////assert(params->ith == 0);
 	////assert(src1->type == GGML_TYPE_I32);
@@ -2900,7 +2900,7 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 // ggml_compute_forward_scale
 func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	fmt.Printf(" [ ComputeForwardScaleFP32 ] ")
+	/////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardScaleFP32 ] ")
 
 	////GGML_ASSERT(ggml_is_contiguous(src0));
 	////GGML_ASSERT(ggml_is_contiguous(dst));
@@ -2937,7 +2937,7 @@ func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 // ggml_compute_forward_diag_mask_inf
 func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	fmt.Printf(" [ ComputeForwardDiagMaskInfFP32 ] ")
+	/////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardDiagMaskInfFP32 ] ")
 
 	////assert(params->ith == 0);
 	////assert(src1->type == GGML_TYPE_I32);
@@ -2974,7 +2974,7 @@ func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tenso
 // ggml_compute_forward_soft_max
 func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 
-	fmt.Printf(" [ ComputeForwardSoftMaxFP32 ] ")
+	////////////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardSoftMaxFP32 ] ")
 
 	////GGML_ASSERT(ggml_is_contiguous(src0));
 	////GGML_ASSERT(ggml_is_contiguous(dst));
@@ -3051,7 +3051,7 @@ func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 // ggml_compute_forward_add
 func ComputeForwardAddFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	fmt.Printf(" [ ComputeForwardAddFP32 ] ")
+	////////////////////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardAddFP32 ] ")
 
 	////GGML_ASSERT(ggml_are_same_shape(src0, src1) && ggml_are_same_shape(src0, dst));
 
@@ -3107,7 +3107,7 @@ func ComputeForwardAddFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 // ggml_compute_forward_silu
 func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
 
-	fmt.Printf(" [ ComputeForwardSiluFP32 ] ")
+	////////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardSiluFP32 ] ")
 
 	////GGML_ASSERT(ggml_is_contiguous(src0));
 	////GGML_ASSERT(ggml_is_contiguous(dst));

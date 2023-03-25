@@ -435,12 +435,12 @@ func main() {
 		embd = embdInp
 
 		if len(embd) > 0 {
-			fmt.Printf("\nllamaEval #1")
+			////////////////////////////////////////fmt.Printf("\nllamaEval #1")
 			if err := llama.Eval(lctx, embd, uint32(len(embd)), n_past, params.threadsCount); err != nil {
 				fmt.Printf("[HALT] Failed to eval")
 				return
 			}
-			fmt.Printf("\nllamaEval #1 returned")
+			/////////////////////////////////////fmt.Printf("\nllamaEval #1 returned")
 		}
 
 		/////////////////////////////////////////////////embeddings := llama.GetEmbeddings(ctx)
@@ -459,14 +459,14 @@ func main() {
 		// predict
 		if len(embd) > 0 {
 
-			fmt.Printf("\nllamaEval #2")
+			////////////////////////////////////////////////fmt.Printf("\nllamaEval #2")
 			////if (llama_eval(ctx, embd.data(), embd.size(), n_past, params.n_threads)) {
 			////fprintf(stderr, "%s : failed to eval\n", __func__);
 			if err := llama.Eval(lctx, embd, uint32(len(embd)), n_past, params.threadsCount); err != nil {
 				fmt.Printf("\n[ERROR] Failed to eval")
 				os.Exit(1)
 			}
-			fmt.Printf("\nllamaEval #2 returned")
+			///////////////////////////////////////fmt.Printf("\nllamaEval #2 returned")
 
 			////t_predict_us += ggml_time_us() - t_start_us;
 		}

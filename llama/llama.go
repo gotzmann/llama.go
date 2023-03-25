@@ -97,9 +97,36 @@ func NewContextParams() ContextParams {
 	}
 }
 
-//
-// interface implementation
-//
+func KVCacheInit(hparams *HParams, cache *KVCache, dt ml.DType /*, int n_ctx*/) error {
+	////const int n_embd  = hparams.n_embd;
+	////const int n_layer = hparams.n_layer;
+
+	////const int n_mem      = n_layer*n_ctx;
+	////const int n_elements = n_embd*n_mem;
+
+	////cache.buf.resize(2u*n_elements*ggml_type_size(wtype) + 2u*MB);
+
+	////struct ggml_init_params params;
+	////params.mem_size   = cache.buf.size();
+	////params.mem_buffer = cache.buf.data();
+
+	////cache.ctx = ggml_init(params);
+
+	////if (!cache.ctx) {
+	////	fprintf(stderr, "%s: failed to allocate memory for kv cache\n", __func__);
+	////	return false;
+	////}
+
+	////cache.k = ggml_new_tensor_1d(cache.ctx, wtype, n_elements);
+	////cache.v = ggml_new_tensor_1d(cache.ctx, wtype, n_elements);
+
+	count := hparams.embdSize * hparams.layersCount /* *n_ctx */
+	cache.K = ml.NewTensor1D(nil, dt, count)
+	cache.V = ml.NewTensor1D(nil, dt, count)
+	// FIXME Should we alter cache.K ??
+
+	return nil
+}
 
 // //struct llama_context * llama_init_from_file(
 func InitFromFile(fileName string, params *ContextParams) (*Context, error) {
@@ -137,35 +164,39 @@ func InitFromFile(fileName string, params *ContextParams) (*Context, error) {
 	////}
 	////}
 
-	// reserve memory for context buffers
-	{
-		////if (!kv_cache_init(ctx->model.hparams, ctx->model.kv_self, memory_type, ctx->model.hparams.n_ctx)) {
-		////fprintf(stderr, "%s: kv_cache_init() failed for self-attention cache\n", __func__);
-		////llama_free(ctx);
-		////return nullptr;
-		////}
+	// --- reserve memory for context buffers
 
-		{
-			////const size_t memory_size = ggml_nbytes(ctx->model.kv_self.k) + ggml_nbytes(ctx->model.kv_self.v);
-			////fprintf(stderr, "%s: kv self size  = %7.2f MB\n", __func__, memory_size / 1024.0 / 1024.0);
-		}
+	////{
+	////if (!kv_cache_init(ctx->model.hparams, ctx->model.kv_self, memory_type, ctx->model.hparams.n_ctx)) {
+	////fprintf(stderr, "%s: kv_cache_init() failed for self-attention cache\n", __func__);
+	////llama_free(ctx);
+	////return nullptr;
+	////}
 
-		////const auto & hparams = ctx->model.hparams;
-		////if (params.logits_all) {
-		////ctx->logits.reserve(hparams.n_ctx*hparams.n_vocab);
-		////} else {
-		////ctx->logits.reserve(hparams.n_ctx);
-		////}
+	// kv_cache_init
+	KVCacheInit(&ctx.Model.hparams, &ctx.Model.kvSelf, ml.TYPE_F32 /*, ctx.Model.hparams.n_ctx*/)
 
-		////if (params.embedding){
-		///ctx->embedding.reserve(hparams.n_embd);
-		////}
+	////{
+	////const size_t memory_size = ggml_nbytes(ctx->model.kv_self.k) + ggml_nbytes(ctx->model.kv_self.v);
+	////fprintf(stderr, "%s: kv self size  = %7.2f MB\n", __func__, memory_size / 1024.0 / 1024.0);
+	////}
 
-		////ctx->buf_compute.resize(MEM_REQ_EVAL.at(ctx->model.type));
+	////const auto & hparams = ctx->model.hparams;
+	////if (params.logits_all) {
+	////ctx->logits.reserve(hparams.n_ctx*hparams.n_vocab);
+	////} else {
+	////ctx->logits.reserve(hparams.n_ctx);
+	////}
 
-		////ctx->buf_scratch[0].resize(MEM_REQ_SCRATCH0.at(ctx->model.type));
-		////ctx->buf_scratch[1].resize(MEM_REQ_SCRATCH1.at(ctx->model.type));
-	}
+	////if (params.embedding){
+	///ctx->embedding.reserve(hparams.n_embd);
+	////}
+
+	////ctx->buf_compute.resize(MEM_REQ_EVAL.at(ctx->model.type));
+
+	////ctx->buf_scratch[0].resize(MEM_REQ_SCRATCH0.at(ctx->model.type));
+	////ctx->buf_scratch[1].resize(MEM_REQ_SCRATCH1.at(ctx->model.type));
+	////}
 
 	return ctx, nil
 }
@@ -234,13 +265,13 @@ const (
 )
 
 type KVCache struct {
-	k *ml.Tensor
-	v *ml.Tensor
+	K *ml.Tensor
+	V *ml.Tensor
 
 	////ctx *ml.Context
 	////std::vector<uint8_t> buf;
 
-	n uint32 // number of tokens currently in the cache
+	N uint32 // number of tokens currently in the cache
 }
 
 type Model struct {
@@ -383,7 +414,7 @@ func Eval(
 		rep := ml.Repeat(ctx0, model.layers[il].attentionNorm, cur)
 		cur = ml.Mul(ctx0, rep, cur)
 
-		fmt.Printf("\n[EVAL] Self-attention #%d...", il)
+		////////////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] Self-attention #%d...", il)
 
 		// self-attention
 		{
@@ -406,8 +437,8 @@ func Eval(
 					ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Kcur, k)) // K
 					ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Vcur, v)) // V
 				*/
-				k := ml.View1D(ctx0, kvSelf.k, N*embdSize /*, (ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past)*/)
-				v := ml.View1D(ctx0, kvSelf.v, N*embdSize /*, (ggml_element_size(kv_self.v)*n_embd)*(il*n_ctx + n_past)*/)
+				k := ml.View1D(ctx0, kvSelf.K, N*embdSize /*, (ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past)*/)
+				v := ml.View1D(ctx0, kvSelf.V, N*embdSize /*, (ggml_element_size(kv_self.v)*n_embd)*(il*n_ctx + n_past)*/)
 
 				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Kcur, k))
 				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Vcur, v))
@@ -428,7 +459,7 @@ func Eval(
 				ml.Permute(ctx0,
 					ml.Rope(ctx0,
 						ml.Reshape3D(ctx0,
-							ml.View1D(ctx0, kvSelf.k, (pastCount+N)*embdSize /*, il*n_ctx*ggml_element_size(model.memory_k)*n_embd*/),
+							ml.View1D(ctx0, kvSelf.K, (pastCount+N)*embdSize /*, il*n_ctx*ggml_element_size(model.memory_k)*n_embd*/),
 							embdSize/headsCount, headsCount, pastCount+N),
 						pastCount, rotCount, 1),
 					0, 2, 1, 3)
@@ -456,8 +487,8 @@ func Eval(
 			VTrans :=
 				ml.Copy(ctx0,
 					ml.Permute(ctx0,
-						ml.Reshape3D(ctx0, // FIXME down ^^^
-							ml.View1D(ctx0, kvSelf.v, (pastCount+N)*embdSize), /* (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_v)*n_embd)*/
+						ml.Reshape3D(ctx0,
+							ml.View1D(ctx0, kvSelf.V, (pastCount+N)*embdSize), /* (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_v)*n_embd)*/
 							embdSize/headsCount, headsCount, pastCount+N),
 						1, 2, 0, 3),
 					ml.NewTensor3D(ctx0, ml.TYPE_F32 /* kv_self.v->type */, pastCount+N, embdSize/headsCount, headsCount))
@@ -479,7 +510,7 @@ func Eval(
 				cur)
 		}
 
-		fmt.Printf("\n[EVAL] Feed-forward network #%d...", il)
+		/////////////////////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] Feed-forward network #%d...", il)
 
 		////lctx.use_buf(ctx0, 1);
 
@@ -523,7 +554,7 @@ func Eval(
 
 	////lctx.use_buf(ctx0, 0);
 
-	fmt.Printf("\n[EVAL] RMS Norm...")
+	/////////////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] RMS Norm...")
 
 	// used at the end to optionally extract the embeddings
 	////var embeddings *ml.Tensor
@@ -539,7 +570,7 @@ func Eval(
 
 	////embeddings := inpL
 
-	fmt.Printf("\n[EVAL] LM Head...")
+	///////////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] LM Head...")
 
 	// lm_head
 	inpL = ml.MulMat(ctx0, model.output, inpL)
@@ -550,10 +581,10 @@ func Eval(
 	// COMMentED inpL = ggml_soft_max(ctx0, inpL);
 
 	// run the computation
-	fmt.Printf("\n[EVAL] BuildForwardExpand...")
+	////////////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] BuildForwardExpand...")
 	ml.BuildForwardExpand(&gf, inpL)
 
-	fmt.Printf("\n[EVAL] GraphCompute...")
+	///////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] GraphCompute...")
 	ml.GraphCompute(ctx0, &gf)
 
 	// COMMenteD  if (n_past%100 == 0) {
@@ -683,36 +714,36 @@ func SampleTopPTopK(
 	repeatPenalty float64,
 ) uint32 {
 
-	//-//auto & rng = lctx.rng;
-	//-//const auto & vocab = lctx.vocab;
-	vocab := lctx.Vocab
-	//-//const auto & logits = lctx.logits;
+	////auto & rng = lctx.rng;
+
+	////////////////////////////////logitsCount := uint32(len(vocab.ID2Token))
+	logitsCount := lctx.Model.hparams.vocabSize
 	logits := lctx.Logits
 
-	n_logits := uint32(len(vocab.ID2Token))
+	////const auto * plogits = logits.data() + logits.size() - n_logits;
+	plogits := logits[len(logits)-int(logitsCount):] // FIXME ASAP
 
-	////std::vector<std::pair<double, gpt_vocab::id>> logits_id;
+	////std::vector<std::pair<double, llama_vocab::id>> logits_id;
 	////logits_id.reserve(n_logits);
-	////logitsID := make(map[float64]uint32, n_logits)
-	logitsID := make([]pair, n_logits)
+	logitsID := make([]pair, 0, logitsCount) // FIXME LEN vs CAP
 
 	{
-		scale := float64(1.0) / temp
-		for i := uint32(0); i < n_logits; i++ {
+		scale := 1.0 / temp
+		for i := uint32(0); i < logitsCount; i++ {
 			// repetition penalty from ctrl paper (https://arxiv.org/abs/1909.05858)
 			// credit https://github.com/facebookresearch/llama/compare/main...shawwn:llama:main
 			////if (std::find(last_n_tokens.begin(), last_n_tokens.end(), i) != last_n_tokens.end()) {
 			if slices.IndexFunc(lastNTokens, func(el uint32) bool { return el == i }) != -1 {
 				// if score < 0 then repetition penalty has to multiplied to reduce the previous token probability
-				if logits[i] < 0.0 {
+				if plogits[i] < 0.0 {
 					////logits_id.push_back(std::make_pair(logits[i]*scale*repeat_penalty, i));
-					logitsID = append(logitsID, pair{float64(logits[i]) * scale * repeatPenalty, i})
+					logitsID = append(logitsID, pair{float64(plogits[i]) * scale * repeatPenalty, i})
 				} else {
 					////logits_id.push_back(std::make_pair(logits[i]*scale/repeat_penalty, i));
-					logitsID = append(logitsID, pair{float64(logits[i]) * scale / repeatPenalty, i})
+					logitsID = append(logitsID, pair{float64(plogits[i]) * scale / repeatPenalty, i})
 				}
 			} else {
-				logitsID = append(logitsID, pair{float64(logits[i]) * scale, i})
+				logitsID = append(logitsID, pair{float64(plogits[i]) * scale, i})
 			}
 		}
 	}
@@ -728,10 +759,10 @@ func SampleTopPTopK(
 	}
 
 	// compute probs for the top k tokens
-	probs := make([]float64, 0, uint32(len(logitsID)))
 	////probs.reserve(logits_id.size());
+	probs := make([]float64, 0, len(logitsID)) // FIXME LEN vs CAP
 
-	sum := float64(0.0)
+	sum := 0.0
 	////for (const auto & kv : logits_id) {
 	for _, kv := range logitsID {
 		// double p = exp(kv.first - maxl);
@@ -746,12 +777,12 @@ func SampleTopPTopK(
 	}
 
 	if topP < 1.0 {
-		cumsum := float64(0.0)
+		cumsum := 0.0
 		for i := uint32(0); i < uint32(len(probs)); i++ {
 			cumsum += probs[i]
 			if cumsum >= topP {
-				////probs.resize(i + 1)
-				////logits_id.resize(i + 1)
+				////probs.resize(i + 1) // FIXME ASAP
+				////logits_id.resize(i + 1) // FIXME ASAP
 				break
 			}
 		}
@@ -762,21 +793,18 @@ func SampleTopPTopK(
 		}
 	}
 
-	//printf("\n");
-	//for (int i = 0; i < (int) 10; i++) {
-	//    printf("%d: '%s' %f\n", i, vocab.id_to_token.at(logits_id[i].second).c_str(), probs[i]);
-	//}
-	//printf("\n\n");
-	//exit(0);
+	// COMMENTED printf("\n");
+	// COMMENTED for (int i = 0; i < (int) 10; i++) {
+	// COMMENTED    printf("%d: '%s' %f\n", i, vocab.id_to_token.at(logits_id[i].second).c_str(), probs[i]);
+	// COMMENTED }
+	// COMMENTED printf("\n\n");
+	// COMMENTED exit(0);
 
 	////std::discrete_distribution<> dist(probs.begin(), probs.end());
+	////int idx = dist(rng);
 
-	// std::mt19937(since C++11) class is a very efficient pseudo-random number generator
-	// and is defined in a random header file. It produces 32-bit pseudo-random numbers
-	////idx := dist(rng)
+	////return logits_id[idx].second;
 
-	////v, _ := logitsID[idx]
-	////return logitsID[idx].second;
 	return logitsID[0].second // FIXME ASAP
 }
 
