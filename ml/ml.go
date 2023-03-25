@@ -13,6 +13,9 @@ const (
 	MAX_OPT      = 4
 
 	QK = 32 // quantization
+
+	TOKEN_BOS = 1
+	TOKEN_EOS = 2
 )
 
 type dtype uint8

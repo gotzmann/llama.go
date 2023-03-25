@@ -625,7 +625,7 @@ func sampleTopK(logitsID []pair, topK uint32) []pair {
 
 // std::mt19937 = A Mersenne Twister pseudo-random generator of 32-bit numbers with a state size of 19937 bits.
 func SampleTopPTopK(
-	lctx Context,
+	lctx *Context,
 	lastNTokens []uint32,
 	topK uint32,
 	topP float64,
