@@ -11,101 +11,131 @@ import (
 	"github.com/gotzmann/llama.go/ml"
 )
 
-/*
-https://huggingface.co/docs/transformers/main/model_doc/llama
+/* Keep track of current color of output, and emit ANSI code if it changes. */
+////enum console_state {
+    ////CONSOLE_STATE_DEFAULT=0,
+    ////CONSOLE_STATE_PROMPT,
+    ////CONSOLE_STATE_USER_INPUT
+////};
 
-vocab_size (int, optional, defaults to 32000) — Vocabulary size of the LLaMA model. Defines the number of different tokens that can be represented by the inputs_ids passed when calling LlamaModel
+////static console_state con_st = CONSOLE_STATE_DEFAULT;
+////static bool con_use_color = false;
 
-hidden_size (int, optional, defaults to 4096) — Dimension of the hidden representations.
-
-intermediate_size (int, optional, defaults to 11008) — Dimension of the MLP representations.
-
-num_hidden_layers (int, optional, defaults to 32) — Number of hidden layers in the Transformer encoder.
-
-num_attention_heads (int, optional, defaults to 32) — Number of attention heads for each attention layer in the Transformer encoder.
-
-hidden_act (str or function, optional, defaults to "silu") — The non-linear activation function (function or string) in the decoder.
-
-initializer_range (float, optional, defaults to 0.02) — The standard deviation of the truncated_normal_initializer for initializing all weight matrices.
-
-rms_norm_eps (float, optional, defaults to 1e-12) — The epsilon used by the rms normalization layers.
-
-use_cache (bool, optional, defaults to True) — Whether or not the model should return the last key/values attentions (not used by all models). Only relevant if config.is_decoder=True.
-
-tie_word_embeddings(bool, optional, defaults to False) — Whether to tie weight embeddings Example —
-*/
-
-/*
-#include "ggml.h"
-
-#include "utils.h"
-
-#include <cassert>
-#include <cmath>
-#include <cstdio>
-#include <cstring>
-#include <fstream>
-#include <map>
-#include <string>
-#include <vector>
-
-#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
-#include <signal.h>
-#include <unistd.h>
-#elif defined (_WIN32)
-#include <signal.h>
-#endif
-
-#define ANSI_COLOR_RED     "\x1b[31m"
-#define ANSI_COLOR_GREEN   "\x1b[32m"
-#define ANSI_COLOR_YELLOW  "\x1b[33m"
-#define ANSI_COLOR_BLUE    "\x1b[34m"
-#define ANSI_COLOR_MAGENTA "\x1b[35m"
-#define ANSI_COLOR_CYAN    "\x1b[36m"
-#define ANSI_COLOR_RESET   "\x1b[0m"
-#define ANSI_BOLD          "\x1b[1m"
-*/
+////void set_console_state(console_state new_st)
+////{
+    ////if (!con_use_color) return;
+    // only emit color code if state changed
+    ////if (new_st != con_st) {
+        ////con_st = new_st;
+        ////switch(con_st) {
+        ////case CONSOLE_STATE_DEFAULT:
+            ////printf(ANSI_COLOR_RESET);
+            ////return;
+        ////case CONSOLE_STATE_PROMPT:
+            ////printf(ANSI_COLOR_YELLOW);
+            ////return;
+        ////case CONSOLE_STATE_USER_INPUT:
+            ////printf(ANSI_BOLD ANSI_COLOR_GREEN);
+            ////return;
+        ////}
+    ////}
+////}
 
 /*
-
-static bool is_interacting = false;
-
-#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__)) || defined (_WIN32)
-void sigint_handler(int signo) {
-    printf(ANSI_COLOR_RESET);
-    if (signo == SIGINT) {
-        if (!is_interacting) {
-            is_interacting=true;
-        } else {
-            _exit(130);
-        }
+std::vector<double> softmax(const std::vector<float>& logits) {
+    std::vector<double> probs(logits.size());
+    float max_logit = logits[0];
+    for (float v : logits) max_logit = std::max(max_logit, v);
+    double sum_exp = 0.0;
+    for (size_t i = 0; i < logits.size(); i++) {
+        // Subtract the maximum logit value from the current logit value for numerical stability
+        float logit = logits[i] - max_logit;
+        double exp_logit = std::exp(logit);
+        sum_exp += exp_logit;
+        probs[i] = exp_logit;
     }
-}
-#endif
+    for (size_t i = 0; i < probs.size(); i++) probs[i] /= sum_exp;
+    return probs;
+}*/
 
-const char * llama_print_system_info(void) {
-    static std::string s;
+/*
+void perplexity(llama_context * ctx, const gpt_params & params) {
+    // Download: https://s3.amazonaws.com/research.metamind.io/wikitext/wikitext-2-raw-v1.zip?ref=salesforce-research
+    // Run `./main --perplexity -m models/7B/ggml-model-q4_0.bin -f wiki.test.raw`
+    // Output: `perplexity: 13.5106 [114/114]`
+    auto tokens = ::llama_tokenize(ctx, params.prompt, true);
 
-    s  = "";
-    s += "AVX = "       + std::to_string(ggml_cpu_has_avx())       + " | ";
-    s += "AVX2 = "      + std::to_string(ggml_cpu_has_avx2())      + " | ";
-    s += "AVX512 = "    + std::to_string(ggml_cpu_has_avx512())    + " | ";
-    s += "FMA = "       + std::to_string(ggml_cpu_has_fma())       + " | ";
-    s += "NEON = "      + std::to_string(ggml_cpu_has_neon())      + " | ";
-    s += "ARM_FMA = "   + std::to_string(ggml_cpu_has_arm_fma())   + " | ";
-    s += "F16C = "      + std::to_string(ggml_cpu_has_f16c())      + " | ";
-    s += "FP16_VA = "   + std::to_string(ggml_cpu_has_fp16_va())   + " | ";
-    s += "WASM_SIMD = " + std::to_string(ggml_cpu_has_wasm_simd()) + " | ";
-    s += "BLAS = "      + std::to_string(ggml_cpu_has_blas())      + " | ";
-    s += "SSE3 = "      + std::to_string(ggml_cpu_has_sse3())      + " | ";
-    s += "VSX = "       + std::to_string(ggml_cpu_has_vsx())       + " | ";
+    int count = 0;
+    double nll = 0.0;
+    int seq_count = tokens.size() / params.n_ctx;
 
-    return s.c_str();
-}
+    fprintf(stderr, "%s : calculating perplexity over %d chunks\n", __func__, seq_count);
 
-*/
+    for (int i = 0; i < seq_count; ++i) {
+        int start = i * params.n_ctx;
+        int end = start + params.n_ctx - 1;
+        std::vector<llama_token> embd(tokens.begin() + start, tokens.begin() + end);
+        auto start_t = std::chrono::high_resolution_clock::now();
+        if (llama_eval(ctx, embd.data(), embd.size(), 0, params.n_threads)) {
+            fprintf(stderr, "%s : failed to eval\n", __func__);
+            return;
+        }
+        auto end_t = std::chrono::high_resolution_clock::now();
+        if (i == 0) {
+            double seconds = std::chrono::duration<double>(end_t - start_t).count();
+            printf("%.2f seconds per pass - ETA %.2f hours\n", seconds, (seconds * seq_count) / (60.0*60.0));
+        }
+        // We get the logits for all the tokens in the context window (params.n_ctx)
+        // from llama_eval above.  Now, based on https://huggingface.co/docs/transformers/perplexity,
+        // calculate the perplexity over the last half the window (so the model always has
+        // some context to predict the token).
+        //
+        // We rely on the fact that attention in the forward pass only looks at previous
+        // tokens here, so the logits returned for each token are an accurate representation
+        // of what the model would have predicted at that point.
+        //
+        // Example, we have a context window of 512, we will compute perplexity for each of the
+        // last 256 tokens.  Then, we split the input up into context window size chunks to
+        // process the entire prompt.
+
+        auto logits = llama_get_logits(ctx);
+        for (int j = params.n_ctx / 2; j < params.n_ctx - 1; ++j) {
+            // Calculate probability of next token, given the previous ones.
+            int n_vocab = llama_n_vocab(ctx);
+            std::vector<float> tok_logits(
+                logits + j * n_vocab,
+                logits + (j + 1) * n_vocab);
+            double prob = softmax(tok_logits)[tokens[start + j + 1]];
+            nll += -std::log(prob);
+            ++count;
+        }
+        // perplexity is e^(average negative log-likelihood)
+        printf("[%d]%.4lf,", i + 1, std::exp(nll / count));
+        fflush(stdout);
+    }
+    printf("\n");
+}*/
+
+var isInteracting bool = false
+
+////#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__)) || defined (_WIN32)
+////void sigint_handler(int signo) {
+    ////set_console_state(CONSOLE_STATE_DEFAULT);
+    ////printf("\n"); // this also force flush stdout.
+    ////if (signo == SIGINT) {
+        ////if (!is_interacting) {
+            ////is_interacting=true;
+        ////} else {
+            ////_exit(130);
+        ////}
+    ////}
+////}
+////#endif
+
 
 func main() {
+    
+
 	//int main(int argc, char ** argv) {
 
 	// has to be called once at the start of the program to init ggml stuff
