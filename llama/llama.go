@@ -18,6 +18,12 @@ import (
 	"github.com/gotzmann/llama.go/ml"
 )
 
+const (
+	LLAMA_FILE_VERSION           = 1
+	LLAMA_FILE_MAGIC             = 0x67676d66 // 'ggmf' in hex
+	LLAMA_FILE_MAGIC_UNVERSIONED = 0x67676d6c // pre-versioned files
+)
+
 var (
 	// determine number of model parts based on the dimension
 	llamaParts = map[uint32]uint32{
@@ -75,6 +81,96 @@ func NewContext() *Context {
 		logits:    make([]float32, 0), // TODO Cap?
 		embedding: make([]float32, 0), // TODO Cap?
 	}
+}
+
+// struct llama_context_params {
+type ContextParams struct {
+	n_ctx   int // text context
+	n_parts int // -1 for default
+	seed    int // RNG seed, 0 for random
+
+	f16_kv    bool // use fp16 for KV cache
+	logitsAll bool // the llama_eval() call computes all logits, not just the last one
+	vocabOnly bool // only load the vocabulary, no weights
+	use_mlock bool // force system to keep model in RAM
+	embedding bool // embedding mode only
+
+	// called with a progress value between 0 and 1, pass NULL to disable
+	////llama_progress_callback progress_callback;
+	// context pointer passed to the progress callback
+	////void * progress_callback_user_data;
+}
+
+//
+// interface implementation
+//
+
+// //struct llama_context * llama_init_from_file(
+func InitFromFile(fileName string, params ContextParams) (*Context, error) {
+	////ggml_time_init();
+
+	ctx := NewContext()
+
+	////if (params.seed <= 0) {
+	////params.seed = time(NULL);
+	////}
+
+	////ctx->rng = std::mt19937(params.seed);
+	ctx.logitsAll = params.logitsAll
+
+	////ggml_type memory_type = params.f16_kv ? GGML_TYPE_F16 : GGML_TYPE_F32;
+
+	err := LoadModel(fileName, ctx, params.n_ctx, params.n_parts, /*memory_type,*/
+		params.vocabOnly, /*params.progress_callback,
+		params.progress_callback_user_data*/)
+
+	if err != nil {
+		fmt.Printf("\n[ERROR] Failed to load LLaMMA model!")
+		////llama_free(ctx);
+		return nil, err
+	}
+
+	////if (params.use_mlock) {
+	////char *err;
+	////if (!ggml_mlock(ctx->model.ctx, &err)) {
+	////fprintf(stderr, "%s\n", err);
+	////free(err);
+	////llama_free(ctx);
+	////return nullptr;
+	////}
+	////}
+
+	// reserve memory for context buffers
+	{
+		////if (!kv_cache_init(ctx->model.hparams, ctx->model.kv_self, memory_type, ctx->model.hparams.n_ctx)) {
+		////fprintf(stderr, "%s: kv_cache_init() failed for self-attention cache\n", __func__);
+		////llama_free(ctx);
+		////return nullptr;
+		////}
+
+		{
+			////const size_t memory_size = ggml_nbytes(ctx->model.kv_self.k) + ggml_nbytes(ctx->model.kv_self.v);
+			////fprintf(stderr, "%s: kv self size  = %7.2f MB\n", __func__, memory_size / 1024.0 / 1024.0);
+		}
+
+		////const auto & hparams = ctx->model.hparams;
+		////if (params.logits_all) {
+		////ctx->logits.reserve(hparams.n_ctx*hparams.n_vocab);
+		////} else {
+		////ctx->logits.reserve(hparams.n_ctx);
+		////}
+
+		////if (params.embedding){
+		///ctx->embedding.reserve(hparams.n_embd);
+		////}
+
+		////ctx->buf_compute.resize(MEM_REQ_EVAL.at(ctx->model.type));
+
+		////ctx->buf_scratch[0].resize(MEM_REQ_SCRATCH0.at(ctx->model.type));
+		////ctx->buf_scratch[1].resize(MEM_REQ_SCRATCH1.at(ctx->model.type));
+	}
+
+	return ctx, nil
 }
 
 type Layer struct {
@@ -404,9 +500,9 @@ func Eval(
 	fmt.Printf("\n[EVAL] RMS Norm...")
 
 	// used at the end to optionally extract the embeddings
-	var embeddings *ml.Tensor
+	////var embeddings *ml.Tensor
 
-	// norm
+	// --- norm
 	{
 		inpL = ml.RMSNorm(ctx0, inpL)
 
@@ -415,7 +511,7 @@ func Eval(
 			ml.Repeat(ctx0, model.norm, inpL),
 			inpL)
 
-		embeddings = inpL
+		////embeddings = inpL
 	}
 
 	fmt.Printf("\n[EVAL] LM Head...")
@@ -634,9 +730,25 @@ func SampleTopPTopK(
 	return logitsID[0].second // FIXME ASAP
 }
 
+// llama_model_load
 // load the model's weights from a file
-func LoadModel(fileName string, model *Model, vocab *ml.Vocab) error {
-	fmt.Printf("\n[llamaModelLoad] Loading model from '%s' - please wait ...\n", fileName)
+// WAS func LoadModel(fileName string, model *Model, vocab *ml.Vocab) error {
+
+func LoadModel(
+	fileName string, //const std::string & fname,
+	lctx *Context,
+	n_ctx int,
+	n_parts int,
+	//ggml_type memory_type,
+	vocabOnly bool,
+	//llama_progress_callback progress_callback,
+	//void *progress_callback_user_data
+) error {
+
+	fmt.Printf("\n[LoadModel] Loading model from '%s' - please wait ...\n", fileName)
+
+	model := lctx.model
+	vocab := lctx.vocab
 
 	data, err := os.Open(fileName)
 	if err != nil {
@@ -655,10 +767,29 @@ func LoadModel(fileName string, model *Model, vocab *ml.Vocab) error {
 	//var magicInt int32
 	//magicInt := int32(magic[3])<<24 | int32(magic[2])<<16 | int32(magic[1])<<8 | int32(magic[0])
 	magic, _ := readInt(reader)
-	if magic != 0x67676d6c {
-		fmt.Printf("\n[llamaModelLoad] Invalid model file '%s' (bad magic)", fileName)
-		return nil // FIXME ERR
+
+	if magic == LLAMA_FILE_MAGIC_UNVERSIONED {
+		fmt.Printf("\n[ERROR] Invalid model file '%s'! Too old, regenerate!", fileName)
+		return fmt.Errorf("invalid model file")
 	}
+
+	if magic != LLAMA_FILE_MAGIC {
+		fmt.Printf("\n[ERROR] Invalid model file '%s'! Wrong MAGIC in header", fileName)
+		return fmt.Errorf("invalid model file")
+	}
+
+	version, _ := readInt(reader)
+
+	if version != LLAMA_FILE_VERSION {
+		fmt.Printf("\n[ERROR] Invalid model file '%s'! Unsupported version", fileName)
+		return fmt.Errorf("invalid model file")
+	}
+
+	/*
+		if magic != 0x67676d6c {
+			fmt.Printf("\n[llamaModelLoad] Invalid model file '%s' (bad magic)", fileName)
+			return nil // FIXME ERR
+		} */
 
 	//var buf []byte // std::vector<char> f_buf(1024*1024);
 	//	buf := make([]byte, 1024*1024)
@@ -685,7 +816,7 @@ func LoadModel(fileName string, model *Model, vocab *ml.Vocab) error {
 	   }
 	*/
 
-	var n_ff, n_parts uint32
+	///////////////////////////////////////////////////////////////////////var n_ff, n_parts uint32
 
 	// load hparams
 	{
@@ -700,9 +831,35 @@ func LoadModel(fileName string, model *Model, vocab *ml.Vocab) error {
 		//hparamsCtx = n_ctx
 
 		//n_ff = ((2*(4*hparams.n_embd)/3 + hparams.n_mult - 1)/hparams.n_mult)*hparams.n_mult;
-		n_ff = ((2*(4*hparamsEmbd)/3 + hparamsMult - 1) / hparamsMult) * hparamsMult
+		n_ff := ((2*(4*hparamsEmbd)/3 + hparamsMult - 1) / hparamsMult) * hparamsMult
 		//n_parts = LLAMA_N_PARTS.at(hparams.n_embd);
-		n_parts = llamaParts[hparamsEmbd]
+		//////////////////////////////////////////////////n_parts = llamaParts[hparamsEmbd]
+
+		////if (n_parts < 1) {
+		////n_parts = LLAMA_N_PARTS.at(hparams.n_embd);
+		////}
+
+		// temp warning to tell the user to use "--n_parts"
+		////if (hparams.f16 == 4 && n_parts != 1) {
+		////fprintf(stderr, "%s: GPTQ model detected - are you sure n_parts should be %d? we normally expect it to be 1\n", __func__, n_parts);
+		////fprintf(stderr, "%s: use '--n_parts 1' if necessary\n", __func__);
+		////}
+
+		////if (hparams.n_layer == 32) {
+		////model.type = e_model::MODEL_7B;
+		////}
+
+		////if (hparams.n_layer == 40) {
+		////model.type = e_model::MODEL_13B;
+		////}
+
+		////if (hparams.n_layer == 60) {
+		////model.type = e_model::MODEL_30B;
+		////}
+
+		////if (hparams.n_layer == 80) {
+		////model.type = e_model::MODEL_65B;
+		////}
 
 		fmt.Printf("\nvocab  = %d", hparamsVocabSize)
 		//fmt.Printf("\nctx   = %d", hparamsCtx)
@@ -718,7 +875,7 @@ func LoadModel(fileName string, model *Model, vocab *ml.Vocab) error {
 
 	// --- load vocab
 
-	fmt.Printf("\n\n[llamaModelLoad] Loading vocab...")
+	fmt.Printf("\n\n[LoadModel] Loading vocab...")
 
 	for i := uint32(0); i < hparamsVocabSize; i++ {
 		len, _ := readInt(reader)
@@ -735,7 +892,7 @@ func LoadModel(fileName string, model *Model, vocab *ml.Vocab) error {
 		//fmt.Printf("| vocab[%d] = %s ] ", i, string(word))
 
 		vocab.Token2ID[word] = i
-		vocab.ID2Token[i] = word
+		vocab.ID2Token[i] = ml.TokenScore{Token: word}
 	}
 
 	//return nil
