@@ -11,6 +11,10 @@ import (
 	"github.com/gotzmann/llama.go/ml"
 )
 
+// TODO ggml_compute_forward_mul_mat_f32 was changed
+// -                const float * x = (float *) (src0->data);
+// +                const float * x = (float *) ((char *) src0->data + i02*nb02 + i03*nb03);
+
 //
 // CLI argument parsing
 //
@@ -198,7 +202,7 @@ func main() {
 	// has to be called once at the start of the program to init ggml stuff
 	////ggml_time_init();
 
-	params := defaultGPTParams("./models/7B/ggml-model-fp32.bin")
+	params := defaultGPTParams("./models/7B/ggml-model-f32.bin")
 
 	////if (gpt_params_parse(argc, argv, params) == false) {
 	////    return 1;

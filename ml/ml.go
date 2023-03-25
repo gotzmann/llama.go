@@ -3267,8 +3267,8 @@ func PopMax(queue *[]Bigram) Bigram {
 
 	pop := (*queue)[max]
 
-	// replace max element with last and shrink slice
-	(*queue)[max] = (*queue)[len(*queue)]
+	// replace max element with last and shrink slice (if max == last, then just remove it)
+	(*queue)[max] = (*queue)[len(*queue)-1]
 	*queue = (*queue)[:len(*queue)-1]
 
 	return pop

@@ -33,15 +33,17 @@ var (
 		8192: 8,
 	}
 
-	// default hparams (LLaMA 7B)
-	hparamsVocabSize = uint32(32000)
-	hparamsCtx       = uint32(512) // this is provided as user input?
-	hparamsEmbd      = uint32(4096)
-	hparamsMult      = uint32(256)
-	hparamsHeads     = uint32(32)
-	hparamsLayers    = uint32(32)
-	hparamsRot       = uint32(64)
-	hparamsF16       = uint32(1)
+/*
+// default hparams (LLaMA 7B)
+hparamsVocabSize = uint32(32000)
+hparamsCtx       = uint32(512) // this is provided as user input?
+hparamsEmbd      = uint32(4096)
+hparamsMult      = uint32(256)
+hparamsHeads     = uint32(32)
+hparamsLayers    = uint32(32)
+hparamsRot       = uint32(64)
+hparamsF16       = uint32(1)
+*/
 )
 
 type pair struct {
@@ -201,30 +203,80 @@ type Layer struct {
 	////struct ggml_tensor * w3;
 }
 
+// default hparams (LLaMA 7B)
+type HParams struct {
+	////int32_t n_ctx   = 512;   // this is provided as user input?
+	vocabSize   uint32 // = 32000;
+	embdSize    uint32 //  = 4096;
+	multSize    uint32 //  = 256;
+	headsCount  uint32 //  = 32;
+	layersCount uint32 // = 32;
+	rotCount    uint32 //   = 64;
+	f16         uint32 //    = 1;
+}
+
+func NewHparams() HParams {
+	return HParams{
+		vocabSize:   32000,
+		embdSize:    4096,
+		multSize:    256,
+		headsCount:  32,
+		layersCount: 32,
+		rotCount:    64,
+		f16:         1,
+	}
+}
+
+type ModelType uint8
+
+// available llama models
+const (
+	MODEL_UNKNOWN ModelType = iota
+	MODEL_7B
+	MODEL_13B
+	MODEL_30B
+	MODEL_65B
+)
+
+type KVCache struct {
+	k *ml.Tensor
+	v *ml.Tensor
+
+	////ctx *ml.Context
+	////std::vector<uint8_t> buf;
+
+	n uint32 // number of tokens currently in the cache
+}
+
 type Model struct {
+	Type    ModelType
+	ctx     *ml.Context // ggml_context
+	hparams HParams
 
-	//hparams llama_hparams hparams;
-
-	////struct ggml_tensor * tok_embeddings;
 	tokEmbeddings *ml.Tensor
+	norm          *ml.Tensor
+	output        *ml.Tensor
 
-	////struct ggml_tensor * norm;
-	norm *ml.Tensor
-	////struct ggml_tensor * output;
-	output *ml.Tensor
-
-	////std::vector<llama_layer> layers;
 	layers []Layer
 
-	// key + value memory
-	////struct ggml_tensor * memory_k;
-	memoryK *ml.Tensor
-	////struct ggml_tensor * memory_v;
-	memoryV *ml.Tensor
+	// key + value cache for the self attention
+	// TODO: move to llama_state
+	kvSelf KVCache // llama_kv_cache
 
-	ctx *ml.Context // ggml_context
+	// the model memory buffer
+	////std::vector<uint8_t> buf;
 
-	tensors map[string]*ml.Tensor //std::map<std::string, struct ggml_tensor *> tensors;
+	// tensors
+	loadedCount uint32
+	tensors     map[string]*ml.Tensor // std::unordered_map<std::string, struct ggml_tensor *> tensors;
+
+	/*
+		// key + value memory
+		////struct ggml_tensor * memory_k;
+		memoryK *ml.Tensor
+		////struct ggml_tensor * memory_v;
+		memoryV *ml.Tensor
+	*/
 }
 
 func NewModel() *Model {
@@ -284,34 +336,23 @@ func ResizeInplace(slice *[]float32, size int) {
 //          size_t                     & mem_per_token) {
 
 func Eval(
+
 	lctx *Context,
 	tokens []uint32,
-	n_tokens uint32,
-	n_past uint32,
-	threadsCount uint32,
-	/*
-		model *Model,
-		threads,
-		n_past uint32,
-		embdInp []uint32,
-		embdW []float32,
-		memPerToken *uint32*/) error {
+	tokensCount uint32,
+	pastCount uint32,
+	threadsCount uint32) error {
 
-	//N := uint32(len(embdInp))
-	N := n_tokens
-
-	// FIXME Load hyper parameters into model itself
-	//const auto & hparams = model.hparams;
+	N := tokensCount
 
 	model := lctx.Model
-	////hparams := model.hparams
 
-	embdSize := hparamsEmbd
-	layers := hparamsLayers
+	embdSize := model.hparams.embdSize
+	layers := model.hparams.layersCount
 	////ctx := hparamsCtx
-	n_head := hparamsHeads
-	vocabSize := 32000 // hparamsVocab
-	rot := hparamsEmbd / hparamsHeads
+	headsCount := model.hparams.headsCount
+	vocabSize := model.hparams.vocabSize
+	rot := model.hparams.embdSize / model.hparams.headsCount
 
 	////auto & mem_per_token = lctx.mem_per_token;
 
@@ -398,17 +439,17 @@ func Eval(
 				ml.Rope(ctx0,
 					ml.Copy(ctx0,
 						Qcur,
-						ml.NewTensor3D(ctx0, ml.TYPE_F32, embdSize/n_head, n_head, N)),
-					n_past, rot, 0),
+						ml.NewTensor3D(ctx0, ml.TYPE_F32, embdSize/headsCount, headsCount, N)),
+					pastCount, rot, 0),
 				0, 2, 1, 3)
 
 			// K = Kmem.view(n_embd/n_head, n_head, n_past + N).permute(0, 2, 1, 3)
 			K := ml.Permute(ctx0,
 				ml.Rope(ctx0,
 					ml.Reshape3D(ctx0,
-						ml.View1D(ctx0, model.memoryK, (n_past+N)*embdSize /*, il*n_ctx*ggml_element_size(model.memory_k)*n_embd*/),
-						embdSize/n_head, n_head, n_past+N),
-					n_past, rot, 1),
+						ml.View1D(ctx0, model.memoryK, (pastCount+N)*embdSize /*, il*n_ctx*ggml_element_size(model.memory_k)*n_embd*/),
+						embdSize/headsCount, headsCount, pastCount+N),
+					pastCount, rot, 1),
 				0, 2, 1, 3)
 
 			// K * Q
@@ -419,12 +460,12 @@ func Eval(
 			KQScaled :=
 				ml.Scale(ctx0,
 					KQ,
-					ml.NewFP32(ctx0, float32(1.0/math.Sqrt(float64(embdSize)/float64(n_head)))),
+					ml.NewFP32(ctx0, float32(1.0/math.Sqrt(float64(embdSize)/float64(headsCount)))),
 				)
 
 				// KQ_masked = mask_past(KQ_scaled)
 				////struct ggml_tensor * KQ_masked = ggml_diag_mask_inf(ctx0, KQ_scaled, n_past);
-			KQMasked := ml.DiagMaskInf(ctx0, KQScaled, n_past)
+			KQMasked := ml.DiagMaskInf(ctx0, KQScaled, pastCount)
 
 			// KQ = soft_max(KQ_masked)
 			////struct ggml_tensor * KQ_soft_max = ggml_soft_max(ctx0, KQ_masked);
@@ -435,10 +476,10 @@ func Eval(
 				ml.Copy(ctx0,
 					ml.Permute(ctx0,
 						ml.Reshape3D(ctx0, // FIXME down ^^^
-							ml.View1D(ctx0, model.memoryV, (n_past+N)*embdSize), /* (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_v)*n_embd)*/
-							embdSize/n_head, n_head, n_past+N),
+							ml.View1D(ctx0, model.memoryV, (pastCount+N)*embdSize), /* (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_v)*n_embd)*/
+							embdSize/headsCount, headsCount, pastCount+N),
 						1, 2, 0, 3),
-					ml.NewTensor3D(ctx0, ml.TYPE_F32, n_past+N, embdSize/n_head, n_head))
+					ml.NewTensor3D(ctx0, ml.TYPE_F32, pastCount+N, embdSize/headsCount, headsCount))
 
 			// KQV = transpose(V) * KQ_soft_max
 			KQV := ml.MulMat(ctx0, VTrans, KQSoftMax)
@@ -880,22 +921,35 @@ func LoadModel(
 
 	fmt.Printf("\n\n[LoadModel] Loading vocab...")
 
+	// --- Python ---
+	// fout.write(struct.pack("i", len(text)))
+	// fout.write(text)
+	// fout.write(struct.pack("f", tokenizer.get_score(i)))
+
+	// Allocate memory and increase len / cap for the whole space
+	vocab.ID2Token = slices.Grow(vocab.ID2Token, int(hparamsVocabSize))
+	vocab.ID2Token = vocab.ID2Token[0:hparamsVocabSize:hparamsVocabSize]
+
 	for i := uint32(0); i < hparamsVocabSize; i++ {
+
 		len, _ := readInt(reader)
 		//word := make([]byte, len)
 		//if count, err := io.ReadFull(reader, word); err != nil || count != int(len) {
 		//	fmt.Printf("\n[llamaModelLoad] Problem reading vocabulary from '%s'", fileName)
 		//	return nil // FIXME ERR
 		//}
-		word := readString(reader, len)
+		token := readString(reader, len)
+		score := readFP32(reader)
 
 		//if i%6 == 0 {
 		//	fmt.Println()
 		//}
 		//fmt.Printf("| vocab[%d] = %s ] ", i, string(word))
 
-		vocab.Token2ID[word] = i
-		vocab.ID2Token[i] = ml.TokenScore{Token: word}
+		vocab.Token2ID[token] = i
+		vocab.ID2Token[i] = ml.TokenScore{Token: token, Score: score}
+
+		// fmt.Printf(" | %+v | ", ml.TokenScore{Token: token, Score: score}) // DEBUG
 	}
 
 	//return nil
@@ -1070,6 +1124,12 @@ func LoadModel(
 		}
 
 		fmt.Printf("\n\n[llamaModelLoad] Loading model part %d / %d from '%s'\n", i+1, n_parts, fname_part)
+
+		// --- Python ---
+		// fout.write(struct.pack("iii", len(data.shape), len(sname), ftype_cur))
+		// for dim in reversed(data.shape):
+		//     fout.write(struct.pack("i", dim))
+		// fout.write(sname)
 
 		//fin = std::ifstream(fname_part, std::ios::binary);
 		//fin.rdbuf()->pubsetbuf(f_buf.data(), f_buf.size());
@@ -1393,6 +1453,17 @@ func readInt(reader *bufio.Reader) (uint32, error) {
 	}
 	return uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0]), nil
 }
+
+/*
+func readFloat(reader *bufio.Reader) (float32, error) {
+	buf := make([]byte, 4)
+	if count, err := io.ReadFull(reader, buf); err != nil || count != 4 {
+		fmt.Print("\n[ERROR] Failed to read data from model")
+		//os.Exit(1)
+		return 0, err
+	}
+	return // uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0]), nil
+} */
 
 func readString(reader *bufio.Reader, len uint32) string {
 	buf := make([]byte, len)
