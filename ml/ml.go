@@ -3380,8 +3380,8 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 	}
 
 	for i := 0; i != -1; i = symbols[i].Next {
-		symbol := &symbols[i]
-		id, ok := vocab.Token2ID[symbol.Text[symbol.N:]]
+		symbol := symbols[i]
+		id, ok := vocab.Token2ID[symbol.Text[:symbol.N]]
 
 		////if (token == vocab_.token_to_id.end()) {
 		if !ok {
