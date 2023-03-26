@@ -619,10 +619,14 @@ func Eval(
 		// return result for just the last token
 		////logits_out.resize(n_vocab);
 		////////////////////////////////////////////////////////logitsOut = Resize(logitsOut, int(vocabSize))
-		logitsOut = NewFloatSlice(vocabSize, vocabSize) // FIXME Duplicate rearrangment?
+
+		// FIXME ASAP
+		////logitsOut = NewFloatSlice(vocabSize, vocabSize) // FIXME Duplicate rearrangment?
 
 		////memcpy(logits_out.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
 		// FIXME Double Check !! Replace with copy() for slices
+
+		// FIXME ASAP Logits LEN = 32,000 | INPL LEN = 256,000
 		for i := uint32(0); i < vocabSize; i++ {
 			(*logitsOut)[i] = inpL.Data[i]
 		}
@@ -730,11 +734,17 @@ func SampleTopPTopK(
 
 	////////////////////////////////logitsCount := uint32(len(vocab.ID2Token))
 	logitsCount := lctx.Model.hparams.vocabSize
-	logits := lctx.Logits
+	logits := *lctx.Logits
+
+	fmt.Printf("\nlogitsCount = %d", logitsCount)   // DEBUG
+	fmt.Printf("\nlen(logits) = %d\n", len(logits)) // DEBUG
+	for ii := 0; ii < 10; ii++ {
+		fmt.Printf("| logits[%d] = %f |", ii, (logits)[ii])
+	}
 
 	////const auto * plogits = logits.data() + logits.size() - n_logits;
 	//plogits := logits[len(logits)-int(logitsCount):] // FIXME ASAP
-	plogits := (*logits)[:]
+	plogits := logits[:]
 
 	////std::vector<std::pair<double, llama_vocab::id>> logits_id;
 	////logits_id.reserve(n_logits);

@@ -386,14 +386,15 @@ func main() {
 
 	// determine newline token
 	tokenNewline := ml.Tokenize(vocab, "\n", false)[0]
-	fmt.Printf("\n NEWLINE = %+v", tokenNewline)
+	//fmt.Printf("\n NEWLINE = %+v", tokenNewline) // DEBUG
 
 	fmt.Printf("\nPROMPT = '%s'\n", prompt)
-	fmt.Printf("\n#TOKENS = %d\n", len(embdInp))
+	//fmt.Printf("\n#TOKENS = %d\n", len(embdInp)) // DEBUG
+
 	for i := 0; i < len(embdInp); i++ {
 		////////////////////////////////////fmt.Printf("\n%d => '%s'", embdInp[i], vocab.ID2Token[embdInp[i]])
 		////llama_token_to_str(ctx, embd_inp[i]));
-		fmt.Printf("\n%d => '%s'", embdInp[i], ml.Token2Str(vocab, embdInp[i]))
+		fmt.Printf("| %d => '%s' |", embdInp[i], ml.Token2Str(vocab, embdInp[i]))
 	}
 
 	////if (params.interactive) {
@@ -425,6 +426,7 @@ func main() {
 
 	var embd []uint32
 
+	// FIXME Read from context params
 	lastNSize := 64 // utils.h // repeat_last_n = 64 // params.repeat_last_n;
 	////std::vector<gpt_vocab::id> last_n_tokens(last_n_size);
 	lastNTokens := make([]uint32, lastNSize, lastNSize) // FIXME LEN vs CAP
