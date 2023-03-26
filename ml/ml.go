@@ -3301,9 +3301,9 @@ func TryAddBigram(vocab *Vocab, symbols []Symbol, workQueue *[]Bigram, left, rig
 		return
 	}
 
-	fmt.Printf(" [ token = %s | token id = %d ] ", token, id) // DEBUG
-
 	tokenScore := vocab.ID2Token[id]
+
+	fmt.Printf(" [ token = %s | token id = %d | score = %f | len = %d ] ", token, id, tokenScore.Score, len(token)) // DEBUG
 
 	bigram := Bigram{Left: left, Right: right, Score: tokenScore.Score, Size: uint32(len(token))}
 	////bigram.left = left
@@ -3340,24 +3340,23 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 		symbols = append(symbols, sym) ////symbols_.emplace_back(std::move(sym));
 	}
 
-	// seed the work queue with all possible 2-character tokens.
+	// seed the work queue with all possible 2-character tokens
 	for i := 1; i < len(symbols); i++ {
 		fmt.Printf(" [ sym[%d] = %s ] ", i, symbols[i].Text) // DEBUG
 		TryAddBigram(vocab, symbols, &workQueue, i-1, i)
 	}
 
-	// keep substituting the highest frequency pairs for as long as we can.
+	// keep substituting the highest frequency pairs for as long as we can
 	for len(workQueue) > 0 {
 		////bigram := work_queue_.top();
 		////work_queue_.pop();
 		bigram := PopMax(&workQueue)
 
-		leftSym := symbols[bigram.Left]
-		rightSym := symbols[bigram.Right]
+		leftSym := &symbols[bigram.Left]
+		rightSym := &symbols[bigram.Right]
 
-		// if one of the symbols already got merged, skip it.
-		if leftSym.N == 0 || rightSym.N == 0 ||
-			leftSym.N+rightSym.N != bigram.Size {
+		// if one of the symbols already got merged, skip it
+		if leftSym.N == 0 || rightSym.N == 0 || leftSym.N+rightSym.N != bigram.Size {
 			continue
 		}
 
@@ -3381,7 +3380,7 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 	}
 
 	for i := 0; i != -1; i = symbols[i].Next {
-		symbol := symbols[i]
+		symbol := &symbols[i]
 		id, ok := vocab.Token2ID[symbol.Text[symbol.N:]]
 
 		////if (token == vocab_.token_to_id.end()) {

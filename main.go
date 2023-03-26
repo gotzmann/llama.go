@@ -351,7 +351,7 @@ func main() {
 	////params.prompt.insert(0, 1, ' ');
 
 	// tokenize the prompt
-	prompt := "The best programming language and framework to create conversational AI:"
+	prompt := "How to create conversational AI:" // [  1  1128  304  1653  9678  1288  319  29902  29901  ]
 	// Add a space in front of the first character to match OG llama tokenizer behavior
 	prompt = " " + prompt
 	////std::vector<gpt_vocab::id> embd_inp = ::llama_tokenize(vocab, params.prompt, true);
