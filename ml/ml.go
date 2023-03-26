@@ -3282,18 +3282,18 @@ func PopMax(queue *[]Bigram) Bigram {
 
 func TryAddBigram(vocab *Vocab, symbols []Symbol, workQueue *[]Bigram, left, right int) {
 
-	fmt.Printf("\n* left = %d | right = %d * ", left, right)
+	//fmt.Printf("\n* left = %d | right = %d * ", left, right) // DEBUG
 
 	if left == -1 || right == -1 {
 		return
 	}
 
-	fmt.Printf("\n** symbols[left].Text = %s | N = %d ** ", symbols[left].Text, symbols[left].N)
-	fmt.Printf("\n** symbols[right].Text = %s | N = %d ** ", symbols[right].Text, symbols[right].N)
+	//fmt.Printf("\n** symbols[left].Text = %s | N = %d ** ", symbols[left].Text, symbols[left].N) // DEBUG
+	//fmt.Printf("\n** symbols[right].Text = %s | N = %d ** ", symbols[right].Text, symbols[right].N) // DEBUG
 
 	////const std::string text = std::string(symbols_[left].text, symbols_[left].n + symbols_[right].n);
 	token := symbols[left].Text[:symbols[left].N+symbols[right].N]
-	fmt.Printf(" !! token = %s !! ", token)
+	//fmt.Printf(" !! token = %s !! ", token) // DEBUG
 	id, ok := vocab.Token2ID[token]
 	////if token == vocab.Token2ID.end()) {
 	//if (static_cast<size_t>((*token).second) >= vocab_.id_to_token.size()) {
@@ -3303,7 +3303,7 @@ func TryAddBigram(vocab *Vocab, symbols []Symbol, workQueue *[]Bigram, left, rig
 
 	tokenScore := vocab.ID2Token[id]
 
-	fmt.Printf(" [ token = %s | token id = %d | score = %f | len = %d ] ", token, id, tokenScore.Score, len(token)) // DEBUG
+	//fmt.Printf(" [ token = %s | token id = %d | score = %f | len = %d ] ", token, id, tokenScore.Score, len(token)) // DEBUG
 
 	bigram := Bigram{Left: left, Right: right, Score: tokenScore.Score, Size: uint32(len(token))}
 	////bigram.left = left
@@ -3346,7 +3346,7 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 
 	// seed the work queue with all possible 2-character tokens
 	for i := 1; i < len(symbols); i++ {
-		fmt.Printf(" [ sym[%d] = %s ] ", i, symbols[i].Text) // DEBUG
+		//fmt.Printf(" [ sym[%d] = %s ] ", i, symbols[i].Text) // DEBUG
 		TryAddBigram(vocab, symbols, &workQueue, i-1, i)
 	}
 
