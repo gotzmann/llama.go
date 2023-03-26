@@ -734,7 +734,7 @@ func SampleTopPTopK(
 
 	////const auto * plogits = logits.data() + logits.size() - n_logits;
 	//plogits := logits[len(logits)-int(logitsCount):] // FIXME ASAP
-	plogits := logits[:]
+	plogits := (*logits)[:]
 
 	////std::vector<std::pair<double, llama_vocab::id>> logits_id;
 	////logits_id.reserve(n_logits);

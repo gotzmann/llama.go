@@ -3175,10 +3175,10 @@ type Vocab struct {
 	ID2Token []TokenScore
 }
 
-func NewVocab() *Vocab {
+func NewVocab(size uint32) *Vocab {
 	return &Vocab{
-		Token2ID: make(map[string]uint32),
-		ID2Token: make([]TokenScore, 0),
+		Token2ID: make(map[string]uint32, size),
+		ID2Token: make([]TokenScore, 0, size),
 	}
 }
 
