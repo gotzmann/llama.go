@@ -636,7 +636,7 @@ func main() {
 		////}
 
 		// In interactive mode, respect the maximum number of tokens and drop back to user input when reached.
-		////if (params.interactive && remaining_tokens <= 0) {
+		////if (params.interactive && n_remain <= 0 && params.n_predict != -1) {
 		////remaining_tokens = params.n_predict;
 		////is_interacting = true;
 		////}
