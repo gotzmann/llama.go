@@ -933,8 +933,9 @@ func LoadModel(
 	model.hparams.rotCount = rotCount
 	model.hparams.f16 = f16
 
+	// NB! Do not try to resize / relocate secondary pointers
+	lctx.Vocab = ml.NewVocab(vocabSize)
 	vocab := lctx.Vocab
-	vocab = ml.NewVocab(vocabSize)
 
 	lctx.Logits = NewFloatSlice(vocabSize, vocabSize) // FIXME ASAP
 
@@ -993,8 +994,9 @@ func LoadModel(
 	// fout.write(struct.pack("f", tokenizer.get_score(i)))
 
 	// Allocate memory and increase len / cap for the whole space
-	vocab.ID2Token = slices.Grow(vocab.ID2Token, int(vocabSize))
-	vocab.ID2Token = vocab.ID2Token[0:vocabSize:vocabSize]
+	// FIXME Was already done with NewVocab() call
+	/////////////////////////////////////////////////////////vocab.ID2Token = slices.Grow(vocab.ID2Token, int(vocabSize))
+	///////////////////////////////////////////////////////////////////vocab.ID2Token = vocab.ID2Token[0:vocabSize:vocabSize]
 
 	for i := uint32(0); i < vocabSize; i++ {
 

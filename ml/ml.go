@@ -3178,7 +3178,7 @@ type Vocab struct {
 func NewVocab(size uint32) *Vocab {
 	return &Vocab{
 		Token2ID: make(map[string]uint32, size),
-		ID2Token: make([]TokenScore, 0, size),
+		ID2Token: make([]TokenScore, size, size),
 	}
 }
 
@@ -3280,20 +3280,28 @@ func PopMax(queue *[]Bigram) Bigram {
 ////}
 ////};
 
-func TryAddBigram(vocab *Vocab, symbols *[]Symbol, workQueue *[]Bigram, left, right int) {
+func TryAddBigram(vocab *Vocab, symbols []Symbol, workQueue *[]Bigram, left, right int) {
+
+	fmt.Printf("\n* left = %d | right = %d * ", left, right)
 
 	if left == -1 || right == -1 {
 		return
 	}
 
+	fmt.Printf("\n** symbols[left].Text = %s | N = %d ** ", symbols[left].Text, symbols[left].N)
+	fmt.Printf("\n** symbols[right].Text = %s | N = %d ** ", symbols[right].Text, symbols[right].N)
+
 	////const std::string text = std::string(symbols_[left].text, symbols_[left].n + symbols_[right].n);
-	token := (*symbols)[left].Text[(*symbols)[left].N+(*symbols)[right].N:]
+	token := symbols[left].Text[:symbols[left].N+symbols[right].N]
+	fmt.Printf(" !! token = %s !! ", token)
 	id, ok := vocab.Token2ID[token]
 	////if token == vocab.Token2ID.end()) {
 	//if (static_cast<size_t>((*token).second) >= vocab_.id_to_token.size()) {
 	if !ok || int(id) >= len(vocab.ID2Token) {
 		return
 	}
+
+	fmt.Printf(" [ token = %s | token id = %d ] ", token, id) // DEBUG
 
 	tokenScore := vocab.ID2Token[id]
 
@@ -3334,7 +3342,8 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 
 	// seed the work queue with all possible 2-character tokens.
 	for i := 1; i < len(symbols); i++ {
-		TryAddBigram(vocab, &symbols, &workQueue, i-1, i)
+		fmt.Printf(" [ sym[%d] = %s ] ", i, symbols[i].Text) // DEBUG
+		TryAddBigram(vocab, symbols, &workQueue, i-1, i)
 	}
 
 	// keep substituting the highest frequency pairs for as long as we can.
@@ -3366,9 +3375,9 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 
 		// find more substitutions
 		////try_add_bigram(left_sym.prev, bigram.left);
-		TryAddBigram(vocab, &symbols, &workQueue, leftSym.Prev, bigram.Left)
+		TryAddBigram(vocab, symbols, &workQueue, leftSym.Prev, bigram.Left)
 		////try_add_bigram(bigram.left, left_sym.next);
-		TryAddBigram(vocab, &symbols, &workQueue, bigram.Left, leftSym.Next)
+		TryAddBigram(vocab, symbols, &workQueue, bigram.Left, leftSym.Next)
 	}
 
 	for i := 0; i != -1; i = symbols[i].Next {

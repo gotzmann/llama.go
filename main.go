@@ -197,6 +197,44 @@ var isInteracting bool = false
 ////}
 ////#endif
 
+/*
++#if defined (_WIN32)
++void win32_console_init(void) {
++    unsigned long dwMode = 0;
++    void* hConOut = GetStdHandle((unsigned long)-11); // STD_OUTPUT_HANDLE (-11)
++    if (!hConOut || hConOut == (void*)-1 || !GetConsoleMode(hConOut, &dwMode)) {
++        hConOut = GetStdHandle((unsigned long)-12); // STD_ERROR_HANDLE (-12)
++        if (hConOut && (hConOut == (void*)-1 || !GetConsoleMode(hConOut, &dwMode))) {
++            hConOut = 0;
++        }
++    }
++    if (hConOut) {
++        // Enable ANSI colors on Windows 10+
++        if (con_use_color && !(dwMode & 0x4)) {
++            SetConsoleMode(hConOut, dwMode | 0x4); // ENABLE_VIRTUAL_TERMINAL_PROCESSING (0x4)
++        }
++        // Set console output codepage to UTF8
++        SetConsoleOutputCP(65001); // CP_UTF8
++    }
++    void* hConIn = GetStdHandle((unsigned long)-10); // STD_INPUT_HANDLE (-10)
++    if (hConIn && hConIn != (void*)-1 && GetConsoleMode(hConIn, &dwMode)) {
++        // Set console input codepage to UTF8
++        SetConsoleCP(65001); // CP_UTF8
++    }
++}
++#endif
+*/
+/*
++
++    // save choice to use color for later
++    // (note for later: this is a slightly awkward choice)
++    con_use_color = params.use_color;
++
++#if defined (_WIN32)
++    win32_console_init();
++#endif
++
+*/
 func main() {
 
 	// has to be called once at the start of the program to init ggml stuff
@@ -223,10 +261,6 @@ func main() {
 	////if (params.random_prompt) {
 	////params.prompt = gpt_random_prompt(rng);
 	////}
-
-	// save choice to use color for later
-	// (note for later: this is a slightly awkward choice)
-	////con_use_color = params.use_color;
 
 	//    params.prompt = R"(// this function checks if the number n is prime
 	//bool is_prime(int n) {)";
@@ -317,7 +351,7 @@ func main() {
 	////params.prompt.insert(0, 1, ' ');
 
 	// tokenize the prompt
-	prompt := "The best programming language to create general AI and profitable ML startup: "
+	prompt := "The best programming language and framework to create conversational AI:"
 	// Add a space in front of the first character to match OG llama tokenizer behavior
 	prompt = " " + prompt
 	////std::vector<gpt_vocab::id> embd_inp = ::llama_tokenize(vocab, params.prompt, true);
@@ -417,13 +451,11 @@ func main() {
 	////}
 
 	////#if defined (_WIN32)
-	////if (params.use_color) {
 	////    // Enable ANSI colors on Windows 10+
 	////    unsigned long dwMode = 0;
 	////    void* hConOut = GetStdHandle((unsigned long)-11); // STD_OUTPUT_HANDLE (-11)
 	////    if (hConOut && hConOut != (void*)-1 && GetConsoleMode(hConOut, &dwMode) && !(dwMode & 0x4)) {
 	////        SetConsoleMode(hConOut, dwMode | 0x4); // ENABLE_VIRTUAL_TERMINAL_PROCESSING (0x4)
-	////    }
 	////}
 	////#endif
 
@@ -595,7 +627,10 @@ func main() {
 		////std::string line;
 		////bool another_line = true;
 		////do {
-		////std::getline(std::cin, line);
+		////if (!std::getline(std::cin, line)) {
+		// input stream is bad or EOF received
+		////return 0;
+		////}
 		////if (line.empty() || line.back() != '\\') {
 		////another_line = false;
 		////} else {
