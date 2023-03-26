@@ -57,19 +57,24 @@ type Context struct {
 	////size_t mem_per_token = 0;
 
 	// decode output (2-dimensional array: [n_tokens][n_vocab])
-	Logits    []float32
+	Logits    *[]float32
 	LogitsAll bool
 
 	// input embedding (1-dimensional array: [n_embd])
-	Embedding []float32
+	Embedding *[]float32
+}
+
+func NewFloatSlice(len, cap uint32) *[]float32 {
+	slice := make([]float32, len, cap)
+	return &slice
 }
 
 func NewContext() *Context {
 	return &Context{
 		Model:     NewModel(),
-		Vocab:     ml.NewVocab(),
-		Logits:    make([]float32, 0), // TODO Cap?
-		Embedding: make([]float32, 0), // TODO Cap?
+		Vocab:     ml.NewVocab(0),
+		Logits:    NewFloatSlice(0, 0),
+		Embedding: NewFloatSlice(0, 0),
 	}
 }
 
@@ -393,7 +398,7 @@ func Eval(
 	// FIXME Refactore inline initialization
 	embd.Type = ml.TYPE_F32
 	for id := uint32(0); id < N; id++ {
-		embd.Data[id] = float32(tokens[id])
+		embd.Data[id] = float32(tokens[id]) // FIXME copy() for slices
 	}
 
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
@@ -401,14 +406,12 @@ func Eval(
 	////fmt.Printf("\n\nmodel.tokEmbeddings = %+v", model.tokEmbeddings) // DEBUG
 
 	for il := uint32(0); il < layersCount; il++ {
+
 		inpSA := inpL
-
-		//var cur *ml.Tensor
-
-		////lctx.use_buf(ctx0, 0);
+		cur := &ml.Tensor{}
 
 		// norm
-		cur := ml.RMSNorm(ctx0, inpL)
+		cur = ml.RMSNorm(ctx0, inpL)
 
 		// cur = attention_norm*cur
 		rep := ml.Repeat(ctx0, model.layers[il].attentionNorm, cur)
@@ -595,41 +598,48 @@ func Eval(
 	// COMMenteD embd_w.resize(n_vocab*N);
 	// COMMenteD  memcpy(embd_w.data(), ggml_get_data(inpL), sizeof(float)*n_vocab*N);
 
-	// extract logits
-	{
-		logitsOut := lctx.Logits
+	// --- extract logits
 
-		if lctx.LogitsAll {
-			////logits_out.resize(n_vocab * N);
-			logitsOut = Resize(logitsOut, int(vocabSize*N))
-			////memcpy(logits_out.data(), (float *) ggml_get_data(inpL), sizeof(float)*n_vocab*N);
-			// FIXME Double Check !!
-			for i := uint32(0); i < vocabSize*N; i++ {
-				logitsOut[i] = inpL.Data[i]
-			}
-		} else {
+	logitsOut := lctx.Logits // FIXME ASAP What we'll doing with this? Just lost in thin air?
 
-			// return result for just the last token
-			////logits_out.resize(n_vocab);
-			logitsOut = Resize(logitsOut, int(vocabSize))
-			////memcpy(logits_out.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
-			// FIXME Double Check !!
-			for i := uint32(0); i < vocabSize; i++ {
-				logitsOut[i] = inpL.Data[i]
-			}
+	if lctx.LogitsAll {
+
+		fmt.Print("\n[HALT] Not Expected : lctx.LogitsAll == true")
+		os.Exit(1)
+		////logits_out.resize(n_vocab * N);
+		///////////////////////////////////////////////////////////logitsOut = Resize(logitsOut, int(vocabSize*N)) // FIXME ASAP Why N multipy?
+		////memcpy(logits_out.data(), (float *) ggml_get_data(inpL), sizeof(float)*n_vocab*N);
+		// FIXME Double Check !! Replace with copy() for slices
+		for i := uint32(0); i < vocabSize*N; i++ {
+			(*logitsOut)[i] = inpL.Data[i] // FIXME ASAP Overflow ??
+		}
+
+	} else {
+
+		// return result for just the last token
+		////logits_out.resize(n_vocab);
+		////////////////////////////////////////////////////////logitsOut = Resize(logitsOut, int(vocabSize))
+		logitsOut = NewFloatSlice(vocabSize, vocabSize) // FIXME Duplicate rearrangment?
+
+		////memcpy(logits_out.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
+		// FIXME Double Check !! Replace with copy() for slices
+		for i := uint32(0); i < vocabSize; i++ {
+			(*logitsOut)[i] = inpL.Data[i]
 		}
 	}
 
-	// extract embeddings
-	if len(lctx.Embedding) > 0 {
+	// --- extract embeddings
+
+	if len(*lctx.Embedding) > 0 {
 		embeddingOut := lctx.Embedding
 
 		////embedding_out.resize(n_embd);
-		embeddingOut = Resize(embeddingOut, int(embdSize))
+		//////////////////////////////embeddingOut = Resize(embeddingOut, int(embdSize)) // FIXME ASAP ^^^ down
+		embeddingOut = NewFloatSlice(embdSize, embdSize)
 		////memcpy(embedding_out.data(), (float *) ggml_get_data(embeddings) + (n_embd*(N - 1)), sizeof(float)*n_embd);
-		// FIXME ASAP
+		// FIXME ASAP Replace with copy() for slices
 		for i := uint32(0); i < embdSize; i++ {
-			embeddingOut[i] = lctx.Embedding[i]
+			(*embeddingOut)[i] = (*lctx.Embedding)[i]
 		}
 	}
 
@@ -682,9 +692,11 @@ func sampleTopK(logitsID []pair, topK uint32) []pair {
 	//}
 	//sort.Float64s(keys)
 
-	sort.Slice(logitsID[:topK], func(i, j int) bool {
-		return logitsID[i].first < logitsID[j].first
-	})
+	sort.Slice(
+		logitsID[:topK],
+		func(i, j int) bool {
+			return logitsID[i].first < logitsID[j].first // FIXME ASAP We need bigger elements first
+		})
 
 	// logits_id.resize(top_k);
 	//for i := uint32(0); i < len(keys)-topK; i++ {
@@ -721,7 +733,8 @@ func SampleTopPTopK(
 	logits := lctx.Logits
 
 	////const auto * plogits = logits.data() + logits.size() - n_logits;
-	plogits := logits[len(logits)-int(logitsCount):] // FIXME ASAP
+	//plogits := logits[len(logits)-int(logitsCount):] // FIXME ASAP
+	plogits := logits[:]
 
 	////std::vector<std::pair<double, llama_vocab::id>> logits_id;
 	////logits_id.reserve(n_logits);
@@ -730,8 +743,11 @@ func SampleTopPTopK(
 	{
 		scale := 1.0 / temp
 		for i := uint32(0); i < logitsCount; i++ {
+
 			// repetition penalty from ctrl paper (https://arxiv.org/abs/1909.05858)
 			// credit https://github.com/facebookresearch/llama/compare/main...shawwn:llama:main
+
+			// if lastNTokens already contains i-th token, append it with repeat penatly
 			////if (std::find(last_n_tokens.begin(), last_n_tokens.end(), i) != last_n_tokens.end()) {
 			if slices.IndexFunc(lastNTokens, func(el uint32) bool { return el == i }) != -1 {
 				// if score < 0 then repetition penalty has to multiplied to reduce the previous token probability
@@ -742,12 +758,14 @@ func SampleTopPTopK(
 					////logits_id.push_back(std::make_pair(logits[i]*scale/repeat_penalty, i));
 					logitsID = append(logitsID, pair{float64(plogits[i]) * scale / repeatPenalty, i})
 				}
+				// else append pair to logitsID	scaling probability
 			} else {
 				logitsID = append(logitsID, pair{float64(plogits[i]) * scale, i})
 			}
 		}
 	}
 
+	// sort logitsID slice and return only top K elements
 	sampleTopK(logitsID, topK)
 
 	////double maxl = -INFINITY;
@@ -772,7 +790,7 @@ func SampleTopPTopK(
 	}
 
 	// normalize the probs
-	for i, _ := range probs {
+	for i := range probs {
 		probs[i] = probs[i] / sum
 	}
 
@@ -782,7 +800,9 @@ func SampleTopPTopK(
 			cumsum += probs[i]
 			if cumsum >= topP {
 				////probs.resize(i + 1) // FIXME ASAP
+				probs = probs[:i+1]
 				////logits_id.resize(i + 1) // FIXME ASAP
+				logitsID = logitsID[:i+1]
 				break
 			}
 		}
@@ -824,9 +844,6 @@ func LoadModel(
 ) error {
 
 	fmt.Printf("\n[LoadModel] Loading model from '%s' - please wait ...\n", fileName)
-
-	model := lctx.Model
-	vocab := lctx.Vocab
 
 	data, err := os.Open(fileName)
 	if err != nil {
@@ -906,6 +923,8 @@ func LoadModel(
 	rotCount, _ := readInt(reader)    // rot = dim // n_heads [obsolete]
 	f16, _ := readInt(reader)         // ftype
 
+	model := lctx.Model
+
 	model.hparams.vocabSize = vocabSize
 	model.hparams.embdSize = embdSize
 	model.hparams.multSize = multSize
@@ -913,6 +932,11 @@ func LoadModel(
 	model.hparams.layersCount = layersCount
 	model.hparams.rotCount = rotCount
 	model.hparams.f16 = f16
+
+	vocab := lctx.Vocab
+	vocab = ml.NewVocab(vocabSize)
+
+	lctx.Logits = NewFloatSlice(vocabSize, vocabSize) // FIXME ASAP
 
 	//hparamsCtx = n_ctx
 
