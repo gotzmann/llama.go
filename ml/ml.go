@@ -3321,6 +3321,10 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 	symbols := make([]Symbol, 0)   // std::vector<llama_sp_symbol> symbols_;
 	workQueue := make([]Bigram, 0) // llama_sp_bigram::queue work_queue_; // std::priority_queue<llama_sp_bigram, queue_storage, comparator>;
 
+	if bos {
+		output = append(output, 1) // TODO: replace with vocab.bos
+	}
+
 	// split string into utf8 chars
 	index := 0
 	offs := 0
