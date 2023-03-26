@@ -403,6 +403,11 @@ func Eval(
 
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
 
+	fmt.Printf("\n\n=== INPL 01 === LEN = %d\n", len(inpL.Data)) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
+	}
+
 	////fmt.Printf("\n\nmodel.tokEmbeddings = %+v", model.tokEmbeddings) // DEBUG
 
 	for il := uint32(0); il < layersCount; il++ {
@@ -571,12 +576,22 @@ func Eval(
 		ml.Repeat(ctx0, model.norm, inpL),
 		inpL)
 
+	fmt.Printf("\n\n=== INPL 05 === LEN = %d\n", len(inpL.Data)) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
+	}
+
 	////embeddings := inpL
 
 	///////////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] LM Head...")
 
 	// lm_head
 	inpL = ml.MulMat(ctx0, model.output, inpL)
+
+	fmt.Printf("\n\n=== INPL 06 === LEN = %d\n", len(inpL.Data)) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
+	}
 
 	////lctx.use_buf(ctx0, -1);
 
@@ -590,6 +605,11 @@ func Eval(
 	///////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] GraphCompute...")
 	ml.GraphCompute(ctx0, &gf)
 
+	fmt.Printf("\n\n=== INPL 08 === LEN = %d\n", len(inpL.Data)) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
+	}
+
 	// COMMenteD  if (n_past%100 == 0) {
 	// COMMenteD    ggml_graph_print   (&gf);
 	// COMMenteD    ggml_graph_dump_dot(&gf, NULL, "gpt-2.dot");
@@ -600,7 +620,12 @@ func Eval(
 
 	// --- extract logits
 
-	logitsOut := lctx.Logits // FIXME ASAP What we'll doing with this? Just lost in thin air?
+	logitsOut := *lctx.Logits // FIXME ASAP What we'll doing with this? Just lost in thin air?
+
+	fmt.Printf("\n\n=== BEFORE === len(logitsOut) = %d\n", len(logitsOut)) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| logitsOut[%d] = %f |", ii, logitsOut[ii])
+	}
 
 	if lctx.LogitsAll {
 
@@ -611,7 +636,7 @@ func Eval(
 		////memcpy(logits_out.data(), (float *) ggml_get_data(inpL), sizeof(float)*n_vocab*N);
 		// FIXME Double Check !! Replace with copy() for slices
 		for i := uint32(0); i < vocabSize*N; i++ {
-			(*logitsOut)[i] = inpL.Data[i] // FIXME ASAP Overflow ??
+			logitsOut[i] = inpL.Data[i] // FIXME ASAP Overflow ??
 		}
 
 	} else {
@@ -628,9 +653,16 @@ func Eval(
 
 		// FIXME ASAP Logits LEN = 32,000 | INPL LEN = 256,000
 		for i := uint32(0); i < vocabSize; i++ {
-			(*logitsOut)[i] = inpL.Data[i]
+			logitsOut[i] = inpL.Data[i]
 		}
 	}
+
+	fmt.Printf("\n\n=== AFTER === len(logitsOut) = %d\n", len(logitsOut)) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| logitsOut[%d] = %f |", ii, logitsOut[ii])
+	}
+
+	os.Exit(0) // DEBUG
 
 	// --- extract embeddings
 
@@ -738,7 +770,7 @@ func SampleTopPTopK(
 
 	fmt.Printf("\nlogitsCount = %d", logitsCount)   // DEBUG
 	fmt.Printf("\nlen(logits) = %d\n", len(logits)) // DEBUG
-	for ii := 0; ii < 10; ii++ {
+	for ii := 0; ii < 8; ii++ {
 		fmt.Printf("| logits[%d] = %f |", ii, (logits)[ii])
 	}
 
@@ -834,6 +866,8 @@ func SampleTopPTopK(
 	////int idx = dist(rng);
 
 	////return logits_id[idx].second;
+
+	fmt.Printf("\nSampleTopPTopK = %d", logitsID[0].second) // DEBUG
 
 	return logitsID[0].second // FIXME ASAP
 }
