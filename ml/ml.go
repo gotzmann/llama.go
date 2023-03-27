@@ -2514,6 +2514,40 @@ func VecDotFP32(n uint32, x, y []float32) float32 {
 	return sumf
 }
 
+// inline static void ggml_vec_mad_f32(const int n, float * restrict y, const float * restrict x, const float v) {
+func VecMadFP32(n uint32, y, x []float32, v float32) {
+	////		#if defined(GGML_SIMD)
+	////		const int np = (n & ~(GGML_F32_STEP - 1));
+
+	////		GGML_F32_VEC vx = GGML_F32_VEC_SET1(v);
+
+	////		GGML_F32_VEC ax[GGML_F32_ARR];
+	////		GGML_F32_VEC ay[GGML_F32_ARR];
+
+	////		for (int i = 0; i < np; i += GGML_F32_STEP) {
+	////			for (int j = 0; j < GGML_F32_ARR; j++) {
+	////				ax[j] = GGML_F32_VEC_LOAD(x + i + j*GGML_F32_EPR);
+	////				ay[j] = GGML_F32_VEC_LOAD(y + i + j*GGML_F32_EPR);
+	////				ay[j] = GGML_F32_VEC_FMA(ay[j], ax[j], vx);
+
+	////				GGML_F32_VEC_STORE(y + i + j*GGML_F32_EPR, ay[j]);
+	////			}
+	////		}
+
+	////		// leftovers
+	////		for (int i = np; i < n; ++i) {
+	////			y[i] += x[i]*v;
+	////		}
+	////	#else
+
+	// scalar
+	for i := uint32(0); i < n; i++ {
+		y[i] += x[i] * v
+	}
+
+	////	#endif
+}
+
 // inline static void ggml_vec_acc_f32 (const int n, float * y, const float * x)                  { for (int i = 0; i < n; ++i) y[i] += x[i];        }
 func VecAccFP32(n uint32, y, x []float32) {
 	for i := uint32(0); i < n; i++ {
@@ -2753,7 +2787,10 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 		// work data for thread
 		////const int wo = (ne + CACHE_LINE_SIZE_F32)*ith;
+		CACHE_LINE_SIZE_F32 := uint32(64 / 4)
+		wo := (ne + CACHE_LINE_SIZE_F32) * ith
 		////float * const wdata = params->wdata;
+		wdata := params.wdata
 
 		for i13 := uint32(0); i13 < ne13; i13++ {
 			for i12 := uint32(0); i12 < ne12; i12++ {
@@ -2779,6 +2816,12 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 						////    (float *) (wdata + wo + i3*ne2*ne1*ne0 + i2*ne1*ne0 + i1*ne0),
 						////    (float *) ((char *) src0->data + (i00*nb00 + i02*nb02 + i03*nb03)),
 						////   *(float *) ((char *) src1->data + (i10*nb10 + i11*nb11 + i12*nb12 + i13*nb13)));
+
+						// FIXME Do we need this ??
+						VecMadFP32(ne01,
+							wdata[wo+i3*ne2*ne1*ne0+i2*ne1*ne0+i1*ne0:],
+							src0.Data[i00*nb00+i02*nb02+i03*nb03:],
+							src1.Data[i10*nb10+i11*nb11+i12*nb12+i13*nb13])
 
 					}
 				}
