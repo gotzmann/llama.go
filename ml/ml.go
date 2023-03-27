@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"math"
 	"os"
+
+	//"github.com/x448/float16"
+	"github.com/x448/float16"
 )
 
 const (
@@ -32,6 +35,10 @@ const (
 	TYPE_F32   // TODO FP32
 	TYPE_COUNT // NB! COUNT should be the last
 )
+
+// precomputed exp table for f16 (128 KB)
+// static ggml_fp16_t table_exp_f16[1 << 16];
+var TableExpFP16 [1 << 16]float16.Float16
 
 var BLCK_SIZE [TYPE_COUNT]uint32 = [TYPE_COUNT]uint32{QK, QK, 1, 1, 1, 1, 1}
 
@@ -2980,14 +2987,44 @@ func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tenso
 			for i := pastCount; i < nc; i++ {
 				if i > pastCount+j {
 					////*(float *)((char *) dst->data + k*dst->nb[2] + j*dst->nb[1] + i*dst->nb[0]) = -INFINITY;
-					dst.Data[k*dst.NE[0]*dst.NE[1]*dst.NE[2]+j*dst.NE[0]*dst.NE[1]+i] = float32(math.Inf(-1))
+					dst.Data[k*dst.NE[0]*dst.NE[1]*dst.NE[2]+j*dst.NE[0]*dst.NE[1]+i] = float32(math.Inf(-1)) // TODO Use const
 				}
 			}
 		}
 	}
 }
 
-// FIXME ASAP
+func maxFloat(x, y float32) float32 {
+	if x >= y {
+		return x
+	}
+	return y
+}
+
+/*
+// inline static void ggml_vec_max_f32(const int n, float * s, const float * x) {
+func VecMaxFP32(n uint32, s *float32, x []float32) {
+	////#ifndef GGML_USE_ACCELERATE
+	max := float32(math.Inf(-1))
+	for i := uint32(0); i < n; i++ {
+		max = maxFloat(max, x[i])
+	}
+	////*s = max;
+	*s = max
+	// //#else
+	// //vDSP_maxv(x, 1, s, n);
+	// //#endif
+}
+*/
+
+func VecMaxFP32(n uint32, x []float32) float32 {
+	max := float32(math.Inf(-1)) // TODO use constant
+	for i := uint32(0); i < n; i++ {
+		max = maxFloat(max, x[i])
+	}
+	return max
+}
+
 // ggml_compute_forward_soft_max
 func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 
@@ -2999,6 +3036,8 @@ func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
 	}
+
+	negInf := float32(math.Inf(-1)) // TODO use constant
 
 	// TODO: handle transposed/permuted matrices
 
@@ -3018,6 +3057,8 @@ func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 	for i1 := ir0; int(i1) < ir1; i1++ {
 		////float *p = (float *)((char *) dst->data + i1*dst->nb[1]);
 
+		p := dst.Data[i1*dst.NE[0]:]
+
 		////#ifndef NDEBUG
 		////for (int i = 0; i < nc; ++i) {
 		//printf("p[%d] = %f\n", i, p[i]);
@@ -3025,21 +3066,29 @@ func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 		////}
 		////#endif
 
-		negInf := float32(math.Inf(-1))
-		max := negInf
-		VecMaxFP32(nc, &max, p)
-
-		sum := 0.0
-
-		var scvt uint16
-		for i := 0; i < nc; i++ {
-			if p[i] == negInf {
+		//////////////////////////////////////////////////////////max := negInf
+		//VecMaxFP32(nc, &max, p)
+		////////////////////////////////////////////VecMaxFP32(nc, &max, p)
+		max := VecMaxFP32(nc, p)
+		sum := float32(0.0)
+		//var bits uint16
+		for i := 0; i < int(nc); i++ {
+			if p[i] == negInf { // TODO use constant
 				p[i] = 0.0
 			} else {
 				//const float val = (p[i] == -INFINITY) ? 0.0 : exp(p[i] - max);
+
 				////ggml_fp16_t s = GGML_FP32_TO_FP16(p[i] - max);
+				//s := FP32_TO_FP16(p[i] - max)
 				////memcpy(&scvt, &s, sizeof(scvt));
 				////const float val = GGML_FP16_TO_FP32(table_exp_f16[scvt]);
+
+				//////////////////////////fp16 := float16.Fromfloat32(p[i] - max)
+				//////////////////////////bits := fp16.Bits()
+				//////////////////////////exp := TableExpFP16[bits] // FIXME table_exp_f16 ASAP Initialize first!
+				//////////////////////////val := exp.Float32()
+
+				val := float32(math.Exp(float64(p[i] - max)))
 				sum += val
 				p[i] = val
 			}
@@ -3554,48 +3603,57 @@ func Init(params InitParams) *Context {
 	// make this function thread safe
 	////ggml_critical_section_start();
 
-	isFirstCall := true // FIXME static ??
+	////isFirstCall := true // FIXME static ??
 
-	if isFirstCall {
-		// initialize GELU, SILU and EXP F32 tables
-		////{
+	// FIXME Init only once !!
+	////if isFirstCall {
+
+	// ---- initialize GELU, SILU and EXP F32 tables
+	////{
+	////const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
+
+	/////////////////////////////////////////var ii uint16
+	/////////////////////////////////////////for i := uint32(0); i < (1 << 16); i++ {
+	/////////////////////////////////////////ui := uint16(i)
+
+	////memcpy(&ii, &ui, sizeof(ii));
+	////const float f = table_f32_f16[i] = COMPUTE_FP16_TO_FP32(ii);
+	/////////////////////////////////////////fp32 := float32()
+
+	////table_gelu_f16[i] = FP32_TO_FP16(ggml_gelu_f32(f));
+	////table_silu_f16[i] = FP32_TO_FP16(ggml_silu_f32(f));
+
+	////TableExpFP16[i]  = FP32_TO_FP16(exp(f));
+	/////////////////////////////////////////exp := float32(math.Exp(fp32))
+	/////////////////////////////////////////TableExpFP16[i] = float16.Fromfloat32(exp)
+
+	/////////////////////////////////////////}
+
+	////const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
+
+	////PRINT_DEBUG("%s: GELU, SILU and EXP tables initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
+	////}
+
+	// initialize g_state
+	{
 		////const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
 
-		////ggml_fp16_t ii;
-		////for (int i = 0; i < (1 << 16); ++i) {
-		////uint16_t ui = i;
-		////memcpy(&ii, &ui, sizeof(ii));
-		////const float f = table_f32_f16[i] = COMPUTE_FP16_TO_FP32(ii);
-		////table_gelu_f16[i] = FP32_TO_FP16(ggml_gelu_f32(f));
-		////table_silu_f16[i] = FP32_TO_FP16(ggml_silu_f32(f));
-		////table_exp_f16[i]  = FP32_TO_FP16(exp(f));
-		////}
-
-		////const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
-
-		////PRINT_DEBUG("%s: GELU, SILU and EXP tables initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
-		////}
-
-		// initialize g_state
-		{
-			////const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
-
-			gState = State{
-				Contexts: [MAX_CONTEXTS]ContextContainer{},
-			}
-
-			for i := uint32(0); i < MAX_CONTEXTS; i++ {
-				gState.Contexts[i].Used = false
-			}
-
-			////const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
-			//var end uint64 = ggml_time_us(); UNUSED(t_end)
-
-			////PRINT_DEBUG("%s: g_state initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
+		gState = State{
+			Contexts: [MAX_CONTEXTS]ContextContainer{},
 		}
 
-		isFirstCall = false
+		for i := uint32(0); i < MAX_CONTEXTS; i++ {
+			gState.Contexts[i].Used = false
+		}
+
+		////const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
+		//var end uint64 = ggml_time_us(); UNUSED(t_end)
+
+		////PRINT_DEBUG("%s: g_state initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
 	}
+
+	////isFirstCall = false
+	////}
 
 	// find non-used context in g_state
 	var ctx *Context
