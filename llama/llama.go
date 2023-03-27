@@ -314,6 +314,10 @@ func NewModel() *Model {
 	return &Model{
 		layers:  make([]Layer, 0),
 		tensors: make(map[string]*ml.Tensor),
+		kvSelf: KVCache{
+			K: &ml.Tensor{},
+			V: &ml.Tensor{},
+		},
 	}
 }
 
