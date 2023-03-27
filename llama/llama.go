@@ -631,6 +631,12 @@ func Eval(
 
 	logitsOut := *lctx.Logits // FIXME ASAP What we'll doing with this? Just lost in thin air?
 
+	//fmt.Printf("\n\n=== INPL 08 === LEN = %d\n", len(inpL.Data)) // DEBUG
+	fmt.Printf("\n\n=== INPL 09 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
+	}
+
 	fmt.Printf("\n\n=== BEFORE === len(logitsOut) = %d\n", len(logitsOut)) // DEBUG
 	for ii := 0; ii < 8; ii++ {
 		fmt.Printf("| logitsOut[%d] = %f |", ii, logitsOut[ii])
