@@ -2861,12 +2861,10 @@ func ComputeForwardPermute(params *ComputeParams, src0 *Tensor) {
 	////UNUSED(src0);
 }
 
-// FIXME ASAP
 // ggml_compute_forward_rope
 func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	///////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardRopeFP32 ] ")
-
+	//fmt.Printf(" [ ComputeForwardRopeFP32 ] ")
 	////assert(params->ith == 0);
 	////assert(src1->type == GGML_TYPE_I32);
 	////assert(ggml_nelements(src1) == 3);
@@ -2874,58 +2872,79 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
 	}
-	/*
-	   n_past = ((int32_t *) src1->data)[0];
-	   n_dims = ((int32_t *) src1->data)[1];
-	   mode   = ((int32_t *) src1->data)[2];
 
-	   //const int ne0 = src0->ne[0];
-	   ne1 := src0.NE[1]
-	   ne2 := src0.NE[2]
-	   ne3 := src0.NE[3]
-	*/
+	pastCount := uint32(src1.Data[0])
+	dims := uint32(src1.Data[1])
+	mode := uint32(src1.Data[2])
+
+	//const int ne0 = src0->ne[0];
+	ne1 := src0.NE[1]
+	ne2 := src0.NE[2]
+	ne3 := src0.NE[3]
 
 	////const int nb0 = src0->nb[0];
 	////const int nb1 = src0->nb[1];
 	////const int nb2 = src0->nb[2];
 	////const int nb3 = src0->nb[3];
 
+	nb0 := uint32(1)
+	nb1 := uint32(src0.NE[1])
+	nb2 := uint32(src0.NE[1] * src0.NE[2])
+	nb3 := uint32(src0.NE[1] * src0.NE[2] * src0.NE[3])
+
 	//printf("ne0: %d, ne1: %d, ne2: %d, ne3: %d\n", ne0, ne1, ne2, ne3);
 	//printf("n_past = %d, ne2 = %d\n", n_past, ne2);
 
 	////assert(nb0 == sizeof(float));
-	/*
-	   // TODO: optimize
-	   for (int i3 = 0; i3 < ne3; i3++) {
-	       for (int i2 = (mode == 0 ? 0 : n_past); i2 < ne2; i2++) {
-	           const int p = (mode == 0 ? n_past + i2 : i2);
-	           for (int i1 = 0; i1 < ne1; i1++) {
-	               for (int i0 = 0; i0 < n_dims; i0 += 2) {
-	                   const double theta = pow(10000.0, ((double)-i0)/n_dims);
 
-	                   const double cos_theta = cos(p*theta);
-	                   const double sin_theta = sin(p*theta);
+	var modeCount uint32
+	if mode == 0 {
+		modeCount = 0
+	} else {
+		modeCount = pastCount
+	}
 
-	                   const float * const src = (float *)((char *) src0->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
-	                       float * dst_data  = (float *)((char *)  dst->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
+	// TODO: optimize
+	for i3 := uint32(0); i3 < ne3; i3++ {
+		for i2 := modeCount; i2 < ne2; i2++ {
 
-	                   double x0 = src[0];
-	                   double x1 = src[1];
+			////const int p = (mode == 0 ? n_past + i2 : i2);
+			var p uint32
+			if mode == 0 {
+				p = pastCount + i2
+			} else {
+				p = i2
+			}
 
-	                   dst_data[0] = x0*cos_theta - x1*sin_theta;
-	                   dst_data[1] = x0*sin_theta + x1*cos_theta;
-	               }
-	           }
-	       }
-	   } */
+			for i1 := uint32(0); i1 < ne1; i1++ {
+				for i0 := uint32(0); i0 < dims; i0 += 2 {
+
+					////const double theta = pow(10000.0, ((double)-i0)/n_dims);
+					theta := math.Pow(10000.0, float64(-i0/dims))
+
+					cosTheta := math.Cos(float64(p) * theta)
+					sinTheta := math.Sin(float64(p) * theta)
+
+					////const float * const src = (float *)((char *) src0->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
+					src := src0.Data[i3*nb3+i2*nb2+i1*nb1+i0*nb0:]
+					////   float * dst_data  = (float *)((char *)  dst->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
+					dstData := dst.Data[i3*nb3+i2*nb2+i1*nb1+i0*nb0:]
+
+					x0 := float64(src[0])
+					x1 := float64(src[1])
+
+					dstData[0] = float32(x0*cosTheta - x1*sinTheta)
+					dstData[1] = float32(x0*sinTheta + x1*cosTheta)
+				}
+			}
+		}
+	}
 }
 
-// FIXME ASAP
 // ggml_compute_forward_scale
 func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	/////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardScaleFP32 ] ")
-
+	//fmt.Printf(" [ ComputeForwardScaleFP32 ] ")
 	////GGML_ASSERT(ggml_is_contiguous(src0));
 	////GGML_ASSERT(ggml_is_contiguous(dst));
 	////GGML_ASSERT(ggml_are_same_shape(src0, dst));
@@ -2934,27 +2953,27 @@ func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
 	}
-	/*
-	   // scale factor
-	   const float v = *(float *) src1->data;
 
-	   const int ith = params->ith;
-	   const int nth = params->nth;
+	// scale factor
+	v := src1.Data[0]
 
-	   const int nc = src0->ne[0];
-	   const int nr = ggml_nrows(src0);
+	ith := params.ith
+	nth := params.nth
 
-	   // rows per thread
-	   const int dr = (nr + nth - 1)/nth;
+	nc := src0.NE[0]
+	nr := src0.Nrows()
 
-	   // row range for this thread
-	   const int ir0 = dr*ith;
-	   const int ir1 = MIN(ir0 + dr, nr);
+	// rows per thread
+	dr := (nr + nth - 1) / nth
 
-	   	for (int i1 = ir0; i1 < ir1; i1++) {
-	   	    ggml_vec_scale_f32(nc, (float *) ((char *) dst->data + i1*(dst->nb[1])), v);
-	   	}
-	*/
+	// row range for this thread
+	ir0 := dr * ith
+	ir1 := min(int(ir0)+int(dr), int(nr))
+
+	for i1 := ir0; int(i1) < ir1; i1++ {
+		////ggml_vec_scale_f32(nc, (float *) ((char *) dst->data + i1*(dst->nb[1])), v);
+		VecScaleFP32(nc, dst.Data[i1*dst.NE[0]:], v)
+	}
 }
 
 // ggml_compute_forward_diag_mask_inf
@@ -2987,7 +3006,7 @@ func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tenso
 			for i := pastCount; i < nc; i++ {
 				if i > pastCount+j {
 					////*(float *)((char *) dst->data + k*dst->nb[2] + j*dst->nb[1] + i*dst->nb[0]) = -INFINITY;
-					dst.Data[k*dst.NE[0]*dst.NE[1]*dst.NE[2]+j*dst.NE[0]*dst.NE[1]+i] = float32(math.Inf(-1)) // TODO Use const
+					dst.Data[k*dst.NE[0]*dst.NE[1]+j*dst.NE[0]+i] = float32(math.Inf(-1)) // TODO Use const
 				}
 			}
 		}
