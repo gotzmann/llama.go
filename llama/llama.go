@@ -637,7 +637,7 @@ func Eval(
 	}
 
 	fmt.Printf("\n\n=== BEFORE === len(logitsOut) = %d\n", len(logitsOut)) // DEBUG
-	for ii := 0; ii < 8; ii++ {
+	for ii := 0; ii < 7; ii++ {
 		fmt.Printf("| logitsOut[%d] = %f |", ii, logitsOut[ii])
 	}
 
@@ -672,7 +672,7 @@ func Eval(
 	}
 
 	fmt.Printf("\n\n=== AFTER === len(logitsOut) = %d\n", len(logitsOut)) // DEBUG
-	for ii := 0; ii < 8; ii++ {
+	for ii := 0; ii < 7; ii++ {
 		fmt.Printf("| logitsOut[%d] = %f |", ii, logitsOut[ii])
 	}
 
