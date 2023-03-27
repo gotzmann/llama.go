@@ -398,24 +398,23 @@ func Eval(
 	////gf.n_threads = N > 255 && ggml_cpu_has_blas() ? 1 : n_threads;
 	gf := ml.Graph{ThreadsCount: threadsCount}
 
-	embd := ml.NewTensor1D(ctx0, ml.TYPE_I32, N) // FIXME Will be created as FP32 anyway
+	embd := ml.NewTensor1D(ctx0, ml.TYPE_F32 /*ml.TYPE_I32*/, N) // FIXME Will be created as FP32 anyway
 	////memcpy(embd->data, tokens, N*ggml_element_size(embd));
 	// FIXME Refactore inline initialization
-	embd.Type = ml.TYPE_F32
 	for id := uint32(0); id < N; id++ {
-		embd.Data[id] = float32(tokens[id]) // FIXME copy() for slices
+		(*embd.Data)[id] = float32(tokens[id]) // FIXME copy() for slices
 	}
 
 	fmt.Printf("\n\n=== EMBD === LEN = %d * %d\n", embd.NE[0], embd.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| EMBD[%d] = %f |", ii, embd.Data[ii])
+		fmt.Printf("| EMBD[%d] = %f |", ii, (*embd.Data)[ii])
 	}
 
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
 
 	fmt.Printf("\n\n=== INPL 01 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
+		fmt.Printf("| INPL[%d] = %f |", ii, (*inpL.Data)[ii])
 	}
 
 	////fmt.Printf("\n\nmodel.tokEmbeddings = %+v", model.tokEmbeddings) // DEBUG
@@ -589,7 +588,7 @@ func Eval(
 	//fmt.Printf("\n\n=== INPL 05 === LEN = %d\n", len(inpL.Data)) // DEBUG
 	fmt.Printf("\n\n=== INPL 05 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
+		fmt.Printf("| INPL[%d] = %f |", ii, (*inpL.Data)[ii])
 	}
 
 	////embeddings := inpL
@@ -602,7 +601,7 @@ func Eval(
 	//fmt.Printf("\n\n=== INPL 06 === LEN = %d\n", len(inpL.Data)) // DEBUG
 	fmt.Printf("\n\n=== INPL 06 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
+		fmt.Printf("| INPL[%d] = %f |", ii, (*inpL.Data)[ii])
 	}
 
 	////lctx.use_buf(ctx0, -1);
@@ -620,7 +619,7 @@ func Eval(
 	//fmt.Printf("\n\n=== INPL 08 === LEN = %d\n", len(inpL.Data)) // DEBUG
 	fmt.Printf("\n\n=== INPL 08 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
+		fmt.Printf("| INPL[%d] = %f |", ii, (*inpL.Data)[ii])
 	}
 
 	// COMMenteD  if (n_past%100 == 0) {
@@ -637,7 +636,7 @@ func Eval(
 
 	fmt.Printf("\n\n=== INPL 09 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
+		fmt.Printf("| INPL[%d] = %f |", ii, (*inpL.Data)[ii])
 	}
 
 	fmt.Printf("\n\n=== BEFORE === len(logitsOut) = %d\n", len(logitsOut)) // DEBUG
@@ -654,7 +653,7 @@ func Eval(
 		////memcpy(logits_out.data(), (float *) ggml_get_data(inpL), sizeof(float)*n_vocab*N);
 		// FIXME Double Check !! Replace with copy() for slices
 		for i := uint32(0); i < vocabSize*N; i++ {
-			logitsOut[i] = inpL.Data[i] // FIXME ASAP Overflow ??
+			logitsOut[i] = (*inpL.Data)[i] // FIXME ASAP Overflow ??
 		}
 
 	} else {
@@ -671,7 +670,7 @@ func Eval(
 
 		// FIXME ASAP Logits LEN = 32,000 | INPL LEN = 256,000
 		for i := uint32(0); i < vocabSize; i++ {
-			logitsOut[i] = inpL.Data[i]
+			logitsOut[i] = (*inpL.Data)[i]
 		}
 	}
 
@@ -1468,7 +1467,7 @@ func LoadModel(
 						if ftype == 1 { // --- FP16
 
 							for n := uint32(0); n < tensorSize; n++ {
-								tensor.Data[n] = readFP16ToFP32(reader)
+								(*tensor.Data)[n] = readFP16ToFP32(reader)
 							}
 
 						} else { // --- FP32

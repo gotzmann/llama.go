@@ -123,7 +123,7 @@ type Tensor struct {
 	//perfCycles uint32
 	//perfTime   uint64
 
-	Data []float32
+	Data *[]float32
 	//padding [8]byte
 }
 
@@ -150,7 +150,7 @@ func (t *Tensor) Nbytes() uint32 {
 
 // struct ggml_tensor * ggml_view_tensor(
 func ViewTensor(ctx *Context, src *Tensor) *Tensor {
-	return NewTensor(ctx, src.Type, src.Dims, src.NE[0], src.NE[1], src.NE[2], src.NE[3], src.Data)
+	return NewTensor(ctx, src.Type, src.Dims, src.NE[0], src.NE[1], src.NE[2], src.NE[3], *src.Data)
 }
 
 // ggml.c : ggml_dup_tensor
@@ -545,7 +545,7 @@ func View1D(ctx *Context, a *Tensor, ne0 uint32 /*, offset uint64*/) *Tensor {
 		os.Exit(1)
 	}
 
-	result := NewTensor(ctx, a.Type, 1, ne0, 1, 1, 1, a.Data /*+ offset*/) // FIXME
+	result := NewTensor(ctx, a.Type, 1, ne0, 1, 1, 1, *a.Data /*+ offset*/) // FIXME
 
 	result.op = OP_VIEW
 	result.grad = nil
@@ -878,7 +878,7 @@ func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 		//NB:   [4]uint32{0, 0, 0, 0},
 		op:   OP_NONE,
 		opt:  [4]*Tensor{nil, nil, nil, nil},
-		Data: retData,
+		Data: &retData,
 	}
 }
 
@@ -965,11 +965,11 @@ func Rope(ctx *Context, a *Tensor, past, dims, mode uint32) *Tensor {
 
 	b := NewTensor1D(ctx, TYPE_I32, 3)
 	////((int32_t *) b.data)[0] = past
-	b.Data[0] = float32(past)
+	(*b.Data)[0] = float32(past)
 	////((int32_t *) b.data)[1] = dims
-	b.Data[1] = float32(dims)
+	(*b.Data)[1] = float32(dims)
 	////((int32_t *) b.data)[2] = mode
-	b.Data[2] = float32(mode)
+	(*b.Data)[2] = float32(mode)
 
 	result.op = OP_ROPE
 	result.src0 = a
@@ -1000,7 +1000,7 @@ func Reshape3D(ctx *Context, a *Tensor, ne0, ne1, ne2 uint32) *Tensor {
 	////}
 
 	//ne := [3]uint32{ ne0, ne1, ne2 }
-	result := NewTensor(ctx, a.Type, 3, ne0, ne1, ne2, 1, a.Data)
+	result := NewTensor(ctx, a.Type, 3, ne0, ne1, ne2, 1, *a.Data)
 
 	result.op = OP_RESHAPE
 	////result.grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
@@ -1080,7 +1080,7 @@ func SetFP32(tensor *Tensor, value float32) *Tensor {
 	n := tensor.Nelements()
 	for i := uint32(0); i < n; i++ {
 		////ggml_vec_set_f32(nc, (float *)(data + i*n1), value);
-		tensor.Data[i] = value
+		(*tensor.Data)[i] = value
 	}
 
 	////} break;
@@ -1870,7 +1870,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		var wdata []float32
 		if graph.Work != nil {
 			wsize = graph.Work.Nbytes()
-			wdata = graph.Work.Data
+			wdata = *graph.Work.Data
 		}
 
 		params := ComputeParams{
@@ -1903,7 +1903,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			var wdata []float32
 			if graph.Work != nil {
 				wsize = graph.Work.Nbytes()
-				wdata = graph.Work.Data
+				wdata = *graph.Work.Data
 			}
 
 			// launch thread pool
@@ -1969,7 +1969,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			var wdata []float32
 			if graph.Work != nil {
 				wsize = graph.Work.Nbytes()
-				wdata = graph.Work.Data
+				wdata = *graph.Work.Data
 			}
 
 			// launch thread pool
@@ -2274,7 +2274,7 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 	// FIXME Speed-up
 	for row := uint32(0); row < nr; row++ {
 		for column := uint32(0); column < nc; column++ {
-			dst.Data[row*nr+column] = src0.Data[row*nr+column]
+			(*dst.Data)[row*nr+column] = (*src0.Data)[row*nr+column]
 		}
 
 		/////VecCopyFP32(nc,
@@ -2424,8 +2424,8 @@ func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 				// FIXME ASAP Use nc0
 
 				VecCopyFP32(nc0,
-					dst.Data[i*nr0+k+j*nc0:],
-					src0.Data[k:])
+					(*dst.Data)[i*nr0+k+j*nc0:],
+					(*src0.Data)[k:])
 
 				////ggml_vec_cpy_f32(nc0,
 				////(float *) ((char *)  dst->data + (i*nr0 + k)*( dst->nb[1]) + j*nc0*( dst->nb[0])),
@@ -2463,7 +2463,7 @@ func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 	for i := uint32(0); i < n; i++ {
 
-		VecMulFP32(nc, dst.Data[i:], src0.Data[i:], src1.Data[i:])
+		VecMulFP32(nc, (*dst.Data)[i:], (*src0.Data)[i:], (*src1.Data)[i:])
 
 		////ggml_vec_mul_f32(nc,
 		////(float *) ((char *) dst->data  + i*( dst->nb[1])),
@@ -2710,15 +2710,15 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 			////(float *) ((char *) src0->data + (i01*nb01 + i02*nb02 + i03*nb03)),
 			////(float *) ((char *) src1->data + (i11*nb11 + i12*nb12 + i13*nb13)));
 
-			dst.Data[i0*nb0+i1*nb1+i2*nb2+i3*nb3] =
+			(*dst.Data)[i0*nb0+i1*nb1+i2*nb2+i3*nb3] =
 				VecDotFP32(ne00,
-					src0.Data[i01*nb01+i02*nb02+i03*nb03:],
-					src1.Data[i11*nb11+i12*nb12+i13*nb13:])
+					(*src0.Data)[i01*nb01+i02*nb02+i03*nb03:],
+					(*src1.Data)[i11*nb11+i12*nb12+i13*nb13:])
 
 			fmt.Printf(" # %f = %f * %f # ",
-				dst.Data[i0*nb0+i1*nb1+i2*nb2+i3*nb3],
-				src0.Data[i01*nb01+i02*nb02+i03*nb03],
-				src1.Data[i11*nb11+i12*nb12+i13*nb13])
+				(*dst.Data)[i0*nb0+i1*nb1+i2*nb2+i3*nb3],
+				(*src0.Data)[i01*nb01+i02*nb02+i03*nb03],
+				(*src1.Data)[i11*nb11+i12*nb12+i13*nb13])
 		}
 	}
 
@@ -2776,7 +2776,12 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 		////return;
 		////}
 	*/
-	copy(dst.Data, src0.Data)
+
+	///////////////////////////////////////////copy(dst.Data, src0.Data)
+	n := dst.Nelements()
+	for i := uint32(0); i < n; i++ {
+		(*dst.Data)[i] = (*src0.Data)[i]
+	}
 	return
 
 	/*
@@ -2886,9 +2891,9 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		return
 	}
 
-	pastCount := uint32(src1.Data[0])
-	dims := uint32(src1.Data[1])
-	mode := uint32(src1.Data[2])
+	pastCount := uint32((*src1.Data)[0])
+	dims := uint32((*src1.Data)[1])
+	mode := uint32((*src1.Data)[2])
 
 	//const int ne0 = src0->ne[0];
 	ne1 := src0.NE[1]
@@ -2939,9 +2944,9 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 					sinTheta := math.Sin(float64(p) * theta)
 
 					////const float * const src = (float *)((char *) src0->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
-					src := src0.Data[i3*nb3+i2*nb2+i1*nb1+i0*nb0:]
+					src := (*src0.Data)[i3*nb3+i2*nb2+i1*nb1+i0*nb0:]
 					////   float * dst_data  = (float *)((char *)  dst->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
-					dstData := dst.Data[i3*nb3+i2*nb2+i1*nb1+i0*nb0:]
+					dstData := (*dst.Data)[i3*nb3+i2*nb2+i1*nb1+i0*nb0:]
 
 					x0 := float64(src[0])
 					x1 := float64(src[1])
@@ -2968,7 +2973,7 @@ func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	}
 
 	// scale factor
-	v := src1.Data[0]
+	v := (*src1.Data)[0]
 
 	ith := params.ith
 	nth := params.nth
@@ -2985,7 +2990,7 @@ func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 	for i1 := ir0; int(i1) < ir1; i1++ {
 		////ggml_vec_scale_f32(nc, (float *) ((char *) dst->data + i1*(dst->nb[1])), v);
-		VecScaleFP32(nc, dst.Data[i1*dst.NE[0]:], v)
+		VecScaleFP32(nc, (*dst.Data)[i1*dst.NE[0]:], v)
 	}
 }
 
@@ -3002,7 +3007,7 @@ func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tenso
 	}
 
 	////const int n_past = ((int32_t *) src1->data)[0];
-	pastCount := uint32(src1.Data[0])
+	pastCount := uint32((*src1.Data)[0])
 
 	// TODO: handle transposed/permuted matrices
 
@@ -3019,7 +3024,7 @@ func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tenso
 			for i := pastCount; i < nc; i++ {
 				if i > pastCount+j {
 					////*(float *)((char *) dst->data + k*dst->nb[2] + j*dst->nb[1] + i*dst->nb[0]) = -INFINITY;
-					dst.Data[k*dst.NE[0]*dst.NE[1]+j*dst.NE[0]+i] = float32(math.Inf(-1)) // TODO Use const
+					(*dst.Data)[k*dst.NE[0]*dst.NE[1]+j*dst.NE[0]+i] = float32(math.Inf(-1)) // TODO Use const
 				}
 			}
 		}
@@ -3089,7 +3094,7 @@ func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 	for i1 := ir0; int(i1) < ir1; i1++ {
 		////float *p = (float *)((char *) dst->data + i1*dst->nb[1]);
 
-		p := dst.Data[i1*dst.NE[0]:]
+		p := (*dst.Data)[i1*dst.NE[0]:]
 
 		////#ifndef NDEBUG
 		////for (int i = 0; i < nc; ++i) {
@@ -3158,7 +3163,7 @@ func ComputeForwardAddFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	}
 
 	// FIXME Works only for 1 thread
-	VecAddFP32(dst.NE[0], dst.Data, src0.Data, src1.Data)
+	VecAddFP32(dst.NE[0], *dst.Data, *src0.Data, *src1.Data)
 	return
 
 	/*
@@ -3246,7 +3251,7 @@ func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
 	}
 
 	// FIXME Works only for 1 thread
-	VecSiluFP32(dst.NE[0], dst.Data, src0.Data)
+	VecSiluFP32(dst.NE[0], *dst.Data, *src0.Data)
 	return
 	/*
 	   ith := params.ith
