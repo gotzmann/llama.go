@@ -134,6 +134,12 @@ func (t *Tensor) Nrows() uint32 {
 	return t.NE[1] * t.NE[2] * t.NE[3]
 }
 
+// size_t ggml_nbytes(const struct ggml_tensor * tensor) {
+func (t *Tensor) Nbytes() uint32 {
+	////static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
+	return (t.Nelements() * TYPE_SIZE[t.Type]) / BLCK_SIZE[t.Type]
+}
+
 // struct ggml_tensor * ggml_view_tensor(
 func ViewTensor(ctx *Context, src *Tensor) *Tensor {
 	return NewTensor(ctx, src.Type, src.Dims, src.NE[0], src.NE[1], src.NE[2], src.NE[3], src.Data)
@@ -1553,8 +1559,8 @@ type ComputeParams struct {
 	ith  uint32
 	nth  uint32
 	// work buffer for all threads
-	////wsize uint64
-	////wdata []byte // FIXME *void
+	wsize uint32
+	wdata []float32 // byte // FIXME *void
 }
 
 type ComputeStateShared struct {
@@ -1575,6 +1581,25 @@ type ComputeState struct {
 	node   *Tensor
 
 	shared *ComputeStateShared
+}
+
+// Golang doesn’t have unary Bitwise NOT(~) like other programming languages
+// Here, you have to use Bitwise XOR(^) operator as Bitwise NOT
+func up32(n uint32) uint32 {
+	return uint32(n+31) & ^uint32(31)
+}
+
+func up(n, m uint32) uint32 {
+	// assert m is a power of 2
+	////GGML_ASSERT((m & (m - 1)) == 0);
+	return uint32(n+m-1) & ^uint32(m-1)
+}
+
+func max(a, b int) int {
+	if a >= b {
+		return a
+	}
+	return b
 }
 
 func GraphCompute(ctx *Context, graph *Graph) {
@@ -1627,7 +1652,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 	// initialize tasks + work buffer
 	{
-		////workSize := 0
+		workSize := 0
 
 		// thread scheduling for the different operations
 		for i := uint32(0); i < graph.NodesCount; i++ {
@@ -1664,76 +1689,62 @@ func GraphCompute(ctx *Context, graph *Graph) {
 				node.TasksCount = threads
 			case OP_MUL_MAT:
 				node.TasksCount = threads
-
 				// TODO: use different scheduling for different matrix sizes
 				//const int nr0 = ggml_nrows(node->src0);
 				//const int nr1 = ggml_nrows(node->src1);
-
 				//node->n_tasks = MIN(threads, MAX(1, nr0/128));
 				//printf("nr0 = %8d, nr1 = %8d, nr0*nr1 = %8d, n_tasks = %d\n", nr0, nr1, nr0*nr1, node->n_tasks);
-
-				////cur := 0
-
-				// TODO: better way to determine if the matrix is transposed
-				////if (node.src0.NB[1] < node->src0->nb[0]) {
-				////cur = ggml_nbytes(node)*node->n_tasks; // TODO: this can become (n_tasks-1)
-				// TODO: overestimated by factor of x2 for FP16
-				////} else {
-				////if node.src0.Type == TYPE_F16 && node.src1.Type == TYPE_F32) {
-
-				//// #if defined(USE_ACCELERATE) || defined(USE_OPENBLAS)
-				////if (ggml_compute_forward_mul_mat_use_blas(node->src0, node->src1, node)) {
-				////node->n_tasks = 1; // TODO: this actually is doing nothing
-				//       the threads are still spinning
-				////cur = TYPE_SIZE[TYPE_F32]*(node->src0->ne[0]*node->src0->ne[1]);
-				//printf("src0: ne0 = %d, ne1 = %d, ne = %d\n", node->src0->ne[0], node->src0->ne[1], node->src0->ne[0]*node->src0->ne[1]);
-				//printf("src1: ne0 = %d, ne1 = %d, ne = %d\n", node->src1->ne[0], node->src1->ne[1], node->src1->ne[0]*node->src1->ne[1]);
-				//printf("cur = %zu\n", cur);
-				////} else {
-				////cur = TYPE_SIZE[TYPE_F16]*ggml_nelements(node->src1);
-				////}
-				////#else
-				////cur = TYPE_SIZE[TYPE_F16]*ggml_nelements(node->src1);
-				// #endif
-				////} else if (node->src0->type == TYPE_F32 &&
-				////node->src1->type == TYPE_F32) {
-				////if node.src0.Type == TYPE_F32 && node.src1.Type == TYPE_F32 {
-				////cur = 0
-				////}
-				////} else if (node->src0->type == TYPE_Q4_0 &&
-				////node->src1->type == TYPE_F32) {
-				// #if defined(USE_ACCELERATE) || defined(USE_OPENBLAS)
-				////if (ggml_compute_forward_mul_mat_use_blas(node->src0, node->src1, node)) {
-				////node->n_tasks = 1;
-				////cur = TYPE_SIZE[TYPE_F32]*(node->src0->ne[0]*node->src0->ne[1]);
-				////} else {
-				////cur = (TYPE_SIZE[TYPE_Q4_0]*ggml_nelements(node->src1))/BLCK_SIZE[TYPE_Q4_0];
-				////}
-				////#else
-				////cur = (TYPE_SIZE[TYPE_Q4_0]*ggml_nelements(node->src1))/BLCK_SIZE[TYPE_Q4_0];
-				/// #endif
-				////} else if (node->src0->type == TYPE_Q4_1 &&
-				////node->src1->type == TYPE_F32) {
-				//// #if defined(USE_ACCELERATE) || defined(USE_OPENBLAS)
-				////if (ggml_compute_forward_mul_mat_use_blas(node->src0, node->src1, node)) {
-				////node->n_tasks = 1;
-				////cur = TYPE_SIZE[TYPE_F32]*(node->src0->ne[0]*node->src0->ne[1]);
-				////} else {
-				////cur = (TYPE_SIZE[TYPE_Q4_1]*ggml_nelements(node->src1))/BLCK_SIZE[TYPE_Q4_1];
-				////}
-				////#else
-				////cur = (TYPE_SIZE[TYPE_Q4_1]*ggml_nelements(node->src1))/BLCK_SIZE[TYPE_Q4_1];
-				//// #endif
-				if node.src0.Type == TYPE_F32 && node.src1.Type == TYPE_F32 {
-					////cur = 0
+				cur := 0
+				if node.src0.Type == TYPE_F16 && node.src1.Type == TYPE_F32 {
+					fmt.Printf("\n[HALT] GraphCompute : data types are not supprted!")
+					os.Exit(1)
+					////#if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS)
+					////				if (ggml_compute_forward_mul_mat_use_blas(node->src0, node->src1, node)) {
+					////					node->n_tasks = 1; // TODO: this actually is doing nothing
+					////									   //       the threads are still spinning
+					////					cur = GGML_TYPE_SIZE[GGML_TYPE_F32]*(node->src0->ne[0]*node->src0->ne[1]);
+					////					//printf("src0: ne0 = %d, ne1 = %d, ne = %d\n", node->src0->ne[0], node->src0->ne[1], node->src0->ne[0]*node->src0->ne[1]);
+					////					//printf("src1: ne0 = %d, ne1 = %d, ne = %d\n", node->src1->ne[0], node->src1->ne[1], node->src1->ne[0]*node->src1->ne[1]);
+					////					//printf("cur = %zu\n", cur);
+					////				} else {
+					////					cur = GGML_TYPE_SIZE[GGML_TYPE_F16]*ggml_nelements(node->src1);
+					////				}
+					////#else
+					////cur = TYPE_SIZE[TYPE_F16] * node.src1.Nelements()
+					////#endif
+				} else if node.src0.Type == TYPE_F32 && node.src1.Type == TYPE_F32 {
+					cur = 0
+				} else if node.src0.Type == TYPE_Q4_0 && node.src1.Type == TYPE_F32 {
+					fmt.Printf("\n[HALT] GraphCompute : data types are not supprted!")
+					os.Exit(1)
+					////#if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS)
+					////				if (ggml_compute_forward_mul_mat_use_blas(node->src0, node->src1, node)) {
+					////					node->n_tasks = 1;
+					////					cur = GGML_TYPE_SIZE[GGML_TYPE_F32]*(node->src0->ne[0]*node->src0->ne[1]);
+					////				} else {
+					////					cur = (GGML_TYPE_SIZE[GGML_TYPE_Q4_0]*ggml_nelements(node->src1))/GGML_BLCK_SIZE[GGML_TYPE_Q4_0];
+					////				}
+					////#else
+					////cur = TYPE_SIZE[TYPE_Q4_0] * node.src1.Nelements() / BLCK_SIZE[TYPE_Q4_0]
+					////#endif
+				} else if node.src0.Type == TYPE_Q4_1 && node.src1.Type == TYPE_F32 {
+					fmt.Printf("\n[HALT] GraphCompute : data types are not supprted!")
+					os.Exit(1)
+					////#if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS)
+					////				if (ggml_compute_forward_mul_mat_use_blas(node->src0, node->src1, node)) {
+					////					node->n_tasks = 1;
+					////					cur = GGML_TYPE_SIZE[GGML_TYPE_F32]*(node->src0->ne[0]*node->src0->ne[1]);
+					////				} else {
+					////					cur = (GGML_TYPE_SIZE[GGML_TYPE_Q4_1]*ggml_nelements(node->src1))/GGML_BLCK_SIZE[GGML_TYPE_Q4_1];
+					////				}
+					////#else
+					////cur = TYPE_SIZE[TYPE_Q4_1] * node.src1.Nelements() / BLCK_SIZE[TYPE_Q4_1]
+					////#endif
 				} else {
-					////ASSERT(false);
-					fmt.Printf("\n[HALT] Mismatch of data within compute graph!")
+					fmt.Printf("\n[HALT] GraphCompute : data types are not supprted!")
 					os.Exit(1)
 				}
-
-				////work_size = MAX(work_size, cur);
-
+				workSize = max(workSize, cur)
 			case OP_SCALE:
 				node.TasksCount = threads
 			case OP_CPY:
@@ -1750,102 +1761,87 @@ func GraphCompute(ctx *Context, graph *Graph) {
 				node.TasksCount = 1
 			case OP_CONV_1D_1S:
 			case OP_CONV_1D_2S:
-
 				node.TasksCount = threads
-
 				////ASSERT(node->src0->ne[3] == 1);
 				////ASSERT(node->src1->ne[2] == 1);
 				////ASSERT(node->src1->ne[3] == 1);
-
-				////cur := 0
-				////nk = node.src0.NE[0]
-
-				////if node.src0.Type == TYPE_F16 &&
-				////node.src1.Type == TYPE_F32) {
+				cur := 0
+				nk := node.src0.NE[0]
+				////if node.src0.Type == TYPE_F16 && node.src1.Type == TYPE_F32 {
 				////cur = sizeof(ggml_fp16_t)*(
 				////    nk*ggml_up32(node->src0->ne[1])*node->src0->ne[2] +
 				////( 2*(nk/2) + node->src1->ne[0])*node->src1->ne[1]
 				////);
-				////} else if (node->src0->type == TYPE_F32 &&
-				////           node->src1->type == TYPE_F32) {
+				////fmt.Printf("\n[HALT] Mismatch of data within compute graph!")
+				////os.Exit(1)
+				////} else if node.src0.Type == TYPE_F32 && node.src1.Type == TYPE_F32 {
 				if node.src0.Type == TYPE_F32 && node.src1.Type == TYPE_F32 {
-					////cur = sizeof(float)*(
-					////    nk*ggml_up32(node->src0->ne[1])*node->src0->ne[2] +
-					////( 2*(nk/2) + node->src1->ne[0])*node->src1->ne[1]
-					////);
+					// FIXME Check up32() vs ggml_up32
+					////cur = sizeof(float)*(nk*ggml_up32(node->src0->ne[1])*node->src0->ne[2] +( 2*(nk/2) + node->src1->ne[0])*node->src1->ne[1]);
+					cur = int(4 * (nk*up32(node.src0.NE[1])*node.src0.NE[2] + (2*(nk/2)+node.src1.NE[0])*node.src1.NE[1]))
 				} else {
 					////ASSERT(false);
 					fmt.Printf("\n[HALT] Mismatch of data within compute graph!")
 					os.Exit(1)
 				}
-
-				////work_size = MAX(work_size, cur);
-
+				workSize = max(workSize, cur)
 			case OP_FLASH_ATTN:
-
 				node.TasksCount = threads
-
-				////cur := 0
-
+				cur := 0
 				////ne11 := Up(node.src1.NE[1], SOFT_MAX_UNROLL)
-
+				const SOFT_MAX_UNROLL = uint32(4)
+				ne11 := up(node.src1.NE[1], SOFT_MAX_UNROLL)
 				if node.src1.Type == TYPE_F32 {
 					////cur  = sizeof(float)*ne11*node->n_tasks; // TODO: this can become (n_tasks-1)
 					////cur += sizeof(float)*ne11*node->n_tasks; // this is overestimated by x2
+					cur = 4 * int(ne11) * int(node.TasksCount)
+					cur += 4 * int(ne11) * int(node.TasksCount) // this is overestimated by x2
 				}
-
 				if node.src1.Type == TYPE_F16 {
 					////cur  = sizeof(float)*ne11*node->n_tasks; // TODO: this can become (n_tasks-1)
 					////cur += sizeof(float)*ne11*node->n_tasks; // this is overestimated by x2
 					fmt.Printf("\n[HALT] Mismatch of data within compute graph!")
 					os.Exit(1)
 				}
-
-				////work_size = MAX(work_size, cur);
-
+				workSize = max(workSize, cur)
 			case OP_FLASH_FF:
-				/*
-				   node.TasksCount = threads
-
-				   cur := 0
-
-				   if (node->src1->type == TYPE_F32) {
-				       cur  = sizeof(float)*node->src1->ne[1]*node->n_tasks; // TODO: this can become (n_tasks-1)
-				       cur += sizeof(float)*node->src1->ne[1]*node->n_tasks; // this is overestimated by x2
-				   }
-
-				   if (node->src1->type == TYPE_F16) {
-				       cur  = sizeof(float)*node->src1->ne[1]*node->n_tasks; // TODO: this can become (n_tasks-1)
-				       cur += sizeof(float)*node->src1->ne[1]*node->n_tasks; // this is overestimated by x2
-				   }
-
-				   ////work_size = MAX(work_size, cur)
-				*/
+				node.TasksCount = threads
+				cur := 0
+				if node.src1.Type == TYPE_F32 {
+					////cur  = sizeof(float)*node->src1->ne[1]*node->n_tasks; // TODO: this can become (n_tasks-1)
+					////cur += sizeof(float)*node->src1->ne[1]*node->n_tasks; // this is overestimated by x2
+					cur = int(4 * node.src1.NE[1] * node.TasksCount)  // TODO: this can become (n_tasks-1)
+					cur += int(4 * node.src1.NE[1] * node.TasksCount) // this is overestimated by x2
+				}
+				if node.src1.Type == TYPE_F16 {
+					////cur  = sizeof(float)*node->src1->ne[1]*node->n_tasks; // TODO: this can become (n_tasks-1)
+					////cur += sizeof(float)*node->src1->ne[1]*node->n_tasks; // this is overestimated by x2
+					fmt.Printf("\n[HALT] Mismatch of data within compute graph!")
+					os.Exit(1)
+				}
+				workSize = max(workSize, cur)
 			case OP_NONE:
-
 				node.TasksCount = 1
-
 			case OP_COUNT:
-				////ASSERT(false);
+				fmt.Printf("\n[HALT] Something wrong with compute graph!")
+				os.Exit(1)
 			}
 		}
 
-		////if (cgraph->work != NULL && work_size > cgraph->work_size) {
-		////ASSERT(false); // TODO: better handling
-		////}
+		if graph.Work != nil && workSize > int(graph.WorkSize) {
+			////ASSERT(false); // TODO: better handling
+			fmt.Printf("\n[HALT] Something wrong with work size of compute graph!")
+			os.Exit(1)
+		}
 
-		////if (work_size > 0 && cgraph->work == NULL) {
-		////cgraph->work_size = work_size + CACHE_LINE_SIZE*(threads - 1);
-
-		////PRINT_DEBUG("%s: allocating work buffer for graph (%zu bytes)\n", __func__, cgraph->work_size);
-		////cgraph->work = ggml_new_tensor_1d(ctx, TYPE_I8, cgraph->work_size);
-
-		// FIXME
-		//////////////////////////////////////////////////////////////////fmt.Printf("\n[COMPUTE] graph.WorkSize = %d", graph.WorkSize)
-		////graph.Work = NewTensor1D(ctx, TYPE_I8, graph.WorkSize)
-		graph.Work = NewTensor1D(ctx, TYPE_F32, graph.WorkSize)
-
-		////}
+		const CACHE_LINE_SIZE = uint32(64)
+		if workSize > 0 && graph.Work == nil {
+			graph.WorkSize = uint32(workSize) + CACHE_LINE_SIZE*(threads-1)
+			////PRINT_DEBUG("%s: allocating work buffer for graph (%zu bytes)\n", __func__, cgraph->work_size);
+			////graph.Work = NewTensor1D(ctx, TYPE_I8, graph.WorkSize)
+			graph.Work = NewTensor1D(ctx, TYPE_F32 /*TYPE_I8*/, graph.WorkSize)
+			fmt.Printf("\n[COMPUTE] graph.WorkSize = %d", graph.WorkSize)
+		}
 	}
 
 	////const int64_t perf_start_cycles  = ggml_perf_cycles();
@@ -1865,12 +1861,22 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		////const int64_t perf_node_start_time_us = ggml_perf_time_us();
 
 		// INIT
+
+		var wsize uint32
+		var wdata []float32
+		if graph.Work != nil {
+			wsize = graph.Work.Nbytes()
+			wdata = graph.Work.Data
+		}
+
 		params := ComputeParams{
 			Type: TASK_INIT,
 			ith:  0,
-			nth:  node.TasksCount, // node.Threads, // FIXME ASAP
+			nth:  node.TasksCount,
 			////wsize: graph.work ? ggml_nbytes(cgraph->work) : 0,
 			////wdata: graph.work ? cgraph->work->data : NULL,
+			wsize: wsize,
+			wdata: wdata,
 		}
 
 		/////////////////////////////////////////////////fmt.Printf("\n[COMPUTE] ComputeForward | TASK_INIT | ...")
@@ -1889,14 +1895,24 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			////ggml_lock_unlock(&state_shared.spin);
 			////}
 
+			var wsize uint32
+			var wdata []float32
+			if graph.Work != nil {
+				wsize = graph.Work.Nbytes()
+				wdata = graph.Work.Data
+			}
+
 			// launch thread pool
 			for j := uint32(0); j < threads-1; j++ {
+
 				workers[j].params = ComputeParams{
 					Type: TASK_COMPUTE,
 					ith:  j + 1,
 					nth:  node.TasksCount,
 					////.wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
 					////.wdata = cgraph->work ? cgraph->work->data : NULL,
+					wsize: wsize,
+					wdata: wdata,
 				}
 				workers[j].node = node
 			}
@@ -1946,6 +1962,13 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			////ggml_lock_unlock(&state_shared.spin);
 			////}
 
+			var wsize uint32
+			var wdata []float32
+			if graph.Work != nil {
+				wsize = graph.Work.Nbytes()
+				wdata = graph.Work.Data
+			}
+
 			// launch thread pool
 			for j := uint32(0); j < threads-1; j++ {
 				workers[j].params = ComputeParams{
@@ -1954,6 +1977,8 @@ func GraphCompute(ctx *Context, graph *Graph) {
 					nth:  node.TasksCount,
 					////.wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
 					////.wdata = cgraph->work ? cgraph->work->data : NULL,
+					wsize: wsize,
+					wdata: wdata,
 				}
 				workers[j].node = node
 			}
