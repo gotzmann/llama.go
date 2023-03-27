@@ -2472,46 +2472,95 @@ func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	}
 }
 
+// inline static void ggml_vec_dot_f32(const int n, float * restrict s, const float * restrict x, const float * restrict y) {
+func VecDotFP32(n uint32, x, y []float32) float32 {
+
+	sumf := float32(0.0)
+
+	////#ifdef GGML_SIMD
+	////    const int np = (n & ~(GGML_F32_STEP - 1));
+
+	////    GGML_F32_VEC sum[GGML_F32_ARR] = { GGML_F32_VEC_ZERO };
+
+	////    GGML_F32_VEC ax[GGML_F32_ARR];
+	////    GGML_F32_VEC ay[GGML_F32_ARR];
+
+	////    for (int i = 0; i < np; i += GGML_F32_STEP) {
+	////        for (int j = 0; j < GGML_F32_ARR; j++) {
+	////            ax[j] = GGML_F32_VEC_LOAD(x + i + j*GGML_F32_EPR);
+	////            ay[j] = GGML_F32_VEC_LOAD(y + i + j*GGML_F32_EPR);
+
+	////            sum[j] = GGML_F32_VEC_FMA(sum[j], ax[j], ay[j]);
+	////        }
+	////    }
+
+	////    // reduce sum0..sum3 to sum0
+	////    GGML_F32_VEC_REDUCE(sumf, sum);
+
+	////    // leftovers
+	////    for (int i = np; i < n; ++i) {
+	////        sumf += x[i]*y[i];
+	////    }
+	////#else
+
+	// scalar
+	for i := uint32(0); i < n; i++ {
+		sumf += x[i] * y[i]
+	}
+
+	////#endif
+
+	////*s = sumf;
+	return sumf
+}
+
+// inline static void ggml_vec_acc_f32 (const int n, float * y, const float * x)                  { for (int i = 0; i < n; ++i) y[i] += x[i];        }
+func VecAccFP32(n uint32, y, x []float32) {
+	for i := uint32(0); i < n; i++ {
+		y[i] += x[i]
+	}
+}
+
 // NB! FP32 Only
 // ggml_compute_forward_mul_mat
 func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	//////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardMulMatFP32 ] ")
+	//fmt.Printf(" [ ComputeForwardMulMatFP32 ] ")
 
 	////int64_t t0 = ggml_perf_time_us();
 	////UNUSED(t0);
 
-	////ne00 := src0.NE[0]
+	ne00 := src0.NE[0]
 	ne01 := src0.NE[1]
 	ne02 := src0.NE[2]
 	ne03 := src0.NE[3]
 
-	////ne10 := src1.NE[0]
+	ne10 := src1.NE[0]
 	ne11 := src1.NE[1]
-	////ne12 := src1.NE[2]
-	////ne13 := src1.NE[3]
+	ne12 := src1.NE[2]
+	ne13 := src1.NE[3]
 
-	////ne0 := dst.NE[0]
-	////ne1 := dst.NE[1]
-	////ne2 := dst.NE[2]
-	////ne3 := dst.NE[3]
-	////ne := ne0 * ne1 * ne2 * ne3
-	/*
-	   const int nb00 = src0->nb[0];
-	   const int nb01 = src0->nb[1];
-	   const int nb02 = src0->nb[2];
-	   const int nb03 = src0->nb[3];
+	ne0 := dst.NE[0]
+	ne1 := dst.NE[1]
+	ne2 := dst.NE[2]
+	ne3 := dst.NE[3]
+	ne := ne0 * ne1 * ne2 * ne3
 
-	   const int nb10 = src1->nb[0];
-	   const int nb11 = src1->nb[1];
-	   const int nb12 = src1->nb[2];
-	   const int nb13 = src1->nb[3];
+	nb00 := uint32(1)
+	nb01 := uint32(src0.NE[0])
+	nb02 := uint32(src0.NE[0] * src0.NE[1])
+	nb03 := uint32(src0.NE[0] * src0.NE[1] * src0.NE[2])
 
-	   const int nb0  = dst->nb[0];
-	   const int nb1  = dst->nb[1];
-	   const int nb2  = dst->nb[2];
-	   const int nb3  = dst->nb[3];
-	*/
+	nb10 := uint32(1)
+	nb11 := uint32(src1.NE[0])
+	nb12 := uint32(src1.NE[0] * src1.NE[1])
+	nb13 := uint32(src1.NE[0] * src1.NE[1] * src1.NE[2])
+
+	nb0 := uint32(1)
+	nb1 := uint32(dst.NE[0])
+	nb2 := uint32(dst.NE[0] * dst.NE[1])
+	nb3 := uint32(dst.NE[0] * dst.NE[1] * dst.NE[2])
+
 	ith := params.ith
 	nth := params.nth
 
@@ -2519,6 +2568,7 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	////assert(ne03 == ne13);
 	////assert(ne2  == ne12);
 	////assert(ne3  == ne13);
+
 	/*
 	   // TODO: we don't support permuted src0
 	   assert(nb00 == sizeof(float) || nb01 == sizeof(float));
@@ -2534,56 +2584,61 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	   assert(ne2 == ne02);
 	   assert(ne3 == ne03);
 	*/
+
 	// nb01 >= nb00 - src0 is not transposed
 	//   compute by src0 rows
 	//
 	// nb00 <  nb01 - src0 is transposed
 	//   compute by src0 columns
 
-	////#if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS)
-	////if (ggml_compute_forward_mul_mat_use_blas(src0, src1, dst)) {
-	////GGML_ASSERT(nb10 == sizeof(float));
+	/*
+		////#if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS)
 
-	////if (params->ith != 0) {
-	////return;
-	////}
+		////if (ggml_compute_forward_mul_mat_use_blas(src0, src1, dst)) {
+		////GGML_ASSERT(nb10 == sizeof(float));
 
-	////if (params->type == GGML_TASK_INIT) {
-	////return;
-	////}
+		if params.ith != 0 {
+		return
+		}
 
-	////if (params->type == GGML_TASK_FINALIZE) {
-	////return;
-	////}
+		if params.Type == TASK_INIT {
+		return
+		}
 
-	////for (int i03 = 0; i03 < ne03; i03++) {
-	////for (int i02 = 0; i02 < ne02; i02++) {
-	////const float * x = (float *) (src0->data);
-	////const float * y = (float *) ((char *) src1->data + i02*nb12 + i03*nb13);
+		if params.Type == TASK_FINALIZE {
+		return
+		}
 
-	////float * d = (float *) ((char *) dst->data + i02*nb2 + i03*nb3);
+		for i03 := uint32(0); i03 < ne03; i03++ {
+		for i02 := uint32(0); i02 < ne02; i02++ {
 
-	// zT = y * xT
-	////{
-	////cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
-	////ne11, ne01, ne10,
-	////1.0f,    y, ne10,
-	////         x, ne10,
-	////0.0f,    d, ne01);
-	////}
-	////}
-	////}
+		const float * x = (float *) (src0->data);
 
-	//printf("CBLAS F32 = %f ms, %d x %d x %d x %d\n", (ggml_perf_time_us() - t0)/1000.0, ne0, ne1, ne2, ne3);
+		////const float * y = (float *) ((char *) src1->data + i02*nb12 + i03*nb13);
 
-	////return;
-	////}
-	////#endif
+		////float * d = (float *) ((char *) dst->data + i02*nb2 + i03*nb3);
 
-	if params.Type == TASK_INIT {
-		////if (nb01 >= nb00) {
+		// zT = y * xT
+		////{
+		////cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+		////ne11, ne01, ne10,
+		////1.0f,    y, ne10,
+		////         x, ne10,
+		////0.0f,    d, ne01);
+		////}
+		////}
+		////}
+
+		//printf("CBLAS F32 = %f ms, %d x %d x %d x %d\n", (ggml_perf_time_us() - t0)/1000.0, ne0, ne1, ne2, ne3);
+
 		////return;
 		////}
+		////#endif
+	*/
+	if params.Type == TASK_INIT {
+		if nb01 >= nb00 {
+			return
+		}
 
 		// TODO: fix this memset (wsize is overestimated)
 		////memset(params->wdata, 0, params->wsize);
@@ -2591,121 +2646,145 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	}
 
 	if params.Type == TASK_FINALIZE {
-		////if (nb01 >= nb00) {
-		////return;
-		////}
+
+		if nb01 >= nb00 {
+			return
+		}
 
 		// TODO: fix this memset (wsize is overestimated)
 		//assert(params->wsize == (ggml_nbytes(dst) + CACHE_LINE_SIZE)*nth);
 
 		////float * const wdata = params->wdata;
+		wdata := params.wdata
 
 		// cols per thread
-		////dc := (ne + nth - 1) / nth
+		dc := (ne + nth - 1) / nth
 
 		// col range for this thread
-		////ic0 := dc * ith
-		////ic1 := min(ic0+dc, ne)
+		ic0 := dc * ith
+		ic1 := min(int(ic0)+int(dc), int(ne))
 
 		////ggml_vec_cpy_f32(ic1 - ic0, (float *) dst->data + ic0, wdata + ic0);
-		////VecCopyFP32(ic1-ic0, dst.Data[ic0], wdata+ic0)
+		VecCopyFP32(uint32(ic1)-ic0, dst.Data[ic0:], wdata[ic0:]) // FIXME Do we need this ??
 
 		for k := uint32(1); k < nth; k++ {
 			////ggml_vec_acc_f32(ic1 - ic0, (float *) dst->data + ic0, wdata + (ne + CACHE_LINE_SIZE_F32)*k + ic0);
-			////VecAccFP32(ic1-ic0, dst.Data[ic0], wdata+(ne+CACHE_LINE_SIZE_F32)*k+ic0) // FIXME ASAP
+			CACHE_LINE_SIZE_F32 := uint32(64 / 4)
+			VecAccFP32(uint32(ic1)-ic0, dst.Data[ic0:], wdata[(ne+CACHE_LINE_SIZE_F32)*k+ic0:]) // FIXME ASAP
 		}
 
 		return
 	}
 
-	////if (nb01 >= nb00) {
-	// TODO: do not support transposed src1
-	////assert(nb10 == sizeof(float));
+	if nb01 >= nb00 {
 
-	// parallelize by src0 rows using ggml_vec_dot_f32
+		fmt.Printf("\n\n[HALT] nb01 >= nb00")
+		os.Exit(1)
 
-	// total rows in src0
-	nr := ne01 * ne02 * ne03
+		// TODO: do not support transposed src1
+		////assert(nb10 == sizeof(float));
+		////fmt.Printf("\n[HALT] Do not support transposed src1")
 
-	// rows per thread
-	dr := (nr + nth - 1) / nth
+		// parallelize by src0 rows using ggml_vec_dot_f32
 
-	// row range for this thread
-	ir0 := dr * ith
-	ir1 := min32(ir0+dr, nr)
+		// total rows in src0
+		nr := ne01 * ne02 * ne03
 
-	for ir := uint32(ir0); ir < ir1; ir++ {
-		// src0 indices
-		////i03 := ir / (ne02 * ne01)
-		////i02 := (ir - i03*ne02*ne01) / ne01
-		////i01 := (ir - i03*ne02*ne01 - i02*ne01)
+		// rows per thread
+		dr := (nr + nth - 1) / nth
 
-		for ic := uint32(0); ic < ne11; ic++ {
-			// src1 indices
-			////i13 := i03
-			////i12 := i02
-			////i11 := ic
+		// row range for this thread
+		ir0 := dr * ith
+		ir1 := min32(ir0+dr, nr)
 
-			// dst indices
-			////i0 := i01
-			////i1 := i11
-			////i2 := i02
-			////i3 := i03
+		for ir := uint32(ir0); ir < ir1; ir++ {
+			// src0 indices
+			i03 := ir / (ne02 * ne01)
+			i02 := (ir - i03*ne02*ne01) / ne01
+			i01 := (ir - i03*ne02*ne01 - i02*ne01)
 
-			// FIXME ASAP
-			////ggml_vec_dot_f32(ne00,
-			////    (float *) ((char *)  dst->data + (i0*nb0 + i1*nb1 + i2*nb2 + i3*nb3)),
-			////(float *) ((char *) src0->data + (i01*nb01 + i02*nb02 + i03*nb03)),
-			////(float *) ((char *) src1->data + (i11*nb11 + i12*nb12 + i13*nb13)));
+			for ic := uint32(0); ic < ne11; ic++ {
+				// src1 indices
+				i13 := i03
+				i12 := i02
+				i11 := ic
+
+				// dst indices
+				i0 := i01
+				i1 := i11
+				i2 := i02
+				i3 := i03
+
+				////ggml_vec_dot_f32(ne00,
+				////    (float *) ((char *)  dst->data + (i0*nb0 + i1*nb1 + i2*nb2 + i3*nb3)),
+				////(float *) ((char *) src0->data + (i01*nb01 + i02*nb02 + i03*nb03)),
+				////(float *) ((char *) src1->data + (i11*nb11 + i12*nb12 + i13*nb13)));
+
+				////VecDotFP32(ne00,
+				/////dst.Data[i0*nb0+i1*nb1+i2*nb2+i3*nb3],
+				////src0.Data[i01*nb01+i02*nb02+i03*nb03],
+				////src1.Data[i11*nb11+i12*nb12+i13*nb13])
+
+				dst.Data[i0*nb0+i1*nb1+i2*nb2+i3*nb3] =
+					VecDotFP32(ne00,
+						src0.Data[i01*nb01+i02*nb02+i03*nb03:],
+						src1.Data[i11*nb11+i12*nb12+i13*nb13:])
+			}
+		}
+
+	} else {
+
+		fmt.Printf("\n\n[HALT] NOT nb01 >= nb00")
+		os.Exit(1)
+
+		// parallelize by src1 columns using ggml_vec_mad_f32
+		// each thread has its own work data
+		// during FINALIZE we accumulate all work data into dst
+
+		// total columns in src1
+		nc := ne10
+
+		// columns per thread
+		dc := (nc + nth - 1) / nth
+
+		// column range for this thread
+		ic0 := dc * ith
+		ic1 := min(int(ic0)+int(dc), int(nc))
+
+		// work data for thread
+		////const int wo = (ne + CACHE_LINE_SIZE_F32)*ith;
+		////float * const wdata = params->wdata;
+
+		for i13 := uint32(0); i13 < ne13; i13++ {
+			for i12 := uint32(0); i12 < ne12; i12++ {
+				for i11 := uint32(0); i11 < ne11; i11++ {
+					for ic := ic0; int(ic) < ic1; ic++ {
+
+						// src1 indices
+						i10 := ic
+
+						// src0 indices
+						i03 := i13
+						i02 := i12
+						i00 := ic
+
+						// dst indices
+						i1 := i11
+						i2 := i12
+						i3 := i13
+
+						////assert(sizeof(float)*(wo + i3*ne2*ne1*ne0 + i2*ne1*ne0 + i1*ne0 + ne01) <= params->wsize);
+
+						////ggml_vec_mad_f32(ne01,
+						////    (float *) (wdata + wo + i3*ne2*ne1*ne0 + i2*ne1*ne0 + i1*ne0),
+						////    (float *) ((char *) src0->data + (i00*nb00 + i02*nb02 + i03*nb03)),
+						////   *(float *) ((char *) src1->data + (i10*nb10 + i11*nb11 + i12*nb12 + i13*nb13)));
+
+					}
+				}
+			}
 		}
 	}
-	////} else {
-	// parallelize by src1 columns using ggml_vec_mad_f32
-	// each thread has its own work data
-	// during FINALIZE we accumulate all work data into dst
-
-	// total columns in src1
-	////const int nc = ne10;
-
-	// columns per thread
-	////const int dc = (nc + nth - 1)/nth;
-
-	// column range for this thread
-	////const int ic0 = dc*ith;
-	////const int ic1 = MIN(ic0 + dc, nc);
-
-	// work data for thread
-	////const int wo = (ne + CACHE_LINE_SIZE_F32)*ith;
-	////float * const wdata = params->wdata;
-
-	////for (int i13 = 0; i13 < ne13; ++i13) {
-	////for (int i12 = 0; i12 < ne12; ++i12) {
-	////for (int i11 = 0; i11 < ne11; ++i11) {
-	////for (int ic = ic0; ic < ic1; ++ic) {
-	// src1 indices
-	////const int i10 = ic;
-
-	// src0 indices
-	////const int i03 = i13;
-	////const int i02 = i12;
-	////const int i00 = ic;
-
-	// dst indices
-	////const int i1 = i11;
-	////const int i2 = i12;
-	////const int i3 = i13;
-
-	////assert(sizeof(float)*(wo + i3*ne2*ne1*ne0 + i2*ne1*ne0 + i1*ne0 + ne01) <= params->wsize);
-
-	////ggml_vec_mad_f32(ne01,
-	////    (float *) (wdata + wo + i3*ne2*ne1*ne0 + i2*ne1*ne0 + i1*ne0),
-	////    (float *) ((char *) src0->data + (i00*nb00 + i02*nb02 + i03*nb03)),
-	////   *(float *) ((char *) src1->data + (i10*nb10 + i11*nb11 + i12*nb12 + i13*nb13)));
-	////}
-	////}
-	////}
-	////}
-	////}
 
 	//int64_t t1 = ggml_perf_time_us();
 	//static int64_t acc = 0;
@@ -2718,7 +2797,7 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	//    printf("nb10 = %5d, nb11 = %5d, nb12 = %5d, nb13 = %5d\n", nb10, nb11, nb12, nb13);
 
 	//	   printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX task %d/%d: %d us, acc = %d\n", ith, nth, (int) (t1 - t0), (int) acc);
-	//	}
+	//}
 }
 
 // ggml_compute_forward_view
@@ -2736,8 +2815,7 @@ func ComputeForwardCopy(params *ComputeParams, src0, dst *Tensor) {
 
 func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 
-	///////////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardDupFP32 ] ")
-
+	//fmt.Printf(" [ ComputeForwardDupFP32 ] ")
 	////GGML_ASSERT(params->ith == 0);
 	////GGML_ASSERT(ggml_is_contiguous(dst));
 	////GGML_ASSERT(ggml_nelements(dst) == ggml_nelements(src0));
@@ -2745,24 +2823,23 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
 	}
-
-	////ne00 := src0.NE[0]
-	////ne01 := src0.NE[1]
-	////ne02 := src0.NE[2]
-	////ne03 := src0.NE[3]
 	/*
-	   const size_t nb00 = src0->nb[0];
-	   const size_t nb01 = src0->nb[1];
-	   const size_t nb02 = src0->nb[2];
-	   const size_t nb03 = src0->nb[3];
+		ne00 := src0.NE[0]
+		ne01 := src0.NE[1]
+		ne02 := src0.NE[2]
+		ne03 := src0.NE[3]
+
+		nb0 := uint32(1)
+		nb1 := uint32(src0.NE[0])
+		nb2 := uint32(src0.NE[0] * src0.NE[1])
+		nb3 := uint32(src0.NE[0] * src0.NE[1] * src0.NE[2])
+
+		// FIXME ASAP Will it work for Golang?
+		////if (ggml_is_contiguous(src0) && src0->type == dst->type) {
+		////memcpy(dst->data, src0->data, ggml_nelements(dst) * GGML_TYPE_SIZE[src0->type]);
+		////return;
+		////}
 	*/
-
-	// FIXME ASAP Will it work for Golang?
-	////if (ggml_is_contiguous(src0) && src0->type == dst->type) {
-	////memcpy(dst->data, src0->data, ggml_nelements(dst) * GGML_TYPE_SIZE[src0->type]);
-	////return;
-	////}
-
 	copy(dst.Data, src0.Data)
 	return
 
@@ -2888,9 +2965,9 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	////const int nb3 = src0->nb[3];
 
 	nb0 := uint32(1)
-	nb1 := uint32(src0.NE[1])
-	nb2 := uint32(src0.NE[1] * src0.NE[2])
-	nb3 := uint32(src0.NE[1] * src0.NE[2] * src0.NE[3])
+	nb1 := uint32(src0.NE[0])
+	nb2 := uint32(src0.NE[0] * src0.NE[1])
+	nb3 := uint32(src0.NE[0] * src0.NE[1] * src0.NE[2])
 
 	//printf("ne0: %d, ne1: %d, ne2: %d, ne3: %d\n", ne0, ne1, ne2, ne3);
 	//printf("n_past = %d, ne2 = %d\n", n_past, ne2);
