@@ -123,7 +123,7 @@ type Tensor struct {
 	//perfCycles uint32
 	//perfTime   uint64
 
-	Data *[]float32
+	Data *[]float32 // FIXME Was simple slice before!
 	//padding [8]byte
 }
 

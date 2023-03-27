@@ -1475,7 +1475,10 @@ func LoadModel(
 							var fake []byte
 
 							fakeHeader := (*reflect.SliceHeader)(unsafe.Pointer(&fake))
-							dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&tensor.Data))
+							// FIXME unsafe.Pointer(tensor.Data) VS unsafe.Pointer(&tensor.Data)
+							// FIXME It's REALLY depends on how Data defined in Tensor struct (pointer VS simple slice)
+							///////////////////////////dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&tensor.Data))
+							dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(tensor.Data))
 
 							fakeHeader.Data = dataHeader.Data
 							fakeHeader.Len = int(tensorSize * 4)
