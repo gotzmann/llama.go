@@ -367,6 +367,7 @@ func Eval(
 	model := lctx.Model
 	kvSelf := model.kvSelf
 
+	fmt.Printf("\n=== N = %d", N)
 	//// LLAMA_ASSERT(!!kv_self.ctx);
 
 	embdSize := model.hparams.embdSize
@@ -401,9 +402,14 @@ func Eval(
 		embd.Data[id] = float32(tokens[id]) // FIXME copy() for slices
 	}
 
+	fmt.Printf("\n\n=== EMBD === LEN = %d * %d\n", embd.NE[0], embd.NE[1]) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| EMBD[%d] = %f |", ii, embd.Data[ii])
+	}
+
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
 
-	fmt.Printf("\n\n=== INPL 01 === LEN = %d\n", len(inpL.Data)) // DEBUG
+	fmt.Printf("\n\n=== INPL 01 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
 		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
 	}
@@ -576,7 +582,8 @@ func Eval(
 		ml.Repeat(ctx0, model.norm, inpL),
 		inpL)
 
-	fmt.Printf("\n\n=== INPL 05 === LEN = %d\n", len(inpL.Data)) // DEBUG
+	//fmt.Printf("\n\n=== INPL 05 === LEN = %d\n", len(inpL.Data)) // DEBUG
+	fmt.Printf("\n\n=== INPL 05 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
 		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
 	}
@@ -588,7 +595,8 @@ func Eval(
 	// lm_head
 	inpL = ml.MulMat(ctx0, model.output, inpL)
 
-	fmt.Printf("\n\n=== INPL 06 === LEN = %d\n", len(inpL.Data)) // DEBUG
+	//fmt.Printf("\n\n=== INPL 06 === LEN = %d\n", len(inpL.Data)) // DEBUG
+	fmt.Printf("\n\n=== INPL 06 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
 		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
 	}
@@ -605,7 +613,8 @@ func Eval(
 	///////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] GraphCompute...")
 	ml.GraphCompute(ctx0, &gf)
 
-	fmt.Printf("\n\n=== INPL 08 === LEN = %d\n", len(inpL.Data)) // DEBUG
+	//fmt.Printf("\n\n=== INPL 08 === LEN = %d\n", len(inpL.Data)) // DEBUG
+	fmt.Printf("\n\n=== INPL 08 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
 		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
 	}
