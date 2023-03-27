@@ -665,17 +665,13 @@ func CopyInplace(ctx *Context, a, b *Tensor) *Tensor {
 
 // computation graph
 type Graph struct {
-	NodesCount uint32 // FIXME Do not need
-	LeafsCount uint32 // FIXME Do not need
-	Threads    uint32
+	NodesCount   uint32 // FIXME Do not need, having len() ??
+	LeafsCount   uint32 // FIXME Do not need, having len() ??
+	ThreadsCount uint32
 
 	WorkSize uint32
 	Work     *Tensor
-	/*
-		Nodes [MAX_NODES]*Tensor
-		Grads [MAX_NODES]*Tensor
-		Leafs [MAX_NODES]*Tensor
-	*/
+
 	Nodes [MAX_NODES]*Tensor
 	Grads [MAX_NODES]*Tensor
 	Leafs [MAX_NODES]*Tensor
@@ -1583,51 +1579,51 @@ type ComputeState struct {
 
 func GraphCompute(ctx *Context, graph *Graph) {
 
-	threads := graph.Threads
-	/*
-	   struct ggml_compute_state_shared state_shared = {
-	       spin      = LOCK_INITIALIZER,
-	       threads = threads,
-	       n_ready   = 0,
-	       has_work  = false,
-	       stop      = false,
-	};*/
+	fmt.Printf("\n\n === GraphCompute : %d nodes ===\n\n", graph.NodesCount) // DEBUG
+
+	threads := graph.ThreadsCount
+
+	////struct ggml_compute_state_shared state_shared = {
+	////    spin      = LOCK_INITIALIZER,
+	////    threads = threads,
+	////    n_ready   = 0,
+	////    has_work  = false,
+	////    stop      = false,
+	////};
 
 	var workers []ComputeState
 	if threads > 1 {
 		//////workers = alloca(sizeof(struct ggml_compute_state)*(threads - 1))
 		fmt.Printf("\n[HALT] Parallelism is not allowed!")
 		os.Exit(1)
-		workers = make([]ComputeState, threads)
+		workers = make([]ComputeState, graph.ThreadsCount)
 	}
 
-	/*
-	   // create thread pool
-	   if (threads > 1) {
-	       ggml_lock_init(&state_shared.spin);
+	// create thread pool
+	if threads > 1 {
+		////ggml_lock_init(&state_shared.spin);
 
-	       atomic_store(&state_shared.has_work, true);
+		////atomic_store(&state_shared.has_work, true);
 
-	       for (int j = 0; j < threads - 1; j++) {
-	           workers[j] = (struct ggml_compute_state) {
-	               .thrd   = 0,
-	               .params = {
-	                   .type  = TASK_COMPUTE,
-	                   .ith   = j + 1,
-	                   .nth   = threads,
-	                   .wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
-	                   .wdata = cgraph->work ? cgraph->work->data : NULL,
-	               },
-	               .node   = NULL,
-	               .shared = &state_shared,
-	           };
+		////for (int j = 0; j < threads - 1; j++) {
+		////    workers[j] = (struct ggml_compute_state) {
+		////        .thrd   = 0,
+		////        .params = {
+		////           .type  = TASK_COMPUTE,
+		////           .ith   = j + 1,
+		////           .nth   = threads,
+		////           .wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
+		////           .wdata = cgraph->work ? cgraph->work->data : NULL,
+		////       },
+		////       .node   = NULL,
+		////       .shared = &state_shared,
+		////   };
 
-	           int rc = ggml_thread_create(&workers[j].thrd, NULL, ggml_graph_compute_thread, &workers[j]);
-	           ASSERT(rc == 0);
-	           UNUSED(rc);
-	       }
-	   }
-	*/
+		////   int rc = ggml_thread_create(&workers[j].thrd, NULL, ggml_graph_compute_thread, &workers[j]);
+		////   ASSERT(rc == 0);
+		////   UNUSED(rc);
+		////}
+	}
 
 	// initialize tasks + work buffer
 	{
@@ -1636,6 +1632,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		// thread scheduling for the different operations
 		for i := uint32(0); i < graph.NodesCount; i++ {
 
+			////struct ggml_tensor * node = cgraph->nodes[i];
 			node := graph.Nodes[i]
 
 			switch node.op {
@@ -1643,7 +1640,6 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			case OP_DUP:
 				node.TasksCount = 1
 			case OP_ADD:
-				////node->n_tasks = threads
 				node.TasksCount = threads
 			case OP_SUB:
 			case OP_MUL:

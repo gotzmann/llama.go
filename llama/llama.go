@@ -392,7 +392,7 @@ func Eval(
 	// otherwise, the threads are spin-lock waiting for the BLAS calls and are degrading the performance
 	////ggml_cgraph gf = {};
 	////gf.n_threads = N > 255 && ggml_cpu_has_blas() ? 1 : n_threads;
-	gf := ml.Graph{Threads: threadsCount}
+	gf := ml.Graph{ThreadsCount: threadsCount}
 
 	embd := ml.NewTensor1D(ctx0, ml.TYPE_I32, N) // FIXME Will be created as FP32 anyway
 	////memcpy(embd->data, tokens, N*ggml_element_size(embd));
@@ -631,7 +631,6 @@ func Eval(
 
 	logitsOut := *lctx.Logits // FIXME ASAP What we'll doing with this? Just lost in thin air?
 
-	//fmt.Printf("\n\n=== INPL 08 === LEN = %d\n", len(inpL.Data)) // DEBUG
 	fmt.Printf("\n\n=== INPL 09 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
 		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
