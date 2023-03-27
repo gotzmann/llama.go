@@ -150,7 +150,7 @@ func (t *Tensor) Nbytes() uint32 {
 
 // struct ggml_tensor * ggml_view_tensor(
 func ViewTensor(ctx *Context, src *Tensor) *Tensor {
-	return NewTensor(ctx, src.Type, src.Dims, src.NE[0], src.NE[1], src.NE[2], src.NE[3], *src.Data)
+	return NewTensor(ctx, src.Type, src.Dims, src.NE[0], src.NE[1], src.NE[2], src.NE[3], src.Data)
 }
 
 // ggml.c : ggml_dup_tensor
@@ -215,11 +215,10 @@ func CanMulMat(t0, t1 *Tensor) bool {
 	return (t0.NE[0] == t1.NE[0]) && (t0.NE[2] == t1.NE[2]) && (t0.NE[3] == t1.NE[3]) // FIXME Where NE[1] ??
 }
 
-// Mul_mat
-
-// struct ggml_tensor * Mul_mat(
+// struct ggml_tensor * ggml_mul_mat(
 func MulMat(ctx *Context, a, b *Tensor) *Tensor {
 	////ASSERT(ggml_can_mul_mat(a, b));
+	////GGML_ASSERT(!ggml_is_transposed(a));
 
 	isNode := false
 
@@ -545,7 +544,7 @@ func View1D(ctx *Context, a *Tensor, ne0 uint32 /*, offset uint64*/) *Tensor {
 		os.Exit(1)
 	}
 
-	result := NewTensor(ctx, a.Type, 1, ne0, 1, 1, 1, *a.Data /*+ offset*/) // FIXME
+	result := NewTensor(ctx, a.Type, 1, ne0, 1, 1, 1, a.Data /*+ offset*/) // FIXME
 
 	result.op = OP_VIEW
 	result.grad = nil
@@ -776,7 +775,7 @@ func NewTensor4D(ctx *Context, dt DType, ne0, ne1, ne2, ne3 uint32) *Tensor {
 // TODO ne2 for 3D tensors?
 // ggml_new_tensor_impl
 // func NewTensorImpl(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
-func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
+func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data *[]float32) *Tensor {
 
 	if dt != TYPE_F32 && dt != TYPE_I32 {
 		fmt.Printf("\n[ERROR] NewTensorImpl got not supported type : %d", dt)
@@ -864,9 +863,10 @@ func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 
 	////ggml_assert_aligned(result);
 
-	var retData []float32
+	var retData *[]float32
 	if data == nil {
-		retData = make([]float32, ne0*ne1*ne2*ne3)
+		newData := make([]float32, ne0*ne1*ne2*ne3)
+		retData = &newData
 	} else {
 		retData = data
 	}
@@ -878,7 +878,7 @@ func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 		//NB:   [4]uint32{0, 0, 0, 0},
 		op:   OP_NONE,
 		opt:  [4]*Tensor{nil, nil, nil, nil},
-		Data: &retData,
+		Data: retData,
 	}
 }
 
@@ -1000,7 +1000,7 @@ func Reshape3D(ctx *Context, a *Tensor, ne0, ne1, ne2 uint32) *Tensor {
 	////}
 
 	//ne := [3]uint32{ ne0, ne1, ne2 }
-	result := NewTensor(ctx, a.Type, 3, ne0, ne1, ne2, 1, *a.Data)
+	result := NewTensor(ctx, a.Type, 3, ne0, ne1, ne2, 1, a.Data)
 
 	result.op = OP_RESHAPE
 	////result.grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
