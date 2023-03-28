@@ -488,6 +488,7 @@ func Eval(
 				k := ml.View1D(ctx0, kvSelf.K, N*embdSize, embdSize*(il+pastCount))
 				v := ml.View1D(ctx0, kvSelf.V, N*embdSize, embdSize*(il+pastCount))
 
+				fmt.Printf("\n\nkvSelf.N = %d", kvSelf.N)
 				fmt.Printf("\n=== k === LEN = %d * %d\n", k.NE[0], k.NE[1]) // DEBUG
 				for ii := 0; ii < 8; ii++ {
 					fmt.Printf("| k[%d] = %f |", ii, (*k.Data)[ii])
@@ -497,7 +498,13 @@ func Eval(
 				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Kcur, k))
 				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Vcur, v))
 
-				//os.Exit(1)
+				fmt.Printf("\n\nkvSelf.N = %d", kvSelf.N)
+				fmt.Printf("\n=== k === LEN = %d * %d\n", k.NE[0], k.NE[1]) // DEBUG
+				for ii := 0; ii < 8; ii++ {
+					fmt.Printf("| k[%d] = %f |", ii, (*k.Data)[ii])
+				}
+
+				os.Exit(1)
 			}
 
 			// Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)

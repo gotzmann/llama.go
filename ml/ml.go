@@ -778,7 +778,7 @@ func NewTensor4D(ctx *Context, dt DType, ne0, ne1, ne2, ne3 uint32) *Tensor {
 // func NewTensorImpl(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
 func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data *[]float32) *Tensor {
 
-	if dt != TYPE_F32 && dt != TYPE_I32 {
+	if dt != TYPE_F32 /*&& dt != TYPE_I32*/ {
 		fmt.Printf("\n[ERROR] NewTensorImpl got not supported type : %d", dt)
 		os.Exit(1)
 	}
