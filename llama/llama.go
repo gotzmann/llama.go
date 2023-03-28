@@ -102,6 +102,7 @@ func NewContextParams() ContextParams {
 	}
 }
 
+// CPP 67,108,864 -VS- GOLANG 131,072 => NO CTX of 512 bytes size
 func KVCacheInit(hparams *HParams, cache *KVCache, dt ml.DType /*, int n_ctx*/) error {
 	////const int n_embd  = hparams.n_embd;
 	////const int n_layer = hparams.n_layer;
@@ -125,10 +126,10 @@ func KVCacheInit(hparams *HParams, cache *KVCache, dt ml.DType /*, int n_ctx*/) 
 	////cache.k = ggml_new_tensor_1d(cache.ctx, wtype, n_elements);
 	////cache.v = ggml_new_tensor_1d(cache.ctx, wtype, n_elements);
 
-	count := hparams.embdSize * hparams.layersCount /* *n_ctx */
+	count := hparams.embdSize * hparams.layersCount // *n_ctx
 	cache.K = ml.NewTensor1D(nil, dt, count)
 	cache.V = ml.NewTensor1D(nil, dt, count)
-	// FIXME Should we alter cache.K ??
+	// FIXME Should we alter cache.N ??
 
 	return nil
 }
@@ -427,14 +428,37 @@ func Eval(
 		// norm
 		cur = ml.RMSNorm(ctx0, inpL)
 
+		fmt.Printf("\n\n=== CUR 01 === LEN = %d * %d\n", cur.NE[0], cur.NE[1]) // DEBUG
+		for ii := 0; ii < 8; ii++ {
+			fmt.Printf("| CUR[%d] = %f |", ii, (*cur.Data)[ii])
+		}
+
 		// cur = attention_norm*cur
 		rep := ml.Repeat(ctx0, model.layers[il].attentionNorm, cur)
+
+		fmt.Printf("\n\n=== REP === LEN = %d * %d\n", rep.NE[0], rep.NE[1]) // DEBUG
+		for ii := 0; ii < 8; ii++ {
+			fmt.Printf("| REP[%d] = %f |", ii, (*rep.Data)[ii])
+		}
+
 		cur = ml.Mul(ctx0, rep, cur)
+
+		fmt.Printf("\n\n=== CUR 02 === LEN = %d * %d\n", cur.NE[0], cur.NE[1]) // DEBUG
+		for ii := 0; ii < 8; ii++ {
+			fmt.Printf("| CUR[%d] = %f |", ii, (*cur.Data)[ii])
+		}
+
+		//os.Exit(1)
 
 		////////////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] Self-attention #%d...", il)
 
 		// self-attention
 		{
+			fmt.Printf("\n=== model.layers[il].wq === LEN = %d * %d\n", model.layers[il].wq.NE[0], model.layers[il].wq.NE[1]) // DEBUG
+			for ii := 0; ii < 8; ii++ {
+				fmt.Printf("| model.layers[il].wq[%d] = %f |", ii, (*model.layers[il].wq.Data)[ii])
+			}
+
 			Qcur := ml.MulMat(ctx0, model.layers[il].wq, cur)
 			Kcur := ml.MulMat(ctx0, model.layers[il].wk, cur)
 			Vcur := ml.MulMat(ctx0, model.layers[il].wv, cur)
@@ -445,20 +469,35 @@ func Eval(
 			// store key and value to memory
 			if N >= 1 {
 
-				// !!! FIXME !!!
-				/*
-					////struct ggml_tensor * k = ggml_view_1d(ctx0, model.memory_k, N*n_embd, (ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past));
-					k := ml.View1D(ctx0, model.memoryK, N*embdSize / *(ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past)* /)
-					v := ml.View1D(ctx0, model.memoryV, N*embdSize / *, (ggml_element_size(model.memory_v)*n_embd)*(il*n_ctx + n_past)* /)
-					////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
-					ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Kcur, k)) // K
-					ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Vcur, v)) // V
-				*/
-				k := ml.View1D(ctx0, kvSelf.K, N*embdSize /*, (ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past)*/)
-				v := ml.View1D(ctx0, kvSelf.V, N*embdSize /*, (ggml_element_size(kv_self.v)*n_embd)*(il*n_ctx + n_past)*/)
+				fmt.Printf("\n\nkvSelf.N = %d", kvSelf.N)
+				fmt.Printf("\n=== kvSelf.K === LEN = %d * %d\n", kvSelf.K.NE[0], kvSelf.K.NE[1]) // DEBUG
+				for ii := 0; ii < 8; ii++ {
+					fmt.Printf("| kvSelf.K[%d] = %f |", ii, (*kvSelf.K.Data)[ii])
+				}
+				fmt.Printf("\n=== kvSelf.V === LEN = %d * %d\n", kvSelf.V.NE[0], kvSelf.V.NE[1]) // DEBUG
+				for ii := 0; ii < 8; ii++ {
+					fmt.Printf("| kvSelf.V[%d] = %f |", ii, (*kvSelf.V.Data)[ii])
+				}
 
+				////struct ggml_tensor * k = ggml_view_1d(ctx0, kv_self.k, N*n_embd, (ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past));
+				////struct ggml_tensor * v = ggml_view_1d(ctx0, kv_self.v, N*n_embd, (ggml_element_size(kv_self.v)*n_embd)*(il*n_ctx + n_past));
+
+				////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
+				////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Vcur, v));
+
+				k := ml.View1D(ctx0, kvSelf.K, N*embdSize, embdSize*(il+pastCount))
+				v := ml.View1D(ctx0, kvSelf.V, N*embdSize, embdSize*(il+pastCount))
+
+				fmt.Printf("\n=== k === LEN = %d * %d\n", k.NE[0], k.NE[1]) // DEBUG
+				for ii := 0; ii < 8; ii++ {
+					fmt.Printf("| k[%d] = %f |", ii, (*k.Data)[ii])
+				}
+
+				// FIXME ASAP "runtime error: index out of range [28672] with length 28672"
 				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Kcur, k))
 				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Vcur, v))
+
+				//os.Exit(1)
 			}
 
 			// Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)
@@ -476,7 +515,9 @@ func Eval(
 				ml.Permute(ctx0,
 					ml.Rope(ctx0,
 						ml.Reshape3D(ctx0,
-							ml.View1D(ctx0, kvSelf.K, (pastCount+N)*embdSize /*, il*n_ctx*ggml_element_size(model.memory_k)*n_embd*/),
+							////ggml_view_1d(ctx0, kv_self.k, (n_past + N)*n_embd, il*n_ctx*ggml_element_size(kv_self.k)*n_embd),
+							////n_embd/n_head, n_head, n_past + N),
+							ml.View1D(ctx0, kvSelf.K, (pastCount+N)*embdSize, il*embdSize),
 							embdSize/headsCount, headsCount, pastCount+N),
 						pastCount, rotCount, 1),
 					0, 2, 1, 3)
@@ -505,7 +546,7 @@ func Eval(
 				ml.Copy(ctx0,
 					ml.Permute(ctx0,
 						ml.Reshape3D(ctx0,
-							ml.View1D(ctx0, kvSelf.V, (pastCount+N)*embdSize), /* (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_v)*n_embd)*/
+							ml.View1D(ctx0, kvSelf.V, (pastCount+N)*embdSize, il*embdSize),
 							embdSize/headsCount, headsCount, pastCount+N),
 						1, 2, 0, 3),
 					ml.NewTensor3D(ctx0, ml.TYPE_F32 /* kv_self.v->type */, pastCount+N, embdSize/headsCount, headsCount))
@@ -591,7 +632,7 @@ func Eval(
 		fmt.Printf("| INPL[%d] = %f |", ii, (*inpL.Data)[ii])
 	}
 
-	////embeddings := inpL
+	embeddings := inpL
 
 	///////////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] LM Head...")
 
@@ -684,15 +725,21 @@ func Eval(
 	// --- extract embeddings
 
 	if len(*lctx.Embedding) > 0 {
-		embeddingOut := lctx.Embedding
+		////embeddingOut := lctx.Embedding
 
 		////embedding_out.resize(n_embd);
 		//////////////////////////////embeddingOut = Resize(embeddingOut, int(embdSize)) // FIXME ASAP ^^^ down
-		embeddingOut = NewFloatSlice(embdSize, embdSize)
+		///////////////////////////////////////embeddingOut = NewFloatSlice(embdSize, embdSize)
 		////memcpy(embedding_out.data(), (float *) ggml_get_data(embeddings) + (n_embd*(N - 1)), sizeof(float)*n_embd);
 		// FIXME ASAP Replace with copy() for slices
+		//////////////////////for i := uint32(0); i < embdSize; i++ {
+		////////////////////////////	(*embeddingOut)[i] = (*lctx.Embedding)[i]
+		//////////////////////////////}
+
+		////memcpy(embedding_out.data(), (float *) ggml_get_data(embeddings) + (n_embd*(N - 1)), sizeof(float)*n_embd);
+
 		for i := uint32(0); i < embdSize; i++ {
-			(*embeddingOut)[i] = (*lctx.Embedding)[i]
+			(*lctx.Embedding)[i] = (*embeddings.Data)[(embdSize*(N-1))+i] // FIXME ASAP
 		}
 	}
 

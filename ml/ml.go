@@ -26,14 +26,14 @@ type DType uint8
 
 // TODO FP8, BFLOAT16
 const (
-	TYPE_Q4_0 DType = iota
-	TYPE_Q4_1
-	TYPE_I8
-	TYPE_I16
-	TYPE_I32
-	TYPE_F16   // TODO FP16
-	TYPE_F32   // TODO FP32
-	TYPE_COUNT // NB! COUNT should be the last
+	TYPE_Q4_0  DType = 1
+	TYPE_Q4_1  DType = 2
+	TYPE_I8    DType = 3
+	TYPE_I16   DType = 4
+	TYPE_I32   DType = 5
+	TYPE_F16   DType = 6 // TODO FP16
+	TYPE_F32   DType = 7 // TODO FP32
+	TYPE_COUNT DType = 8 // NB! COUNT should be the last
 )
 
 // precomputed exp table for f16 (128 KB)
@@ -536,15 +536,16 @@ func RMSNormImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 }
 
 // ggml_view_1d
+// NB! Originally offset in bytes, but here in floats (4-bytes)
+func View1D(ctx *Context, a *Tensor, ne0 uint32, offset uint32) *Tensor {
+	////if a.grad != nil {
+	////	////ASSERT(false); // gradient propagation is not supported
+	////	fmt.Printf("\n[STOP] View1D : gradient propagation is not supported")
+	////	os.Exit(1)
+	////}
 
-func View1D(ctx *Context, a *Tensor, ne0 uint32 /*, offset uint64*/) *Tensor {
-	if a.grad != nil {
-		////ASSERT(false); // gradient propagation is not supported
-		fmt.Printf("\n[STOP] View1D : gradient propagation is not supported")
-		os.Exit(1)
-	}
-
-	result := NewTensor(ctx, a.Type, 1, ne0, 1, 1, 1, a.Data /*+ offset*/) // FIXME
+	slice := (*a.Data)[offset:]
+	result := NewTensor(ctx, a.Type, 1, ne0, 1, 1, 1, &slice) // FIXME
 
 	result.op = OP_VIEW
 	result.grad = nil
@@ -1663,11 +1664,12 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 			////struct ggml_tensor * node = cgraph->nodes[i];
 			node := graph.Nodes[i]
+			node.TasksCount = 1 // GOTZ By Default
 
 			switch node.op {
 
 			case OP_DUP:
-				node.TasksCount = 1
+				////node.TasksCount = 1
 			case OP_ADD:
 				node.TasksCount = threads
 			case OP_SUB:
@@ -1683,7 +1685,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			case OP_NEG:
 			case OP_STEP:
 			case OP_RELU:
-				node.TasksCount = 1
+				////node.TasksCount = 1
 			case OP_GELU:
 				node.TasksCount = threads
 			case OP_SILU:
@@ -1758,11 +1760,11 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			case OP_TRANSPOSE:
 			case OP_GET_ROWS:
 			case OP_DIAG_MASK_INF:
-				node.TasksCount = 1
+				////node.TasksCount = 1
 			case OP_SOFT_MAX:
 				node.TasksCount = threads
 			case OP_ROPE:
-				node.TasksCount = 1
+				////node.TasksCount = 1
 			case OP_CONV_1D_1S:
 			case OP_CONV_1D_2S:
 				node.TasksCount = threads
@@ -1825,7 +1827,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 				}
 				workSize = max(workSize, cur)
 			case OP_NONE:
-				node.TasksCount = 1
+				////node.TasksCount = 1
 			case OP_COUNT:
 				fmt.Printf("\n[HALT] Something wrong with compute graph!")
 				os.Exit(1)
@@ -2066,8 +2068,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 func ComputeForward(params *ComputeParams, tensor *Tensor) {
 
-	///////////////////////////////////////////////////////////////////////////fmt.Printf("\n[COMPUTE] ComputeForward...")
-
+	//fmt.Printf("\n[COMPUTE] ComputeForward...")
 	////ASSERT(params);
 
 	switch tensor.op {
@@ -2251,8 +2252,7 @@ func VecCopyFP32(n uint32, y, x []float32) {
 // ggml_compute_forward_get_rows_f32
 func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	///////////////////////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardGetRows ] ")
-
+	//fmt.Printf(" [ ComputeForwardGetRows ] ")
 	////assert(params->ith == 0);
 
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
@@ -2272,21 +2272,22 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 	}
 
 	// FIXME Speed-up
-	for row := uint32(0); row < nr; row++ {
-		for column := uint32(0); column < nc; column++ {
-			(*dst.Data)[row*nr+column] = (*src0.Data)[row*nr+column]
-		}
+	////for row := uint32(0); row < nr; row++ {
+	////	for column := uint32(0); column < nc; column++ {
+	////		(*dst.Data)[row*nr+column] = (*src0.Data)[row*nr+column]
+	////	}
+	////}
 
-		/////VecCopyFP32(nc,
-		////(float *) ((char *)  dst->data + i*dst->nb[1]),
-		////(float *) ((char *) src0->data + r*src0->nb[1]));
+	for i := uint32(0); i < nr; i++ {
+		////const int r = ((int32_t *) src1->data)[i];
+		r := (*src1.Data)[i] // FIXME WTF ??
 
-		/*
-		   r := int(src1.data[i])
-		   ggml_vec_cpy_f32(nc,
-		           (float *) ((char *)  dst->data + i*dst->nb[1]),
-		           (float *) ((char *) src0->data + r*src0->nb[1]));
-		*/
+		////ggml_vec_cpy_f32(nc,
+		////        (float *) ((char *)  dst->data + i*dst->nb[1]),
+		////        (float *) ((char *) src0->data + r*src0->nb[1]));
+
+		// FIXME ASAP and double check!
+		VecCopyFP32(nc, (*dst.Data)[i*dst.NE[0]:], (*src0.Data)[uint32(r)*src0.NE[0]:])
 	}
 }
 
@@ -2445,8 +2446,7 @@ func VecMulFP32(n uint32, z, x, y []float32) {
 // ggml_compute_forward_mul
 func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	//////////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardMulFP32 ] ")
-
+	//fmt.Printf(" [ ComputeForwardMulFP32 ] ")
 	////assert(params->ith == 0);
 	////assert(ggml_are_same_shape(src0, src1) && ggml_are_same_shape(src0, dst));
 
@@ -2559,9 +2559,13 @@ func VecAccFP32(n uint32, y, x []float32) {
 // ggml_compute_forward_mul_mat
 func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	fmt.Printf(" [ ComputeForwardMulMatFP32 ] ")
+	//fmt.Printf(" [ ComputeForwardMulMatFP32 ] ")
 	////int64_t t0 = ggml_perf_time_us();
 	////UNUSED(t0);
+
+	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
+		return
+	}
 
 	ne00 := src0.NE[0]
 	ne01 := src0.NE[1]
@@ -2584,7 +2588,7 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	nb02 := uint32(src0.NE[0] * src0.NE[1])
 	nb03 := uint32(src0.NE[0] * src0.NE[1] * src0.NE[2])
 
-	nb10 := uint32(1)
+	//nb10 := uint32(1)
 	nb11 := uint32(src1.NE[0])
 	nb12 := uint32(src1.NE[0] * src1.NE[1])
 	nb13 := uint32(src1.NE[0] * src1.NE[1] * src1.NE[2])
@@ -2664,16 +2668,12 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		////#endif
 	*/
 
-	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
-		return
-	}
-
 	// TODO: do not support transposed src1
 	////assert(nb10 == sizeof(float));
-	if nb10 == 4 {
-		fmt.Printf("\n[HALT] Do not support transposed src1")
-		os.Exit(1)
-	}
+	////if nb10 == 4 {
+	////	fmt.Printf("\n[HALT] Do not support transposed src1")
+	////	os.Exit(1)
+	////}
 
 	// parallelize by src0 rows using ggml_vec_dot_f32
 
@@ -2715,10 +2715,10 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 					(*src0.Data)[i01*nb01+i02*nb02+i03*nb03:],
 					(*src1.Data)[i11*nb11+i12*nb12+i13*nb13:])
 
-			fmt.Printf(" # %f = %f * %f # ",
-				(*dst.Data)[i0*nb0+i1*nb1+i2*nb2+i3*nb3],
-				(*src0.Data)[i01*nb01+i02*nb02+i03*nb03],
-				(*src1.Data)[i11*nb11+i12*nb12+i13*nb13])
+			//fmt.Printf(" # %f = %f * %f # ",
+			//	(*dst.Data)[i0*nb0+i1*nb1+i2*nb2+i3*nb3],
+			//	(*src0.Data)[i01*nb01+i02*nb02+i03*nb03],
+			//	(*src1.Data)[i11*nb11+i12*nb12+i13*nb13])
 		}
 	}
 
@@ -2780,6 +2780,9 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 	///////////////////////////////////////////copy(dst.Data, src0.Data)
 	n := dst.Nelements()
 	for i := uint32(0); i < n; i++ {
+		///if i == 28672 {
+		//fmt.Printf("THATS IT !")
+		//}
 		(*dst.Data)[i] = (*src0.Data)[i]
 	}
 	return
