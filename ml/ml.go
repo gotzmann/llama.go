@@ -26,6 +26,7 @@ type DType uint8
 
 // TODO FP8, BFLOAT16
 const (
+	TYPE_NONE  DType = 0
 	TYPE_Q4_0  DType = 1
 	TYPE_Q4_1  DType = 2
 	TYPE_I8    DType = 3
@@ -40,9 +41,9 @@ const (
 // static ggml_fp16_t table_exp_f16[1 << 16];
 var TableExpFP16 [1 << 16]float16.Float16
 
-var BLCK_SIZE [TYPE_COUNT]uint32 = [TYPE_COUNT]uint32{QK, QK, 1, 1, 1, 1, 1}
+var BLCK_SIZE [TYPE_COUNT]uint32 = [TYPE_COUNT]uint32{0, QK, QK, 1, 1, 1, 1, 1}
 
-var TYPE_SIZE [TYPE_COUNT]uint32 = [TYPE_COUNT]uint32{ /* 4 + QK/2 */ 1 /* 4*2 + QK/2 */, 1, 1, 2, 4, 2, 4} // FIXME
+var TYPE_SIZE [TYPE_COUNT]uint32 = [TYPE_COUNT]uint32{0, 4 + QK/2, 4*2 + QK/2, 1, 2, 4, 2, 4} // FIXME
 
 func TypeSizeFloat(dt DType) float32 {
 	return float32(TYPE_SIZE[dt]) / float32(BLCK_SIZE[dt]) // FIXME
@@ -100,7 +101,8 @@ type Tensor struct {
 
 	Dims uint32
 	NE   [MAX_DIMS]uint32 // number of elements
-	//NB   [MAX_DIMS]uint32 // stride in bytes:
+	NB   [MAX_DIMS]uint32 // stride in bytes: // FIXME ASAP
+
 	// nb[0] = sizeof(type)
 	// nb[1] = nb[0]   * ne[0] + padding
 	// nb[i] = nb[i-1] * ne[i-1]
@@ -125,6 +127,16 @@ type Tensor struct {
 
 	Data *[]float32 // FIXME Was simple slice before!
 	//padding [8]byte
+}
+
+// static inline bool ggml_is_contiguous(const struct ggml_tensor * tensor) {
+func (tensor *Tensor) IsContiguous() bool {
+	//    static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
+	//
+	return tensor.NB[0] == TYPE_SIZE[tensor.Type] &&
+		tensor.NB[1] == tensor.NB[0]*tensor.NE[0]/BLCK_SIZE[tensor.Type] &&
+		tensor.NB[2] == tensor.NB[1]*tensor.NE[1] &&
+		tensor.NB[3] == tensor.NB[2]*tensor.NE[2]
 }
 
 func AreSameShape(a, b *Tensor) bool {
@@ -778,7 +790,7 @@ func NewTensor4D(ctx *Context, dt DType, ne0, ne1, ne2, ne3 uint32) *Tensor {
 // func NewTensorImpl(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
 func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data *[]float32) *Tensor {
 
-	if dt != TYPE_F32 /*&& dt != TYPE_I32*/ {
+	if dt != TYPE_F32 && dt != TYPE_I32 {
 		fmt.Printf("\n[ERROR] NewTensorImpl got not supported type : %d", dt)
 		os.Exit(1)
 	}
@@ -864,23 +876,35 @@ func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 
 	////ggml_assert_aligned(result);
 
-	var retData *[]float32
-	if data == nil {
-		newData := make([]float32, ne0*ne1*ne2*ne3)
-		retData = &newData
-	} else {
-		retData = data
-	}
-
-	return &Tensor{
+	result := Tensor{
 		Type: dt,
 		Dims: dims,
 		NE:   [4]uint32{ne0, ne1, ne2, ne3},
-		//NB:   [4]uint32{0, 0, 0, 0},
 		op:   OP_NONE,
-		opt:  [4]*Tensor{nil, nil, nil, nil},
-		Data: retData,
+		//opt:  [4]*Tensor{nil, nil, nil, nil},
 	}
+
+	////result->nb[0] = GGML_TYPE_SIZE[type];
+	////result->nb[1] = result->nb[0]*(result->ne[0]/GGML_BLCK_SIZE[type]);
+	////for (int i = 2; i < GGML_MAX_DIMS; i++) {
+	////    result->nb[i] = result->nb[i - 1]*result->ne[i - 1];
+	////}
+
+	result.NB[0] = TYPE_SIZE[dt]
+	result.NB[1] = result.NB[0] * (result.NE[0] / BLCK_SIZE[dt])
+	result.NB[2] = result.NB[1] * result.NE[1]
+	result.NB[3] = result.NB[2] * result.NE[2]
+
+	total := ne0 * ne1 * ne2 * ne3
+
+	if data == nil {
+		newData := make([]float32, total, total) // FIXME ASAP use CAP ??
+		result.Data = &newData
+	} else {
+		result.Data = data
+	}
+
+	return &result
 }
 
 // ggml_permute
@@ -988,8 +1012,14 @@ func Rope(ctx *Context, a *Tensor, past, dims, mode uint32) *Tensor {
 func Reshape3D(ctx *Context, a *Tensor, ne0, ne1, ne2 uint32) *Tensor {
 	////ASSERT(ggml_is_contiguous(a));
 	////ASSERT(ggml_nelements(a) == ne0*ne1*ne2);
+
+	if !a.IsContiguous() {
+		fmt.Printf("\n[STOP] Reshape3D : tensor is NOT contiguous!")
+		os.Exit(1)
+	}
+
 	if a.Nelements() != ne0*ne1*ne2 {
-		fmt.Printf("\n[STOP] Reshape3D : different elements number")
+		fmt.Printf("\n[STOP] Reshape3D : different elements number!")
 		os.Exit(1)
 	}
 
@@ -2756,6 +2786,16 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 	////GGML_ASSERT(ggml_is_contiguous(dst));
 	////GGML_ASSERT(ggml_nelements(dst) == ggml_nelements(src0));
 
+	if !dst.IsContiguous() {
+		fmt.Printf("[HALT] ComputeForwardDupFP32 : [dst] is NOT contiguous!")
+		os.Exit(1)
+	}
+
+	if dst.Nelements() != src0.Nelements() {
+		fmt.Printf("[HALT] ComputeForwardDupFP32 : [dst] and [src0] capacities are different!")
+		os.Exit(1)
+	}
+
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
 	}
@@ -2777,15 +2817,22 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 		////}
 	*/
 
-	///////////////////////////////////////////copy(dst.Data, src0.Data)
-	n := dst.Nelements()
-	for i := uint32(0); i < n; i++ {
-		///if i == 28672 {
-		//fmt.Printf("THATS IT !")
-		//}
-		(*dst.Data)[i] = (*src0.Data)[i]
+	if src0.IsContiguous() && src0.Type == dst.Type {
+		///////////////////////////////////////////copy(dst.Data, src0.Data)
+		n := dst.Nelements()
+		for i := uint32(0); i < n; i++ {
+			///if i == 28672 {
+			//fmt.Printf("THATS IT !")
+			//}
+			(*dst.Data)[i] = (*src0.Data)[i]
+		}
+		return
 	}
-	return
+
+	// src0 is NOT contigious
+
+	fmt.Printf("[HALT] ComputeForwardDupFP32 for NOT contiguous is NOT implemented yet!")
+	os.Exit(1)
 
 	/*
 		if (src0->nb[0] == sizeof(float)) {
@@ -2971,6 +3018,16 @@ func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	////GGML_ASSERT(ggml_are_same_shape(src0, dst));
 	////GGML_ASSERT(ggml_is_scalar(src1));
 
+	if !src0.IsContiguous() {
+		fmt.Printf("[HALT] ComputeForwardScaleFP32 : [src0] is NOT contiguous!")
+		os.Exit(1)
+	}
+
+	if !dst.IsContiguous() {
+		fmt.Printf("[HALT] ComputeForwardScaleFP32 : [dst] is NOT contiguous!")
+		os.Exit(1)
+	}
+
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
 	}
@@ -3073,6 +3130,16 @@ func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 	////GGML_ASSERT(ggml_is_contiguous(dst));
 	////GGML_ASSERT(ggml_are_same_shape(src0, dst));
 
+	if !src0.IsContiguous() {
+		fmt.Printf("[HALT] ComputeForwardSoftMaxFP32 : [src0] is NOT contiguous!")
+		os.Exit(1)
+	}
+
+	if !dst.IsContiguous() {
+		fmt.Printf("[HALT] ComputeForwardSoftMaxFP32 : [dst] is NOT contiguous!")
+		os.Exit(1)
+	}
+
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
 	}
@@ -3165,6 +3232,11 @@ func ComputeForwardAddFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		return
 	}
 
+	if src1.NB[0] != TYPE_SIZE[TYPE_F32] {
+		fmt.Printf("[HALT] ComputeForwardAddFP32 : [src1] is NOT contiguous!")
+		os.Exit(1)
+	}
+
 	// FIXME Works only for 1 thread
 	VecAddFP32(dst.NE[0], *dst.Data, *src0.Data, *src1.Data)
 	return
@@ -3248,6 +3320,16 @@ func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
 	////GGML_ASSERT(ggml_is_contiguous(src0));
 	////GGML_ASSERT(ggml_is_contiguous(dst));
 	////GGML_ASSERT(ggml_are_same_shape(src0, dst));
+
+	if !src0.IsContiguous() {
+		fmt.Printf("[HALT] ComputeForwardSiluFP32 : [src0] is NOT contiguous!")
+		os.Exit(1)
+	}
+
+	if !dst.IsContiguous() {
+		fmt.Printf("[HALT] ComputeForwardSiluFP32 : [dst] is NOT contiguous!")
+		os.Exit(1)
+	}
 
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return

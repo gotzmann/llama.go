@@ -504,7 +504,7 @@ func Eval(
 					fmt.Printf("| k[%d] = %f |", ii, (*k.Data)[ii])
 				}
 
-				os.Exit(1)
+				//os.Exit(1)
 			}
 
 			// Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)
