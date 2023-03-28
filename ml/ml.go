@@ -2623,12 +2623,12 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	//ne3 := dst.NE[3]
 	//ne := ne0 * ne1 * ne2 * ne3
 
-	nb00 := src0.NB[0]
+	//nb00 := src0.NB[0]
 	nb01 := src0.NB[1]
 	nb02 := src0.NB[2]
 	nb03 := src0.NB[3]
 
-	nb10 := src1.NB[0]
+	//nb10 := src1.NB[0]
 	nb11 := src1.NB[1]
 	nb12 := src1.NB[2]
 	nb13 := src1.NB[3]
@@ -2728,6 +2728,7 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	ir1 := min32(ir0+dr, nr)
 
 	for ir := uint32(ir0); ir < ir1; ir++ {
+
 		// src0 indices
 		i03 := ir / (ne02 * ne01)
 		i02 := (ir - i03*ne02*ne01) / ne01
@@ -2746,14 +2747,19 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 			i3 := i03
 
 			////ggml_vec_dot_f32(ne00,
-			////    (float *) ((char *)  dst->data + (i0*nb0 + i1*nb1 + i2*nb2 + i3*nb3)),
-			////(float *) ((char *) src0->data + (i01*nb01 + i02*nb02 + i03*nb03)),
-			////(float *) ((char *) src1->data + (i11*nb11 + i12*nb12 + i13*nb13)));
+			////	(float *) ((char *)  dst->data + (i0*nb0 + i1*nb1 + i2*nb2 + i3*nb3)),
+			////	(float *) ((char *) src0->data + (i01*nb01 + i02*nb02 + i03*nb03)),
+			////	(float *) ((char *) src1->data + (i11*nb11 + i12*nb12 + i13*nb13)));
 
-			(*dst.Data)[i0*nb0+i1*nb1+i2*nb2+i3*nb3] =
+			////(*dst.Data)[i0*nb0+i1*nb1+i2*nb2+i3*nb3] =
+			////	VecDotFP32(ne00,
+			////		(*src0.Data)[i01*nb01+i02*nb02+i03*nb03:],
+			////		(*src1.Data)[i11*nb11+i12*nb12+i13*nb13:])
+
+			(*dst.Data)[i0*nb0/4+i1*nb1/4+i2*nb2/4+i3*nb3/4] =
 				VecDotFP32(ne00,
-					(*src0.Data)[i01*nb01+i02*nb02+i03*nb03:],
-					(*src1.Data)[i11*nb11+i12*nb12+i13*nb13:])
+					(*src0.Data)[i01*nb01/4+i02*nb02/4+i03*nb03/4:],
+					(*src1.Data)[i11*nb11/4+i12*nb12/4+i13*nb13/4:])
 
 			//fmt.Printf(" # %f = %f * %f # ",
 			//	(*dst.Data)[i0*nb0+i1*nb1+i2*nb2+i3*nb3],
@@ -2965,15 +2971,10 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	ne2 := src0.NE[2]
 	ne3 := src0.NE[3]
 
-	////const int nb0 = src0->nb[0];
-	////const int nb1 = src0->nb[1];
-	////const int nb2 = src0->nb[2];
-	////const int nb3 = src0->nb[3];
-
-	nb0 := uint32(1)
-	nb1 := uint32(src0.NE[0])
-	nb2 := uint32(src0.NE[0] * src0.NE[1])
-	nb3 := uint32(src0.NE[0] * src0.NE[1] * src0.NE[2])
+	nb0 := src0.NB[0]
+	nb1 := src0.NB[1]
+	nb2 := src0.NB[2]
+	nb3 := src0.NB[3]
 
 	//printf("ne0: %d, ne1: %d, ne2: %d, ne3: %d\n", ne0, ne1, ne2, ne3);
 	//printf("n_past = %d, ne2 = %d\n", n_past, ne2);
@@ -3009,9 +3010,9 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 					sinTheta := math.Sin(float64(p) * theta)
 
 					////const float * const src = (float *)((char *) src0->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
-					src := (*src0.Data)[i3*nb3+i2*nb2+i1*nb1+i0*nb0:]
+					src := (*src0.Data)[i3*nb3/4+i2*nb2/4+i1*nb1/4+i0*nb0/4:]
 					////   float * dst_data  = (float *)((char *)  dst->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
-					dstData := (*dst.Data)[i3*nb3+i2*nb2+i1*nb1+i0*nb0:]
+					dstData := (*dst.Data)[i3*nb3/4+i2*nb2/4+i1*nb1/4+i0*nb0/4:]
 
 					x0 := float64(src[0])
 					x1 := float64(src[1])
@@ -3024,7 +3025,7 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	}
 }
 
-// ggml_compute_forward_scale
+// ggml_compute_forward_scale_f32
 func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 	//fmt.Printf(" [ ComputeForwardScaleFP32 ] ")
@@ -3065,7 +3066,8 @@ func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 	for i1 := ir0; int(i1) < ir1; i1++ {
 		////ggml_vec_scale_f32(nc, (float *) ((char *) dst->data + i1*(dst->nb[1])), v);
-		VecScaleFP32(nc, (*dst.Data)[i1*dst.NE[0]:], v)
+		////VecScaleFP32(nc, (*dst.Data)[i1*dst.NE[0]:], v)
+		VecScaleFP32(nc, (*dst.Data)[i1*dst.NB[1]/4:], v)
 	}
 }
 
@@ -3099,7 +3101,8 @@ func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tenso
 			for i := pastCount; i < nc; i++ {
 				if i > pastCount+j {
 					////*(float *)((char *) dst->data + k*dst->nb[2] + j*dst->nb[1] + i*dst->nb[0]) = -INFINITY;
-					(*dst.Data)[k*dst.NE[0]*dst.NE[1]+j*dst.NE[0]+i] = float32(math.Inf(-1)) // TODO Use const
+					////(*dst.Data)[k*dst.NE[0]*dst.NE[1]+j*dst.NE[0]+i] = float32(math.Inf(-1)) // TODO Use const
+					(*dst.Data)[k*dst.NB[2]/4+j*dst.NB[1]/4+i*dst.NB[0]/4] = float32(math.Inf(-1)) // TODO Use const
 				}
 			}
 		}
