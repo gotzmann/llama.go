@@ -935,27 +935,27 @@ func Permute(ctx *Context, a *Tensor, axis0, axis1, axis2, axis3 uint32) *Tensor
 	result := ViewTensor(ctx, a)
 
 	var ne [MAX_DIMS]uint32
-	////int nb[MAX_DIMS];
+	var nb [MAX_DIMS]uint32
 
 	ne[axis0] = a.NE[0]
 	ne[axis1] = a.NE[1]
 	ne[axis2] = a.NE[2]
 	ne[axis3] = a.NE[3]
 
-	////nb[axis0] = a.NB[0]
-	////nb[axis1] = a.NB[1]
-	////nb[axis2] = a.NB[2]
-	////nb[axis3] = a.NB[3]
+	nb[axis0] = a.NB[0]
+	nb[axis1] = a.NB[1]
+	nb[axis2] = a.NB[2]
+	nb[axis3] = a.NB[3]
 
 	result.NE[0] = ne[0]
 	result.NE[1] = ne[1]
 	result.NE[2] = ne[2]
 	result.NE[3] = ne[3]
 
-	////result.nb[0] = nb[0];
-	////result.nb[1] = nb[1];
-	////result.nb[2] = nb[2];
-	////result.nb[3] = nb[3];
+	result.NB[0] = nb[0]
+	result.NB[1] = nb[1]
+	result.NB[2] = nb[2]
+	result.NB[3] = nb[3]
 
 	result.op = OP_PERMUTE
 	result.src0 = a
@@ -1298,8 +1298,8 @@ func Transpose(ctx *Context, a *Tensor) *Tensor {
 	result.NE[0] = a.NE[1]
 	result.NE[1] = a.NE[0]
 
-	//result->nb[0] = a->nb[1];
-	//result->nb[1] = a->nb[0];
+	result.NB[0] = a.NB[1]
+	result.NB[1] = a.NB[0]
 
 	result.op = OP_TRANSPOSE
 	////result.grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
@@ -1539,6 +1539,8 @@ func ComputeBackward(ctx *Context, tensor *Tensor, inplace bool) {
 		if src0.grad != nil {
 			// TODO: this requires outer product - ggml_out_prod(ctx, src1, tensor.grad);
 			//// ASSERT(false);
+			fmt.Printf("\n[HALT] ComputeBackward : OP_MUL_MAT with src0.grad!")
+			os.Exit(1)
 		}
 		if src1.grad != nil {
 			src1.grad =
@@ -1749,7 +1751,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 					////cur = TYPE_SIZE[TYPE_F16] * node.src1.Nelements()
 					////#endif
 				} else if node.src0.Type == TYPE_F32 && node.src1.Type == TYPE_F32 {
-					cur = 0
+					cur = 0 // FIXME WHY ??
 				} else if node.src0.Type == TYPE_Q4_0 && node.src1.Type == TYPE_F32 {
 					fmt.Printf("\n[HALT] GraphCompute : data types are not supprted!")
 					os.Exit(1)
@@ -2296,7 +2298,7 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 	////assert( dst->ne[1] == nr);
 	////assert(src0->nb[0] == sizeof(float));
 
-	if dst.NE[0] != nc || dst.NE[1] != nr {
+	if dst.NE[0] != nc || dst.NE[1] != nr || src0.NB[0] != TYPE_SIZE[TYPE_I32] {
 		fmt.Printf("[HALT]ComputeForwardGetRows : wrong dimensions!")
 		os.Exit(1)
 	}
@@ -2317,23 +2319,22 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 		////        (float *) ((char *) src0->data + r*src0->nb[1]));
 
 		// FIXME ASAP and double check!
-		VecCopyFP32(nc, (*dst.Data)[i*dst.NE[0]:], (*src0.Data)[uint32(r)*src0.NE[0]:])
+		// VecCopyFP32(nc, (*dst.Data)[i*dst.NE[0]:], (*src0.Data)[uint32(r)*src0.NE[0]:])
+		VecCopyFP32(nc, (*dst.Data)[i*dst.NB[1]/4:], (*src0.Data)[uint32(r)*src0.NB[1]/4:])
 	}
 }
 
 // NB! FP32 Only
 // ggml_compute_forward_rms_norm_f32
 func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
-	////GGML_ASSERT(ggml_are_same_shape(src0, dst));
 
-	///////////////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardRMSNormFP32 ] ")
+	//fmt.Printf(" [ ComputeForwardRMSNormFP32 ] ")
+	////GGML_ASSERT(ggml_are_same_shape(src0, dst));
+	////GGML_ASSERT(src0->nb[0] == sizeof(float));
 
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
-		////fmt.Printf(" [ return ] ")
 		return
 	}
-
-	////GGML_ASSERT(src0->nb[0] == sizeof(float));
 
 	ith := params.ith
 	nth := params.nth
@@ -2343,43 +2344,52 @@ func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
 	ne02 := src0.NE[2]
 	ne03 := src0.NE[3]
 
-	////const size_t nb01 = src0->nb[1];
-	////const size_t nb02 = src0->nb[2];
-	////const size_t nb03 = src0->nb[3];
+	nb01 := src0.NB[1]
+	nb02 := src0.NB[2]
+	nb03 := src0.NB[3]
 
-	////const size_t nb1 = dst->nb[1];
-	////const size_t nb2 = dst->nb[2];
-	////const size_t nb3 = dst->nb[3];
+	nb1 := dst.NB[1]
+	nb2 := dst.NB[2]
+	nb3 := dst.NB[3]
 
-	////eps := 1e-5 // TODO: make this a parameter
+	eps := 1e-5 // TODO: make this a parameter
 
 	// TODO: optimize
 	for i03 := uint32(0); i03 < ne03; i03++ {
 		for i02 := uint32(0); i02 < ne02; i02++ {
 			for i01 := uint32(ith); i01 < ne01; i01 += nth {
-				////var x float = (float *) ((char *) src0->data + i01*nb01 + i02*nb02 + i03*nb03);
-				////x := src0.Data[i01+i02+i03] // FIXME ASAP
 
+				////const float * x = (float *) ((char *) src0->data + i01*nb01 + i02*nb02 + i03*nb03);
+				x := (*src0.Data)[i01*nb01/4+i02*nb02/4+i03*nb03/4:]
+
+				////ggml_float mean = 0.0;
 				mean := 0.0
+				////for (int i00 = 0; i00 < ne00; i00++) {
 				for i00 := uint32(0); i00 < ne00; i00++ {
-					////mean += x[i00] * x[i00] // FIXME ASAP
+					////mean += x[i00] * x[i00];
+					mean += float64(x[i00] * x[i00])
 				}
 
+				////mean /= ne00;
 				mean /= float64(ne00)
 
-				////var y float = (float *) ((char *) dst->data + i01*nb1 + i02*nb2 + i03*nb3);
-				////y := dst.Data[i01+i02+i03]
+				////float * y = (float *) ((char *) dst->data + i01*nb1 + i02*nb2 + i03*nb3);
+				y := (*dst.Data)[i01*nb1/4+i02*nb2/4+i03*nb3/4:]
 
 				////memcpy(y, x, ne00 * sizeof(float));
+				for i := uint32(0); i < ne00*4; i++ {
+					y[i] = x[i]
+				}
 
-				// WAS COMMENTED
 				// for (int i00 = 0; i00 < ne00; i00++) {
 				//     y[i00] = x[i00];
 				// }
 
-				////scale := float32(1.0 / math.Sqrt(mean+eps))
+				////const float scale = 1.0/sqrt(mean + eps);
+				scale := 1.0 / math.Sqrt(mean+eps)
 
-				////VecScaleFP32(ne00, y, scale) // FIXME ASAP
+				////ggml_vec_scale_f32(ne00, y, scale);
+				VecScaleFP32(ne00, y, float32(scale))
 			}
 		}
 	}
@@ -2419,8 +2429,7 @@ func VecScaleFP32(n uint32, y []float32, v float32) {
 // ggml_compute_forward_repeat
 func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 
-	///////////////////////////////////////////////////////////fmt.Printf(" [ ComputeForwardRepeatFP32 ] ")
-
+	//fmt.Printf(" [ ComputeForwardRepeatFP32 ] ")
 	////assert(params->ith == 0);
 	////assert(ggml_can_repeat(src0, dst));
 
@@ -2450,17 +2459,18 @@ func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 		for j := uint32(0); j < ncr; j++ {
 			for k := uint32(0); k < nr0; k++ {
 
-				////dst.Data[i*nr0+k+j*nc0] = src0.Data[k]
-
-				// FIXME ASAP Use nc0
-
-				VecCopyFP32(nc0,
-					(*dst.Data)[i*nr0+k+j*nc0:],
-					(*src0.Data)[k:])
+				////VecCopyFP32(nc0,
+				////	(*dst.Data)[i*nr0+k+j*nc0:],
+				////	(*src0.Data)[k:])
 
 				////ggml_vec_cpy_f32(nc0,
 				////(float *) ((char *)  dst->data + (i*nr0 + k)*( dst->nb[1]) + j*nc0*( dst->nb[0])),
 				////(float *) ((char *) src0->data + (        k)*(src0->nb[1])));
+
+				// FIXME ASAP Double Check !!
+				VecCopyFP32(nc0,
+					(*dst.Data)[(i*nr0+k)*dst.NB[1]/4+j*nc0*dst.NB[0]/4:],
+					(*src0.Data)[k*src0.NB[1]/4:])
 			}
 		}
 	}
@@ -2586,7 +2596,7 @@ func VecAccFP32(n uint32, y, x []float32) {
 }
 
 // NB! FP32 Only
-// ggml_compute_forward_mul_mat
+// ggml_compute_forward_mul_mat_f32
 func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 	//fmt.Printf(" [ ComputeForwardMulMatFP32 ] ")
@@ -2613,20 +2623,20 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	//ne3 := dst.NE[3]
 	//ne := ne0 * ne1 * ne2 * ne3
 
-	//nb00 := uint32(1)
-	nb01 := uint32(src0.NE[0])
-	nb02 := uint32(src0.NE[0] * src0.NE[1])
-	nb03 := uint32(src0.NE[0] * src0.NE[1] * src0.NE[2])
+	nb00 := src0.NB[0]
+	nb01 := src0.NB[1]
+	nb02 := src0.NB[2]
+	nb03 := src0.NB[3]
 
-	//nb10 := uint32(1)
-	nb11 := uint32(src1.NE[0])
-	nb12 := uint32(src1.NE[0] * src1.NE[1])
-	nb13 := uint32(src1.NE[0] * src1.NE[1] * src1.NE[2])
+	nb10 := src1.NB[0]
+	nb11 := src1.NB[1]
+	nb12 := src1.NB[2]
+	nb13 := src1.NB[3]
 
-	nb0 := uint32(1)
-	nb1 := uint32(dst.NE[0])
-	nb2 := uint32(dst.NE[0] * dst.NE[1])
-	nb3 := uint32(dst.NE[0] * dst.NE[1] * dst.NE[2])
+	nb0 := dst.NB[0]
+	nb1 := dst.NB[1]
+	nb2 := dst.NB[2]
+	nb3 := dst.NB[3]
 
 	ith := params.ith
 	nth := params.nth
