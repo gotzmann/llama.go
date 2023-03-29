@@ -125,7 +125,7 @@ type Tensor struct {
 	//perfCycles uint32
 	//perfTime   uint64
 
-	Data *[]float32 // FIXME Was simple slice before!
+	Data []float32 // FIXME Was simple slice before!
 	//padding [8]byte
 }
 
@@ -556,8 +556,8 @@ func View1D(ctx *Context, a *Tensor, ne0 uint32, offset uint32) *Tensor {
 	////	os.Exit(1)
 	////}
 
-	slice := (*a.Data)[offset:]
-	result := NewTensor(ctx, a.Type, 1, ne0, 1, 1, 1, &slice) // FIXME
+	slice := a.Data[offset:]
+	result := NewTensor(ctx, a.Type, 1, ne0, 1, 1, 1, slice) // FIXME
 
 	result.op = OP_VIEW
 	result.grad = nil
@@ -759,21 +759,13 @@ type Context struct {
 	//ScratchSave Scratch
 }
 
-/*
-// ggml_new_tensor
-func NewTensor(ctx *Context, dt DType, dims, ne0, ne1, ne2, ne3 uint32) *Tensor {
-	return NewTensorImpl(ctx, dt, dims, ne0, ne1, ne2, ne3, nil)
-}
-*/
 // ggml_new_tensor_1d
-func NewTensor1D(ctx *Context, dt DType, ne uint32) *Tensor {
-	return NewTensor(ctx, dt, 1, ne, 1, 1, 1, nil)
+func NewTensor1D(ctx *Context, dt DType, ne0 uint32) *Tensor {
+	return NewTensor(ctx, dt, 1, ne0, 1, 1, 1, nil)
 }
 
 // ggml_new_tensor_2d
 func NewTensor2D(ctx *Context, dt DType, ne0, ne1 uint32) *Tensor {
-	//ne := []uint32{ne0, ne1}
-	//return NewTensor(ctx, typ, 2, ne)
 	return NewTensor(ctx, dt, 2, ne0, ne1, 1, 1, nil) // FIXME
 }
 
@@ -785,10 +777,8 @@ func NewTensor4D(ctx *Context, dt DType, ne0, ne1, ne2, ne3 uint32) *Tensor {
 	return NewTensor(ctx, dt, 4, ne0, ne1, ne2, ne3, nil) // FIXME
 }
 
-// TODO ne2 for 3D tensors?
 // ggml_new_tensor_impl
-// func NewTensorImpl(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
-func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data *[]float32) *Tensor {
+func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
 
 	if dt != TYPE_F32 && dt != TYPE_I32 {
 		fmt.Printf("\n[ERROR] NewTensorImpl got not supported type : %d", dt)
@@ -891,15 +881,15 @@ func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 	////}
 
 	result.NB[0] = TYPE_SIZE[dt]
-	result.NB[1] = result.NB[0] * (result.NE[0] / BLCK_SIZE[dt])
+	result.NB[1] = TYPE_SIZE[dt] * (result.NE[0] / BLCK_SIZE[dt])
 	result.NB[2] = result.NB[1] * result.NE[1]
 	result.NB[3] = result.NB[2] * result.NE[2]
 
 	total := ne0 * ne1 * ne2 * ne3
 
 	if data == nil {
-		newData := make([]float32, total, total) // FIXME ASAP use CAP ??
-		result.Data = &newData
+		//newData := make([]float32, total, total) // FIXME ASAP use CAP ??
+		result.Data = make([]float32, total, total) // &newData
 	} else {
 		result.Data = data
 	}
@@ -990,11 +980,11 @@ func Rope(ctx *Context, a *Tensor, past, dims, mode uint32) *Tensor {
 
 	b := NewTensor1D(ctx, TYPE_I32, 3)
 	////((int32_t *) b.data)[0] = past
-	(*b.Data)[0] = float32(past)
+	b.Data[0] = float32(past)
 	////((int32_t *) b.data)[1] = dims
-	(*b.Data)[1] = float32(dims)
+	b.Data[1] = float32(dims)
 	////((int32_t *) b.data)[2] = mode
-	(*b.Data)[2] = float32(mode)
+	b.Data[2] = float32(mode)
 
 	result.op = OP_ROPE
 	result.src0 = a
@@ -1111,7 +1101,7 @@ func SetFP32(tensor *Tensor, value float32) *Tensor {
 	n := tensor.Nelements()
 	for i := uint32(0); i < n; i++ {
 		////ggml_vec_set_f32(nc, (float *)(data + i*n1), value);
-		(*tensor.Data)[i] = value
+		tensor.Data[i] = value
 	}
 
 	////} break;
@@ -1904,7 +1894,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		var wdata []float32
 		if graph.Work != nil {
 			wsize = graph.Work.Nbytes()
-			wdata = *graph.Work.Data
+			wdata = graph.Work.Data
 		}
 
 		params := ComputeParams{
@@ -1937,7 +1927,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			var wdata []float32
 			if graph.Work != nil {
 				wsize = graph.Work.Nbytes()
-				wdata = *graph.Work.Data
+				wdata = graph.Work.Data
 			}
 
 			// launch thread pool
@@ -2003,7 +1993,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			var wdata []float32
 			if graph.Work != nil {
 				wsize = graph.Work.Nbytes()
-				wdata = *graph.Work.Data
+				wdata = graph.Work.Data
 			}
 
 			// launch thread pool
@@ -2312,7 +2302,7 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 
 	for i := uint32(0); i < nr; i++ {
 		////const int r = ((int32_t *) src1->data)[i];
-		r := (*src1.Data)[i] // FIXME WTF ??
+		r := src1.Data[i] // FIXME WTF ??
 
 		////ggml_vec_cpy_f32(nc,
 		////        (float *) ((char *)  dst->data + i*dst->nb[1]),
@@ -2320,7 +2310,7 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 
 		// FIXME ASAP and double check!
 		// VecCopyFP32(nc, (*dst.Data)[i*dst.NE[0]:], (*src0.Data)[uint32(r)*src0.NE[0]:])
-		VecCopyFP32(nc, (*dst.Data)[i*dst.NB[1]/4:], (*src0.Data)[uint32(r)*src0.NB[1]/4:])
+		VecCopyFP32(nc, dst.Data[i*dst.NB[1]/4:], src0.Data[uint32(r)*src0.NB[1]/4:])
 	}
 }
 
@@ -2360,7 +2350,7 @@ func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
 			for i01 := uint32(ith); i01 < ne01; i01 += nth {
 
 				////const float * x = (float *) ((char *) src0->data + i01*nb01 + i02*nb02 + i03*nb03);
-				x := (*src0.Data)[i01*nb01/4+i02*nb02/4+i03*nb03/4:]
+				x := src0.Data[i01*nb01/4+i02*nb02/4+i03*nb03/4:]
 
 				////ggml_float mean = 0.0;
 				mean := 0.0
@@ -2374,7 +2364,7 @@ func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
 				mean /= float64(ne00)
 
 				////float * y = (float *) ((char *) dst->data + i01*nb1 + i02*nb2 + i03*nb3);
-				y := (*dst.Data)[i01*nb1/4+i02*nb2/4+i03*nb3/4:]
+				y := dst.Data[i01*nb1/4+i02*nb2/4+i03*nb3/4:]
 
 				////memcpy(y, x, ne00 * sizeof(float));
 				for i := uint32(0); i < ne00*4/4; i++ {
@@ -2469,8 +2459,8 @@ func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 
 				// FIXME ASAP Double Check !!
 				VecCopyFP32(nc0,
-					(*dst.Data)[(i*nr0+k)*dst.NB[1]/4+j*nc0*dst.NB[0]/4:],
-					(*src0.Data)[k*src0.NB[1]/4:])
+					dst.Data[(i*nr0+k)*dst.NB[1]/4+j*nc0*dst.NB[0]/4:],
+					src0.Data[k*src0.NB[1]/4:])
 			}
 		}
 	}
@@ -2503,7 +2493,7 @@ func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 	for i := uint32(0); i < n; i++ {
 
-		VecMulFP32(nc, (*dst.Data)[i:], (*src0.Data)[i:], (*src1.Data)[i:])
+		VecMulFP32(nc, dst.Data[i:], src0.Data[i:], src1.Data[i:])
 
 		////ggml_vec_mul_f32(nc,
 		////(float *) ((char *) dst->data  + i*( dst->nb[1])),
@@ -2756,10 +2746,10 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 			////		(*src0.Data)[i01*nb01+i02*nb02+i03*nb03:],
 			////		(*src1.Data)[i11*nb11+i12*nb12+i13*nb13:])
 
-			(*dst.Data)[i0*nb0/4+i1*nb1/4+i2*nb2/4+i3*nb3/4] =
+			dst.Data[i0*nb0/4+i1*nb1/4+i2*nb2/4+i3*nb3/4] =
 				VecDotFP32(ne00,
-					(*src0.Data)[i01*nb01/4+i02*nb02/4+i03*nb03/4:],
-					(*src1.Data)[i11*nb11/4+i12*nb12/4+i13*nb13/4:])
+					src0.Data[i01*nb01/4+i02*nb02/4+i03*nb03/4:],
+					src1.Data[i11*nb11/4+i12*nb12/4+i13*nb13/4:])
 
 			//fmt.Printf(" # %f = %f * %f # ",
 			//	(*dst.Data)[i0*nb0+i1*nb1+i2*nb2+i3*nb3],
@@ -2834,12 +2824,12 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 		////copy(dst.Data, src0.Data)
 		n := dst.Nelements()
 		for i := uint32(0); i < n; i++ {
-			if i == 28672 && (len(*dst.Data) <= 28672 || len(*src0.Data) <= 28672) {
+			if i == 28672 && (len(dst.Data) <= 28672 || len(src0.Data) <= 28672) {
 				fmt.Printf("THATS-IT")
 				return
 			}
 
-			(*dst.Data)[i] = (*src0.Data)[i]
+			dst.Data[i] = src0.Data[i]
 		}
 		return
 	}
@@ -2862,9 +2852,9 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 				for i02 := uint32(0); i02 < ne02; i02++ {
 					for i01 := uint32(0); i01 < ne01; i01++ {
 						////const char * src0_ptr = (char *) src0->data + i01*nb01 + i02*nb02 + i03*nb03;
-						src0Ptr := (*src0.Data)[i01*nb01/4+i02*nb02/4+i03*nb03/4:]
+						src0Ptr := src0.Data[i01*nb01/4+i02*nb02/4+i03*nb03/4:]
 						////char * dst_ptr = (char *) dst->data + id*rs;
-						dstPtr := (*dst.Data)[id*rs:]
+						dstPtr := dst.Data[id*rs:]
 
 						////memcpy(dst_ptr, src0_ptr, rs);
 						for i := uint32(0); i < rs; i++ {
@@ -2972,9 +2962,9 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		return
 	}
 
-	pastCount := uint32((*src1.Data)[0])
-	dims := uint32((*src1.Data)[1])
-	mode := uint32((*src1.Data)[2])
+	pastCount := uint32(src1.Data[0])
+	dims := uint32(src1.Data[1])
+	mode := uint32(src1.Data[2])
 
 	//const int ne0 = src0->ne[0];
 	ne1 := src0.NE[1]
@@ -3021,9 +3011,9 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 					////const float * const src = (float *)((char *) src0->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
 					offset := i3*nb3/4 + i2*nb2/4 + i1*nb1/4 + i0*nb0/4
-					src := (*src0.Data)[offset:]
+					src := src0.Data[offset:]
 					////   float * dst_data  = (float *)((char *)  dst->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
-					dstData := (*dst.Data)[offset:]
+					dstData := dst.Data[offset:]
 
 					if len(src) <= 0 {
 						fmt.Printf("THATS-IT-02")
@@ -3065,7 +3055,7 @@ func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	}
 
 	// scale factor
-	v := (*src1.Data)[0]
+	v := src1.Data[0]
 
 	ith := params.ith
 	nth := params.nth
@@ -3083,7 +3073,7 @@ func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	for i1 := ir0; int(i1) < ir1; i1++ {
 		////ggml_vec_scale_f32(nc, (float *) ((char *) dst->data + i1*(dst->nb[1])), v);
 		////VecScaleFP32(nc, (*dst.Data)[i1*dst.NE[0]:], v)
-		VecScaleFP32(nc, (*dst.Data)[i1*dst.NB[1]/4:], v)
+		VecScaleFP32(nc, dst.Data[i1*dst.NB[1]/4:], v)
 	}
 }
 
@@ -3100,7 +3090,7 @@ func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tenso
 	}
 
 	////const int n_past = ((int32_t *) src1->data)[0];
-	pastCount := uint32((*src1.Data)[0])
+	pastCount := uint32(src1.Data[0])
 
 	// TODO: handle transposed/permuted matrices
 
@@ -3118,7 +3108,7 @@ func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tenso
 				if i > pastCount+j {
 					////*(float *)((char *) dst->data + k*dst->nb[2] + j*dst->nb[1] + i*dst->nb[0]) = -INFINITY;
 					////(*dst.Data)[k*dst.NE[0]*dst.NE[1]+j*dst.NE[0]+i] = float32(math.Inf(-1)) // TODO Use const
-					(*dst.Data)[k*dst.NB[2]/4+j*dst.NB[1]/4+i*dst.NB[0]/4] = float32(math.Inf(-1)) // TODO Use const
+					dst.Data[k*dst.NB[2]/4+j*dst.NB[1]/4+i*dst.NB[0]/4] = float32(math.Inf(-1)) // TODO Use const
 					// FIXME ^^^ SRC and DST Data slices are the same! Both will be overwritten here
 				}
 			}
@@ -3199,7 +3189,7 @@ func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 	for i1 := ir0; int(i1) < ir1; i1++ {
 		////float *p = (float *)((char *) dst->data + i1*dst->nb[1]);
 
-		p := (*dst.Data)[i1*dst.NE[0]:]
+		p := dst.Data[i1*dst.NE[0]:]
 
 		////#ifndef NDEBUG
 		////for (int i = 0; i < nc; ++i) {
@@ -3273,7 +3263,7 @@ func ComputeForwardAddFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	}
 
 	// FIXME Works only for 1 thread
-	VecAddFP32(dst.NE[0], *dst.Data, *src0.Data, *src1.Data)
+	VecAddFP32(dst.NE[0], dst.Data, src0.Data, src1.Data)
 	return
 
 	/*
@@ -3371,7 +3361,7 @@ func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
 	}
 
 	// FIXME Works only for 1 thread
-	VecSiluFP32(dst.NE[0], *dst.Data, *src0.Data)
+	VecSiluFP32(dst.NE[0], dst.Data, src0.Data)
 	return
 	/*
 	   ith := params.ith

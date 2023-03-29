@@ -57,11 +57,11 @@ type Context struct {
 	////size_t mem_per_token = 0;
 
 	// decode output (2-dimensional array: [n_tokens][n_vocab])
-	Logits    *[]float32
+	Logits    []float32
 	LogitsAll bool
 
 	// input embedding (1-dimensional array: [n_embd])
-	Embedding *[]float32
+	Embedding []float32
 }
 
 func NewFloatSlice(len, cap uint32) *[]float32 {
@@ -73,8 +73,8 @@ func NewContext() *Context {
 	return &Context{
 		Model:     NewModel(),
 		Vocab:     ml.NewVocab(0),
-		Logits:    NewFloatSlice(0, 0),
-		Embedding: NewFloatSlice(0, 0),
+		Logits:    make([]float32, 0, 0), // NewFloatSlice(0, 0),
+		Embedding: make([]float32, 0, 0), // NewFloatSlice(0, 0),
 	}
 }
 
@@ -403,19 +403,19 @@ func Eval(
 	////memcpy(embd->data, tokens, N*ggml_element_size(embd));
 	// FIXME Refactore inline initialization
 	for id := uint32(0); id < N; id++ {
-		(*embd.Data)[id] = float32(tokens[id]) // FIXME copy() for slices
+		embd.Data[id] = float32(tokens[id]) // FIXME copy() for slices
 	}
 
 	fmt.Printf("\n\n=== EMBD === LEN = %d * %d\n", embd.NE[0], embd.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| EMBD[%d] = %f |", ii, (*embd.Data)[ii])
+		fmt.Printf("| EMBD[%d] = %f |", ii, embd.Data[ii])
 	}
 
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
 
 	fmt.Printf("\n\n=== INPL 01 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, (*inpL.Data)[ii])
+		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
 	}
 
 	////fmt.Printf("\n\nmodel.tokEmbeddings = %+v", model.tokEmbeddings) // DEBUG
@@ -430,7 +430,7 @@ func Eval(
 
 		fmt.Printf("\n\n=== CUR 01 === LEN = %d * %d\n", cur.NE[0], cur.NE[1]) // DEBUG
 		for ii := 0; ii < 8; ii++ {
-			fmt.Printf("| CUR[%d] = %f |", ii, (*cur.Data)[ii])
+			fmt.Printf("| CUR[%d] = %f |", ii, cur.Data[ii])
 		}
 
 		// cur = attention_norm*cur
@@ -438,14 +438,14 @@ func Eval(
 
 		fmt.Printf("\n\n=== REP === LEN = %d * %d\n", rep.NE[0], rep.NE[1]) // DEBUG
 		for ii := 0; ii < 8; ii++ {
-			fmt.Printf("| REP[%d] = %f |", ii, (*rep.Data)[ii])
+			fmt.Printf("| REP[%d] = %f |", ii, rep.Data[ii])
 		}
 
 		cur = ml.Mul(ctx0, rep, cur)
 
 		fmt.Printf("\n\n=== CUR 02 === LEN = %d * %d\n", cur.NE[0], cur.NE[1]) // DEBUG
 		for ii := 0; ii < 8; ii++ {
-			fmt.Printf("| CUR[%d] = %f |", ii, (*cur.Data)[ii])
+			fmt.Printf("| CUR[%d] = %f |", ii, cur.Data[ii])
 		}
 
 		//os.Exit(1)
@@ -456,7 +456,7 @@ func Eval(
 		{
 			fmt.Printf("\n=== model.layers[il].wq === LEN = %d * %d\n", model.layers[il].wq.NE[0], model.layers[il].wq.NE[1]) // DEBUG
 			for ii := 0; ii < 8; ii++ {
-				fmt.Printf("| model.layers[il].wq[%d] = %f |", ii, (*model.layers[il].wq.Data)[ii])
+				fmt.Printf("| model.layers[il].wq[%d] = %f |", ii, model.layers[il].wq.Data[ii])
 			}
 
 			Qcur := ml.MulMat(ctx0, model.layers[il].wq, cur)
@@ -472,11 +472,11 @@ func Eval(
 				fmt.Printf("\n\nkvSelf.N = %d", kvSelf.N)
 				fmt.Printf("\n=== kvSelf.K === LEN = %d * %d\n", kvSelf.K.NE[0], kvSelf.K.NE[1]) // DEBUG
 				for ii := 0; ii < 8; ii++ {
-					fmt.Printf("| kvSelf.K[%d] = %f |", ii, (*kvSelf.K.Data)[ii])
+					fmt.Printf("| kvSelf.K[%d] = %f |", ii, kvSelf.K.Data[ii])
 				}
 				fmt.Printf("\n=== kvSelf.V === LEN = %d * %d\n", kvSelf.V.NE[0], kvSelf.V.NE[1]) // DEBUG
 				for ii := 0; ii < 8; ii++ {
-					fmt.Printf("| kvSelf.V[%d] = %f |", ii, (*kvSelf.V.Data)[ii])
+					fmt.Printf("| kvSelf.V[%d] = %f |", ii, kvSelf.V.Data[ii])
 				}
 
 				////struct ggml_tensor * k = ggml_view_1d(ctx0, kv_self.k, N*n_embd, (ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past));
@@ -491,7 +491,7 @@ func Eval(
 				fmt.Printf("\n\nkvSelf.N = %d", kvSelf.N)
 				fmt.Printf("\n=== k === LEN = %d * %d\n", k.NE[0], k.NE[1]) // DEBUG
 				for ii := 0; ii < 8; ii++ {
-					fmt.Printf("| k[%d] = %f |", ii, (*k.Data)[ii])
+					fmt.Printf("| k[%d] = %f |", ii, k.Data[ii])
 				}
 
 				// FIXME ASAP "runtime error: index out of range [28672] with length 28672"
@@ -501,7 +501,7 @@ func Eval(
 				fmt.Printf("\n\nkvSelf.N = %d", kvSelf.N)
 				fmt.Printf("\n=== k === LEN = %d * %d\n", k.NE[0], k.NE[1]) // DEBUG
 				for ii := 0; ii < 8; ii++ {
-					fmt.Printf("| k[%d] = %f |", ii, (*k.Data)[ii])
+					fmt.Printf("| k[%d] = %f |", ii, k.Data[ii])
 				}
 
 				//os.Exit(1)
@@ -636,7 +636,7 @@ func Eval(
 	//fmt.Printf("\n\n=== INPL 05 === LEN = %d\n", len(inpL.Data)) // DEBUG
 	fmt.Printf("\n\n=== INPL 05 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, (*inpL.Data)[ii])
+		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
 	}
 
 	embeddings := inpL
@@ -649,7 +649,7 @@ func Eval(
 	//fmt.Printf("\n\n=== INPL 06 === LEN = %d\n", len(inpL.Data)) // DEBUG
 	fmt.Printf("\n\n=== INPL 06 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, (*inpL.Data)[ii])
+		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
 	}
 
 	////lctx.use_buf(ctx0, -1);
@@ -667,7 +667,7 @@ func Eval(
 	//fmt.Printf("\n\n=== INPL 08 === LEN = %d\n", len(inpL.Data)) // DEBUG
 	fmt.Printf("\n\n=== INPL 08 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, (*inpL.Data)[ii])
+		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
 	}
 
 	// COMMenteD  if (n_past%100 == 0) {
@@ -680,11 +680,11 @@ func Eval(
 
 	// --- extract logits
 
-	logitsOut := *lctx.Logits // FIXME ASAP What we'll doing with this? Just lost in thin air?
+	logitsOut := lctx.Logits // FIXME ASAP What we'll doing with this? Just lost in thin air?
 
 	fmt.Printf("\n\n=== INPL 09 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, (*inpL.Data)[ii])
+		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
 	}
 
 	fmt.Printf("\n\n=== BEFORE === len(logitsOut) = %d\n", len(logitsOut)) // DEBUG
@@ -701,7 +701,7 @@ func Eval(
 		////memcpy(logits_out.data(), (float *) ggml_get_data(inpL), sizeof(float)*n_vocab*N);
 		// FIXME Double Check !! Replace with copy() for slices
 		for i := uint32(0); i < vocabSize*N; i++ {
-			logitsOut[i] = (*inpL.Data)[i] // FIXME ASAP Overflow ??
+			logitsOut[i] = inpL.Data[i] // FIXME ASAP Overflow ??
 		}
 
 	} else {
@@ -718,7 +718,7 @@ func Eval(
 
 		// FIXME ASAP Logits LEN = 32,000 | INPL LEN = 256,000
 		for i := uint32(0); i < vocabSize; i++ {
-			logitsOut[i] = (*inpL.Data)[i]
+			logitsOut[i] = inpL.Data[i]
 		}
 	}
 
@@ -731,7 +731,7 @@ func Eval(
 
 	// --- extract embeddings
 
-	if len(*lctx.Embedding) > 0 {
+	if len(lctx.Embedding) > 0 {
 		////embeddingOut := lctx.Embedding
 
 		////embedding_out.resize(n_embd);
@@ -746,7 +746,7 @@ func Eval(
 		////memcpy(embedding_out.data(), (float *) ggml_get_data(embeddings) + (n_embd*(N - 1)), sizeof(float)*n_embd);
 
 		for i := uint32(0); i < embdSize; i++ {
-			(*lctx.Embedding)[i] = (*embeddings.Data)[(embdSize*(N-1))+i] // FIXME ASAP
+			lctx.Embedding[i] = embeddings.Data[(embdSize*(N-1))+i] // FIXME ASAP
 		}
 	}
 
@@ -837,7 +837,7 @@ func SampleTopPTopK(
 
 	////////////////////////////////logitsCount := uint32(len(vocab.ID2Token))
 	logitsCount := lctx.Model.hparams.vocabSize
-	logits := *lctx.Logits
+	logits := lctx.Logits
 
 	fmt.Printf("\nlogitsCount = %d", logitsCount)   // DEBUG
 	fmt.Printf("\nlen(logits) = %d\n", len(logits)) // DEBUG
@@ -1052,7 +1052,7 @@ func LoadModel(
 	lctx.Vocab = ml.NewVocab(vocabSize)
 	vocab := lctx.Vocab
 
-	lctx.Logits = NewFloatSlice(vocabSize, vocabSize) // FIXME ASAP
+	lctx.Logits = make([]float32, vocabSize, vocabSize) // NewFloatSlice(vocabSize, vocabSize) // FIXME ASAP
 
 	//hparamsCtx = n_ctx
 
@@ -1521,7 +1521,7 @@ func LoadModel(
 						if ftype == 1 { // --- FP16
 
 							for n := uint32(0); n < tensorSize; n++ {
-								(*tensor.Data)[n] = readFP16ToFP32(reader)
+								tensor.Data[n] = readFP16ToFP32(reader)
 							}
 
 						} else { // --- FP32
@@ -1532,7 +1532,8 @@ func LoadModel(
 							// FIXME unsafe.Pointer(tensor.Data) VS unsafe.Pointer(&tensor.Data)
 							// FIXME It's REALLY depends on how Data defined in Tensor struct (pointer VS simple slice)
 							///////////////////////////dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&tensor.Data))
-							dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(tensor.Data))
+							///////////////////////////dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(tensor.Data))
+							dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&tensor.Data))
 
 							fakeHeader.Data = dataHeader.Data
 							fakeHeader.Len = int(tensorSize * 4)

@@ -528,7 +528,7 @@ func main() {
 				//logits[logits.size() - n_vocab + EOS_TOKEN_ID] = 0;
 				// TODO: this does not work of params.logits_all == true
 				////assert(params.perplexity == false);
-				(*logits)[ml.TOKEN_EOS] = 0
+				logits[ml.TOKEN_EOS] = 0
 			}
 
 			////id = llama_sample_top_p_top_k(vocab, logits.data() + (logits.size() - n_vocab), last_n_tokens, repeat_penalty, top_k, top_p, temp, rng);
