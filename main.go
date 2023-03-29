@@ -22,11 +22,12 @@ import (
 type gptParams struct {
 	seed         int32  //         = -1;   // RNG seed
 	threadsCount uint32 //     = std::min(4, (int32_t) std::thread::hardware_concurrency());
-	n_predict    uint32 //    = 128;  // new tokens to predict
+	predictCount uint32 //    = 128;  // new tokens to predict
 	repeatLastN  uint32 // = 64;   // last n tokens to penalize
 	partsCount   int32  //       = -1;   // amount of model parts (-1 = determine from model dimensions)
-	////int32_t n_ctx         = 512;  // context size
-	batchSize uint32 //       = 8;    // batch size for prompt processing
+	ctxSize      uint32 //       = 512;  // context size
+	batchSize    uint32 //       = 8;    // batch size for prompt processing
+	keepCount    uint32
 
 	// sampling parameters
 	topK          uint32  // = 40;
@@ -48,11 +49,12 @@ type gptParams struct {
 	embedding        bool //         = false; // get only sentence embedding
 	interactiveStart bool /// = false; // wait for user input immediately
 
-	instruct   bool //         = false; // instruction mode (used for Alpaca models)
-	ignoreEOS  bool // bool       = false; // do not stop generating after eos
-	perplexity bool //       = false; // compute perplexity over the prompt
-	use_mlock  bool // bool         = false; // use mlock to keep model in memory
-	memTest    bool //          = false; // compute maximum memory usage
+	instruct      bool //         = false; // instruction mode (used for Alpaca models)
+	ignoreEOS     bool // bool       = false; // do not stop generating after eos
+	perplexity    bool //       = false; // compute perplexity over the prompt
+	use_mlock     bool // bool         = false; // use mlock to keep model in memory
+	memTest       bool //          = false; // compute maximum memory usage
+	verbosePrompt bool
 }
 
 func defaultGPTParams(fileName string) gptParams {
@@ -62,7 +64,7 @@ func defaultGPTParams(fileName string) gptParams {
 
 		seed:         -1,
 		threadsCount: 1, // FIXME
-		n_predict:    128,
+		predictCount: 128,
 		repeatLastN:  64,
 		partsCount:   -1,
 		batchSize:    8,
@@ -248,28 +250,28 @@ func main() {
 	////}
 
 	// save choice to use color for later
-    // (note for later: this is a slightly awkward choice)
-    ////con_use_color = params.use_color;
+	// (note for later: this is a slightly awkward choice)
+	////con_use_color = params.use_color;
 
-////#if defined (_WIN32)
-////    win32_console_init();
-////#endif
+	////#if defined (_WIN32)
+	////    win32_console_init();
+	////#endif
 
-////if (params.perplexity) {
-////	printf("\n************\n");
-////	printf("%s: please use the 'perplexity' tool for perplexity calculations\n", __func__);
-////	printf("************\n\n");
+	////if (params.perplexity) {
+	////	printf("\n************\n");
+	////	printf("%s: please use the 'perplexity' tool for perplexity calculations\n", __func__);
+	////	printf("************\n\n");
 
-////	return 0;
-////}
+	////	return 0;
+	////}
 
-////if (params.embedding) {
-////	printf("\n************\n");
-////	printf("%s: please use the 'embedding' tool for embedding calculations\n", __func__);
-////	printf("************\n\n");
+	////if (params.embedding) {
+	////	printf("\n************\n");
+	////	printf("%s: please use the 'embedding' tool for embedding calculations\n", __func__);
+	////	printf("************\n\n");
 
-////	return 0;
-////}
+	////	return 0;
+	////}
 
 	////if (params.n_ctx > 2048) {
 	////fmt.Printf("%s: warning: model does not support context sizes greater than 2048 tokens (%d specified);"
@@ -335,7 +337,7 @@ func main() {
 	////return 1;
 	////}
 
-	vocab := lctx.Vocab
+	//vocab := lctx.Vocab
 	//model := lctx.Model
 
 	// print system information
@@ -368,8 +370,6 @@ func main() {
 	////exit(0);
 	////}
 
-	n_past := uint32(0)
-
 	//logits := make([]float32, 0)
 
 	// Add a space in front of the first character to match OG llama tokenizer behavior
@@ -380,14 +380,14 @@ func main() {
 	// Add a space in front of the first character to match OG llama tokenizer behavior
 	prompt = " " + prompt
 	////std::vector<gpt_vocab::id> embd_inp = ::llama_tokenize(vocab, params.prompt, true);
-	embdInp := ml.Tokenize(vocab, prompt, true)
+	embdInp := ml.Tokenize(lctx.Vocab, prompt, true)
 	fmt.Printf("\n\n=== TOKENIZER ===\n\n%+v", embdInp)
 
 	// tokenize the prompt
 	////auto embd_inp = ::llama_tokenize(ctx, params.prompt, true);
 
 	////const int n_ctx = llama_n_ctx(ctx);
-	ctxSize := 512
+	//ctxSize := 512
 
 	////params.n_keep    = std::min(params.n_keep,    (int) embd_inp.size());
 
@@ -413,7 +413,7 @@ func main() {
 	////}
 
 	// determine newline token
-	tokenNewline := ml.Tokenize(vocab, "\n", false)[0]
+	tokenNewline := ml.Tokenize(lctx.Vocab, "\n", false)[0]
 	//fmt.Printf("\n NEWLINE = %+v", tokenNewline) // DEBUG
 
 	fmt.Printf("\nPROMPT = '%s'\n", prompt)
@@ -422,7 +422,7 @@ func main() {
 	for i := 0; i < len(embdInp); i++ {
 		////////////////////////////////////fmt.Printf("\n%d => '%s'", embdInp[i], vocab.ID2Token[embdInp[i]])
 		////llama_token_to_str(ctx, embd_inp[i]));
-		fmt.Printf("| %d => '%s' |", embdInp[i], ml.Token2Str(vocab, embdInp[i]))
+		fmt.Printf("| %d => '%s' |", embdInp[i], ml.Token2Str(lctx.Vocab, embdInp[i]))
 	}
 
 	////if (params.interactive) {
@@ -457,7 +457,7 @@ func main() {
 	// FIXME Read from context params
 	////lastNSize := 64 // utils.h // repeat_last_n = 64 // params.repeat_last_n;
 	////std::vector<gpt_vocab::id> last_n_tokens(last_n_size);
-	lastNTokens := make([]uint32, ctxSize, ctxSize) // FIXME LEN vs CAP
+	lastNTokens := make([]uint32, params.ctxSize, params.ctxSize) // FIXME LEN vs CAP
 	///std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
 
 	////if (params.interactive) {
@@ -470,14 +470,10 @@ func main() {
 	////is_interacting = params.interactive_start || params.instruct;
 	////   }
 
-	inputConsumed := uint32(0)
 	inputNoEcho := false
-
-	remainingTokens := uint32(100) // FIXME ////remainingTokens = params.n_predict
-
-	pastCount := 0
-    remainCount := 64 // params.n_predict;
-    consumedCount := 0
+	pastCount := uint32(0)
+	remainCount := uint32(100) // params.predictCount
+	consumedCount := uint32(0)
 
 	// prompt user immediately after the starting prompt has been loaded
 	////if (params.interactive_start) {
@@ -499,17 +495,17 @@ func main() {
 	////if params.embedding {
 	////	embd = embdInp
 	////	if len(embd) > 0 {
-			////////////////////////////////////////fmt.Printf("\nllamaEval #1")
+	////////////////////////////////////////fmt.Printf("\nllamaEval #1")
 	////		if err := llama.Eval(lctx, embd, uint32(len(embd)), n_past, params.threadsCount); err != nil {
 	////			fmt.Printf("[HALT] Failed to eval")
 	////			return
 	////		}
-			/////////////////////////////////////fmt.Printf("\nllamaEval #1 returned")
+	/////////////////////////////////////fmt.Printf("\nllamaEval #1 returned")
 	////	}
-		/////////////////////////////////////////////////embeddings := llama.GetEmbeddings(ctx)
-		// TODO: print / use the embeddings
+	/////////////////////////////////////////////////embeddings := llama.GetEmbeddings(ctx)
+	// TODO: print / use the embeddings
 	////	if params.useColor {
-			////printf(ANSI_COLOR_RESET);
+	////printf(ANSI_COLOR_RESET);
 	////	}
 	////	return
 	////}
@@ -519,19 +515,18 @@ func main() {
 		// predict
 		if len(embd) > 0 {
 			// infinite text generation via context swapping
-            // if we run out of context:
-            // - take the n_keep first tokens from the original prompt (via n_past)
-            // - take half of the last (n_ctx - n_keep) tokens and recompute the logits in a batch
+			// if we run out of context:
+			// - take the n_keep first tokens from the original prompt (via n_past)
+			// - take half of the last (n_ctx - n_keep) tokens and recompute the logits in a batch
 
-			if (n_past + (int) embd.size() > n_ctx) {
-                const int n_left = n_past - params.n_keep;
+			if pastCount+uint32(len(embd)) > params.ctxSize {
+				leftCount := pastCount - params.keepCount
+				pastCount = params.keepCount
 
-                n_past = params.n_keep;
-
-                // insert n_left/2 tokens at the start of embd from last_n_tokens
-                embd.insert(embd.begin(), last_n_tokens.begin() + n_ctx - n_left/2 - embd.size(), last_n_tokens.end() - embd.size());
+				// insert n_left/2 tokens at the start of embd from last_n_tokens
+				////embd.insert(embd.begin(), last_n_tokens.begin() + n_ctx - n_left/2 - embd.size(), last_n_tokens.end() - embd.size());
+				embd = append(lastNTokens[:leftCount/2], embd...) // FIXME ASAP
 			}
-
 
 			////////////////////////////////////////////////fmt.Printf("\nllamaEval #2")
 			////if (llama_eval(ctx, embd.data(), embd.size(), n_past, params.n_threads)) {
@@ -559,7 +554,7 @@ func main() {
 
 			///////////////////////////////////////////////////////////////vocabSize := 32000 // hparamsVocabSize
 
-			id := 0
+			//id := 0
 
 			logits := lctx.Logits
 
@@ -569,7 +564,9 @@ func main() {
 
 			////id = llama_sample_top_p_top_k(vocab, logits.data() + (logits.size() - n_vocab), last_n_tokens, repeat_penalty, top_k, top_p, temp, rng);
 			/////////////////////////////////id := llama.SampleTopPTopK(vocab, logits[len(logits)-int(vocabSize):], lastNTokens, repeatPenalty, topK, topP, temp /*, rng*/)
-			id := llama.SampleTopPTopK(lctx, lastNTokens /*len(lastNTokens),*/, topK, topP, temp, repeatPenalty)
+			id := llama.SampleTopPTopK(lctx,
+				lastNTokens[params.ctxSize-params.repeatLastN:], params.repeatLastN,
+				topK, topP, temp, repeatPenalty)
 
 			lastNTokens = lastNTokens[1:] ////last_n_tokens.erase(last_n_tokens.begin());
 			lastNTokens = append(lastNTokens, id)
@@ -592,17 +589,17 @@ func main() {
 			inputNoEcho = false
 
 			// decrement remaining sampling budget
-			remainingTokens--
+			remainCount--
 
 		} else {
 
 			// some user input remains from prompt or interaction, forward it to processing
-			for len(embdInp) > int(inputConsumed) {
-				embd = append(embd, embdInp[inputConsumed])
+			for len(embdInp) > int(consumedCount) {
+				embd = append(embd, embdInp[consumedCount])
 				////lastNTokens.erase(last_n_tokens.begin())
 				lastNTokens = lastNTokens[1:]
-				lastNTokens = append(lastNTokens, embdInp[inputConsumed])
-				inputConsumed++
+				lastNTokens = append(lastNTokens, embdInp[consumedCount])
+				consumedCount++
 				if len(embd) >= /*params.n_batch*/ 8 { // FIXME utils.h // n_batch = 8; // batch size for prompt processing
 					break
 				}
@@ -616,7 +613,7 @@ func main() {
 			////for (auto id : embd) {
 			for _, id := range embd { // FIXME Ordered / Unordered ??
 				////fmt.Printf("%s", vocab.ID2Token[id])
-				fmt.Printf("%s", ml.Token2Str(vocab, id))
+				fmt.Printf("%s", ml.Token2Str(lctx.Vocab, id))
 			}
 			////fflush(stdout);
 		}

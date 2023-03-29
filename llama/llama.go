@@ -834,6 +834,7 @@ func sampleTopK(logitsID []pair, topK uint32) []pair {
 func SampleTopPTopK(
 	lctx *Context,
 	lastNTokens []uint32,
+	lastNTokensSize uint32,
 	topK uint32,
 	topP float64,
 	temp float64,
