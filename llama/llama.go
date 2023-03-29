@@ -191,10 +191,10 @@ func InitFromFile(fileName string, params *ContextParams) (*Context, error) {
 
 	////const auto & hparams = ctx->model.hparams;
 	if params.LogitsAll {
-		ctx.Logits = make([]float32, ctx.Model.hparams.ctxSize*ctx.Model.hparams.vocabSize) // .reserve(hparams.n_ctx*hparams.n_vocab);
+		//ctx.Logits = make([]float32, ctx.Model.hparams.ctxSize*ctx.Model.hparams.vocabSize) // .reserve(hparams.n_ctx*hparams.n_vocab);
 	} else {
-		// FIXME 32K -> 512 ??
-		ctx.Logits = make([]float32, ctx.Model.hparams.ctxSize) // .reserve(hparams.n_ctx);
+		// FIXME 32K -> 512 ?? Already reserved, skip
+		//ctx.Logits = make([]float32, ctx.Model.hparams.ctxSize) // .reserve(hparams.n_ctx);
 	}
 
 	////if (params.embedding){
@@ -488,10 +488,10 @@ func Eval(
 				////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
 				////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Vcur, v));
 
-				if embdSize*(il+pastCount) > 0 {
-					fmt.Printf(" [GOTCHA] ")
-					//os.Exit(1)
-				}
+				//if embdSize*(il+pastCount) > 0 {
+				//fmt.Printf(" [GOTCHA] ")
+				//os.Exit(1)
+				//}
 
 				// NB! ggml_element_size(kv_self.k) = 2 for FP16
 				k := ml.View1D(ctx0, kvSelf.K, N*embdSize, embdSize*(il*ctxSize+pastCount))
@@ -670,6 +670,11 @@ func Eval(
 	////////////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] BuildForwardExpand...")
 	ml.BuildForwardExpand(&gf, inpL)
 
+	fmt.Printf("\n\n=== INPL 07 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
+	}
+
 	///////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] GraphCompute...")
 	ml.GraphCompute(ctx0, &gf)
 
@@ -689,16 +694,16 @@ func Eval(
 
 	// --- extract logits
 
-	logitsOut := lctx.Logits // FIXME ASAP What we'll doing with this? Just lost in thin air?
+	//logitsOut := lctx.Logits // FIXME ASAP What we'll doing with this? Just lost in thin air?
 
 	fmt.Printf("\n\n=== INPL 09 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
 	for ii := 0; ii < 8; ii++ {
 		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
 	}
 
-	fmt.Printf("\n\n=== BEFORE === len(logitsOut) = %d\n", len(logitsOut)) // DEBUG
+	fmt.Printf("\n\n=== BEFORE === len(logitsOut) = %d\n", len(lctx.Logits)) // DEBUG
 	for ii := 0; ii < 7; ii++ {
-		fmt.Printf("| logitsOut[%d] = %f |", ii, logitsOut[ii])
+		fmt.Printf("| logitsOut[%d] = %f |", ii, lctx.Logits[ii])
 	}
 
 	if lctx.LogitsAll {
@@ -708,9 +713,9 @@ func Eval(
 		////logits_out.resize(n_vocab * N);
 		///////////////////////////////////////////////////////////logitsOut = Resize(logitsOut, int(vocabSize*N)) // FIXME ASAP Why N multipy?
 		////memcpy(logits_out.data(), (float *) ggml_get_data(inpL), sizeof(float)*n_vocab*N);
-		// FIXME Double Check !! Replace with copy() for slices
+		// FIXME Double Check !! Why multiply for N? Replace with copy() for slices
 		for i := uint32(0); i < vocabSize*N; i++ {
-			logitsOut[i] = inpL.Data[i] // FIXME ASAP Overflow ??
+			lctx.Logits[i] = inpL.Data[i] // FIXME ASAP Overflow ??
 		}
 
 	} else {
@@ -725,15 +730,15 @@ func Eval(
 		////memcpy(logits_out.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
 		// FIXME Double Check !! Replace with copy() for slices
 
-		// FIXME ASAP Logits LEN = 32,000 | INPL LEN = 256,000
+		// FIXME ASAP Logits LEN = 32,000 without *N | INPL LEN = 256,000
 		for i := uint32(0); i < vocabSize; i++ {
-			logitsOut[i] = inpL.Data[i]
+			lctx.Logits[i] = inpL.Data[i]
 		}
 	}
 
-	fmt.Printf("\n\n=== AFTER === len(logitsOut) = %d\n", len(logitsOut)) // DEBUG
+	fmt.Printf("\n\n=== AFTER === len(logitsOut) = %d\n", len(lctx.Logits)) // DEBUG
 	for ii := 0; ii < 7; ii++ {
-		fmt.Printf("| logitsOut[%d] = %f |", ii, logitsOut[ii])
+		fmt.Printf("| logitsOut[%d] = %f |", ii, lctx.Logits[ii])
 	}
 
 	os.Exit(0) // DEBUG
@@ -1062,7 +1067,8 @@ func LoadModel(
 	lctx.Vocab = ml.NewVocab(vocabSize)
 	vocab := lctx.Vocab
 
-	lctx.Logits = make([]float32, vocabSize, vocabSize) // NewFloatSlice(vocabSize, vocabSize) // FIXME ASAP
+	// FIXME Reserve extra space for tokensCount (N) = 8 (as with LogitsAll == true)
+	lctx.Logits = make([]float32, vocabSize*8, vocabSize*8) // NewFloatSlice(vocabSize, vocabSize) // FIXME ASAP
 
 	//hparamsCtx = n_ctx
 
