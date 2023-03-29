@@ -20,11 +20,11 @@ import (
 //
 
 type gptParams struct {
-	seed         int32  //         = -1;   // RNG seed
+	seed         int    //         = -1;   // RNG seed
 	threadsCount uint32 //     = std::min(4, (int32_t) std::thread::hardware_concurrency());
 	predictCount uint32 //    = 128;  // new tokens to predict
 	repeatLastN  uint32 // = 64;   // last n tokens to penalize
-	partsCount   int32  //       = -1;   // amount of model parts (-1 = determine from model dimensions)
+	partsCount   int    //       = -1;   // amount of model parts (-1 = determine from model dimensions)
 	ctxSize      uint32 //       = 512;  // context size
 	batchSize    uint32 //       = 8;    // batch size for prompt processing
 	keepCount    uint32
@@ -317,15 +317,15 @@ func main() {
 
 	////autolparams = llama_context_default_params();
 
-	////lparams.n_ctx      = params.n_ctx;
-	////lparams.n_parts    = params.n_parts;
-	////lparams.seed       = params.seed;
-	////lparams.f16_kv     = params.memory_f16;
-	////lparams.logits_all = params.perplexity;
-	////lparams.use_mlock  = params.use_mlock;
-	////lparams.embedding  = params.embedding;
+	lparams := llama.ContextParams{
+		CtxSize:    params.ctxSize,
+		PartsCount: params.partsCount,
+		Seed:       params.seed,
+		LogitsAll:  params.perplexity,
+		UseLock:    params.use_mlock,
+		Embedding:  params.embedding,
+	}
 
-	lparams := llama.NewContextParams()
 	lctx, err := llama.InitFromFile(params.model, &lparams)
 	if err != nil {
 		fmt.Printf("\n[ERROR] error: failed to load model '%s'", params.model)
@@ -457,8 +457,10 @@ func main() {
 	// FIXME Read from context params
 	////lastNSize := 64 // utils.h // repeat_last_n = 64 // params.repeat_last_n;
 	////std::vector<gpt_vocab::id> last_n_tokens(last_n_size);
-	lastNTokens := make([]uint32, params.ctxSize, params.ctxSize) // FIXME LEN vs CAP
 	///std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
+
+	// TODO: replace with ring-buffer
+	lastNTokens := make([]uint32, 0, params.ctxSize) // FIXME LEN vs CAP
 
 	////if (params.interactive) {
 	////fmt.Printf("== Running in interactive mode. ==\n"
@@ -597,10 +599,12 @@ func main() {
 			for len(embdInp) > int(consumedCount) {
 				embd = append(embd, embdInp[consumedCount])
 				////lastNTokens.erase(last_n_tokens.begin())
-				lastNTokens = lastNTokens[1:]
+				if len(lastNTokens) > 0 { // FIXME GOTZ
+					lastNTokens = lastNTokens[1:]
+				}
 				lastNTokens = append(lastNTokens, embdInp[consumedCount])
 				consumedCount++
-				if len(embd) >= /*params.n_batch*/ 8 { // FIXME utils.h // n_batch = 8; // batch size for prompt processing
+				if len(embd) >= int(params.batchSize) {
 					break
 				}
 			}

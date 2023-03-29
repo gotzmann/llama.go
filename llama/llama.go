@@ -80,15 +80,15 @@ func NewContext() *Context {
 
 // struct llama_context_params {
 type ContextParams struct {
-	////n_ctx   int // text context
-	partsCount int // -1 for default
-	seed       int // RNG seed, 0 for random
+	CtxSize    uint32 // text context
+	PartsCount int    // -1 for default
+	Seed       int    // RNG seed, 0 for random
 
 	////f16_kv    bool // use fp16 for KV cache
-	logitsAll bool // the llama_eval() call computes all logits, not just the last one
-	vocabOnly bool // only load the vocabulary, no weights
-	use_mlock bool // force system to keep model in RAM
-	embedding bool // embedding mode only
+	LogitsAll bool // the llama_eval() call computes all logits, not just the last one
+	VocabOnly bool // only load the vocabulary, no weights
+	UseLock   bool // force system to keep model in RAM
+	Embedding bool // embedding mode only
 
 	// called with a progress value between 0 and 1, pass NULL to disable
 	////llama_progress_callback progress_callback;
@@ -96,11 +96,12 @@ type ContextParams struct {
 	////void * progress_callback_user_data;
 }
 
+/*
 func NewContextParams() ContextParams {
 	return ContextParams{
 		partsCount: -1,
 	}
-}
+}*/
 
 // CPP 67,108,864 -VS- GOLANG 131,072 => NO CTX of 512 bytes size
 func KVCacheInit(hparams *HParams, cache *KVCache, dt ml.DType /*, int n_ctx*/) error {
@@ -146,12 +147,12 @@ func InitFromFile(fileName string, params *ContextParams) (*Context, error) {
 	////}
 
 	////ctx->rng = std::mt19937(params.seed);
-	ctx.LogitsAll = params.logitsAll
+	ctx.LogitsAll = params.LogitsAll
 
 	////ggml_type memory_type = params.f16_kv ? GGML_TYPE_F16 : GGML_TYPE_F32;
 
-	err := LoadModel(fileName, ctx /*params.n_ctx,*/, params.partsCount, /*memory_type,*/
-		params.vocabOnly, /*params.progress_callback,
+	err := LoadModel(fileName, ctx /*params.n_ctx,*/, params.PartsCount, /*memory_type,*/
+		params.VocabOnly, /*params.progress_callback,
 		params.progress_callback_user_data*/)
 
 	if err != nil {
@@ -237,7 +238,7 @@ type Layer struct {
 
 // default hparams (LLaMA 7B)
 type HParams struct {
-	////int32_t n_ctx   = 512;   // this is provided as user input?
+	ctxSize     uint32 // = 512;   // this is provided as user input?
 	vocabSize   uint32 // = 32000;
 	embdSize    uint32 //  = 4096;
 	multSize    uint32 //  = 256;
@@ -379,7 +380,7 @@ func Eval(
 
 	embdSize := model.hparams.embdSize
 	layersCount := model.hparams.layersCount
-	////ctx := hparamsCtx
+	ctxSize := model.hparams.ctxSize
 	headsCount := model.hparams.headsCount
 	vocabSize := model.hparams.vocabSize
 	rotCount := model.hparams.embdSize / model.hparams.headsCount
@@ -492,8 +493,8 @@ func Eval(
 					//os.Exit(1)
 				}
 
-				k := ml.View1D(ctx0, kvSelf.K, N*embdSize, embdSize*(il+pastCount))
-				v := ml.View1D(ctx0, kvSelf.V, N*embdSize, embdSize*(il+pastCount))
+				k := ml.View1D(ctx0, kvSelf.K, N*embdSize, embdSize*(il*ctxSize+pastCount))
+				v := ml.View1D(ctx0, kvSelf.V, N*embdSize, embdSize*(il*ctxSize+pastCount))
 
 				fmt.Printf("\n\nkvSelf.N = %d", kvSelf.N)
 				fmt.Printf("\n=== k === LEN = %d * %d\n", k.NE[0], k.NE[1]) // DEBUG
@@ -531,7 +532,7 @@ func Eval(
 						ml.Reshape3D(ctx0,
 							////ggml_view_1d(ctx0, kv_self.k, (n_past + N)*n_embd, il*n_ctx*ggml_element_size(kv_self.k)*n_embd),
 							////n_embd/n_head, n_head, n_past + N),
-							ml.View1D(ctx0, kvSelf.K, (pastCount+N)*embdSize, il*embdSize),
+							ml.View1D(ctx0, kvSelf.K, (pastCount+N)*embdSize, il*ctxSize*embdSize),
 							embdSize/headsCount, headsCount, pastCount+N),
 						pastCount, rotCount, 1),
 					0, 2, 1, 3)
@@ -560,7 +561,7 @@ func Eval(
 				ml.Copy(ctx0,
 					ml.Permute(ctx0,
 						ml.Reshape3D(ctx0,
-							ml.View1D(ctx0, kvSelf.V, (pastCount+N)*embdSize, il*embdSize),
+							ml.View1D(ctx0, kvSelf.V, (pastCount+N)*embdSize, il*ctxSize*embdSize),
 							embdSize/headsCount, headsCount, pastCount+N),
 						1, 2, 0, 3),
 					ml.NewTensor3D(ctx0, ml.TYPE_F32 /* kv_self.v->type */, pastCount+N, embdSize/headsCount, headsCount))
@@ -1319,7 +1320,7 @@ func LoadModel(
 	////progress_callback(0.0, progress_callback_user_data);
 	////}
 
-	for i := 0; i < partsCount; /*++i*/ i++ {
+	for i := 0; i < int(partsCount); i++ {
 
 		part_id := i
 		//commented const int part_id = n_parts - i - 1;
