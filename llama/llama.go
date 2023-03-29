@@ -103,6 +103,7 @@ func NewContextParams() ContextParams {
 	}
 }*/
 
+// kv_cache_init
 // CPP 67,108,864 -VS- GOLANG 131,072 => NO CTX of 512 bytes size
 func KVCacheInit(hparams *HParams, cache *KVCache, dt ml.DType /*, int n_ctx*/) error {
 	////const int n_embd  = hparams.n_embd;
@@ -127,9 +128,9 @@ func KVCacheInit(hparams *HParams, cache *KVCache, dt ml.DType /*, int n_ctx*/) 
 	////cache.k = ggml_new_tensor_1d(cache.ctx, wtype, n_elements);
 	////cache.v = ggml_new_tensor_1d(cache.ctx, wtype, n_elements);
 
-	count := hparams.embdSize * hparams.layersCount // *n_ctx
-	cache.K = ml.NewTensor1D(nil, dt, count)
-	cache.V = ml.NewTensor1D(nil, dt, count)
+	size := hparams.embdSize * hparams.layersCount * 512 /* FIXME hparams.ctxSize */
+	cache.K = ml.NewTensor1D(nil, dt, size)
+	cache.V = ml.NewTensor1D(nil, dt, size)
 	// FIXME Should we alter cache.N ??
 
 	return nil
@@ -380,7 +381,7 @@ func Eval(
 
 	embdSize := model.hparams.embdSize
 	layersCount := model.hparams.layersCount
-	ctxSize := model.hparams.ctxSize
+	ctxSize := uint32(512) // model.hparams.ctxSize // FIXME
 	headsCount := model.hparams.headsCount
 	vocabSize := model.hparams.vocabSize
 	rotCount := model.hparams.embdSize / model.hparams.headsCount

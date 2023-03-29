@@ -558,10 +558,10 @@ func main() {
 
 			//id := 0
 
-			logits := lctx.Logits
+			//logits := lctx.Logits
 
 			if params.ignoreEOS {
-				logits[ml.TOKEN_EOS] = 0
+				lctx.Logits[ml.TOKEN_EOS] = 0
 			}
 
 			////id = llama_sample_top_p_top_k(vocab, logits.data() + (logits.size() - n_vocab), last_n_tokens, repeat_penalty, top_k, top_p, temp, rng);
