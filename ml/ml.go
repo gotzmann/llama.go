@@ -2377,7 +2377,7 @@ func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
 				y := (*dst.Data)[i01*nb1/4+i02*nb2/4+i03*nb3/4:]
 
 				////memcpy(y, x, ne00 * sizeof(float));
-				for i := uint32(0); i < ne00*4; i++ {
+				for i := uint32(0); i < ne00*4/4; i++ {
 					y[i] = x[i]
 				}
 
@@ -2834,6 +2834,11 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 		////copy(dst.Data, src0.Data)
 		n := dst.Nelements()
 		for i := uint32(0); i < n; i++ {
+			if i == 28672 && (len(*dst.Data) <= 28672 || len(*src0.Data) <= 28672) {
+				fmt.Printf("THATS-IT")
+				return
+			}
+
 			(*dst.Data)[i] = (*src0.Data)[i]
 		}
 		return
@@ -2958,6 +2963,11 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	////assert(src1->type == GGML_TYPE_I32);
 	////assert(ggml_nelements(src1) == 3);
 
+	if src1.Nelements() != 3 {
+		fmt.Printf("\n[HALT] ComputeForwardRopeFP32 : src1 has NOT EXACT 3 elements!")
+		os.Exit(1)
+	}
+
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
 	}
@@ -3001,7 +3011,7 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 			}
 
 			for i1 := uint32(0); i1 < ne1; i1++ {
-				for i0 := uint32(0); i0 < dims; i0 += 2 {
+				for i0 := uint32(0); i0 < dims; i0 += 2 { // WHY 2 ??
 
 					////const double theta = pow(10000.0, ((double)-i0)/n_dims);
 					theta := math.Pow(10000.0, float64(-i0/dims))
@@ -3010,9 +3020,15 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 					sinTheta := math.Sin(float64(p) * theta)
 
 					////const float * const src = (float *)((char *) src0->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
-					src := (*src0.Data)[i3*nb3/4+i2*nb2/4+i1*nb1/4+i0*nb0/4:]
+					offset := i3*nb3/4 + i2*nb2/4 + i1*nb1/4 + i0*nb0/4
+					src := (*src0.Data)[offset:]
 					////   float * dst_data  = (float *)((char *)  dst->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
-					dstData := (*dst.Data)[i3*nb3/4+i2*nb2/4+i1*nb1/4+i0*nb0/4:]
+					dstData := (*dst.Data)[offset:]
+
+					if len(src) <= 0 {
+						fmt.Printf("THATS-IT-02")
+						return
+					}
 
 					x0 := float64(src[0])
 					x1 := float64(src[1])
@@ -3103,6 +3119,7 @@ func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tenso
 					////*(float *)((char *) dst->data + k*dst->nb[2] + j*dst->nb[1] + i*dst->nb[0]) = -INFINITY;
 					////(*dst.Data)[k*dst.NE[0]*dst.NE[1]+j*dst.NE[0]+i] = float32(math.Inf(-1)) // TODO Use const
 					(*dst.Data)[k*dst.NB[2]/4+j*dst.NB[1]/4+i*dst.NB[0]/4] = float32(math.Inf(-1)) // TODO Use const
+					// FIXME ^^^ SRC and DST Data slices are the same! Both will be overwritten here
 				}
 			}
 		}
