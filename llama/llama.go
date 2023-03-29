@@ -191,9 +191,10 @@ func InitFromFile(fileName string, params *ContextParams) (*Context, error) {
 
 	////const auto & hparams = ctx->model.hparams;
 	if params.LogitsAll {
-		ctx.Logits = make([]float32, 512* /*ctxSize*/ ctx.Model.hparams.vocabSize) // .reserve(hparams.n_ctx*hparams.n_vocab);
+		ctx.Logits = make([]float32, ctx.Model.hparams.ctxSize*ctx.Model.hparams.vocabSize) // .reserve(hparams.n_ctx*hparams.n_vocab);
 	} else {
-		ctx.Logits = make([]float32, 512 /*ctxSize*/) // .reserve(hparams.n_ctx);
+		// FIXME 32K -> 512 ??
+		ctx.Logits = make([]float32, ctx.Model.hparams.ctxSize) // .reserve(hparams.n_ctx);
 	}
 
 	////if (params.embedding){
@@ -247,18 +248,6 @@ type HParams struct {
 	layersCount uint32 // = 32;
 	rotCount    uint32 //   = 64;
 	f16         uint32 //    = 1;
-}
-
-func NewHparams() HParams {
-	return HParams{
-		vocabSize:   32000,
-		embdSize:    4096,
-		multSize:    256,
-		headsCount:  32,
-		layersCount: 32,
-		rotCount:    64,
-		f16:         1,
-	}
 }
 
 type ModelType uint8
@@ -315,6 +304,16 @@ type Model struct {
 
 func NewModel() *Model {
 	return &Model{
+		hparams: HParams{
+			ctxSize:     512,
+			vocabSize:   32000,
+			embdSize:    4096,
+			multSize:    256,
+			headsCount:  32,
+			layersCount: 32,
+			rotCount:    64,
+			f16:         1,
+		},
 		layers:  make([]Layer, 0),
 		tensors: make(map[string]*ml.Tensor),
 		kvSelf: KVCache{
