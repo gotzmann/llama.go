@@ -494,6 +494,7 @@ func Eval(
 					//os.Exit(1)
 				}
 
+				// NB! ggml_element_size(kv_self.k) = 2 for FP16
 				k := ml.View1D(ctx0, kvSelf.K, N*embdSize, embdSize*(il*ctxSize+pastCount))
 				v := ml.View1D(ctx0, kvSelf.V, N*embdSize, embdSize*(il*ctxSize+pastCount))
 
