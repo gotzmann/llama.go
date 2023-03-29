@@ -64,10 +64,10 @@ type Context struct {
 	Embedding []float32
 }
 
-func NewFloatSlice(len, cap uint32) *[]float32 {
-	slice := make([]float32, len, cap)
-	return &slice
-}
+//func NewFloatSlice(len, cap uint32) *[]float32 {
+//	slice := make([]float32, len, cap)
+//	return &slice
+//}
 
 func NewContext() *Context {
 	return &Context{
@@ -329,6 +329,7 @@ func min(a, b int) int {
 	return b
 }
 
+// FIXME Double Check
 // Safe Resize() for using instead of C++ std::vector:resize()
 // https://go.dev/play/p/VlQ7N75E5AD
 func Resize(slice []float32, size int) []float32 {
@@ -339,6 +340,7 @@ func Resize(slice []float32, size int) []float32 {
 	return newSlice
 }
 
+// FIXME Double Check
 // NB! This do not clear the underlying array when resizing
 // https://go.dev/play/p/DbK4dFqwrZn
 func ResizeInplace(slice *[]float32, size int) {
@@ -484,6 +486,11 @@ func Eval(
 
 				////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
 				////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Vcur, v));
+
+				if embdSize*(il+pastCount) > 0 {
+					fmt.Printf(" [GOTCHA] ")
+					//os.Exit(1)
+				}
 
 				k := ml.View1D(ctx0, kvSelf.K, N*embdSize, embdSize*(il+pastCount))
 				v := ml.View1D(ctx0, kvSelf.V, N*embdSize, embdSize*(il+pastCount))

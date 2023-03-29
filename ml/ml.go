@@ -654,7 +654,12 @@ func VisitParents(graph *Graph, node *Tensor) {
 // ggml_cpy
 
 func CopyImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
+
 	////ASSERT(ggml_nelements(a) == ggml_nelements(b));
+	if a.Nelements() != b.Nelements() {
+		fmt.Printf("\n[HALT] Copy tensors of different dimensions!")
+		os.Exit(1)
+	}
 
 	isNode := false
 
@@ -2785,6 +2790,8 @@ func ComputeForwardCopy(params *ComputeParams, src0, dst *Tensor) {
 	ComputeForwardDupFP32(params, src0, dst)
 }
 
+// FIXME ASAP
+// FIXME [dst] IS main tensor and [src0] IS inside
 // ggml_compute_forward_dup_f32
 func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 

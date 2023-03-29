@@ -240,11 +240,36 @@ func main() {
 	// has to be called once at the start of the program to init ggml stuff
 	////ggml_time_init();
 
+	////gpt_params params;
 	params := defaultGPTParams("./models/7B/ggml-model-f32.bin")
 
 	////if (gpt_params_parse(argc, argv, params) == false) {
 	////    return 1;
 	////}
+
+	// save choice to use color for later
+    // (note for later: this is a slightly awkward choice)
+    ////con_use_color = params.use_color;
+
+////#if defined (_WIN32)
+////    win32_console_init();
+////#endif
+
+////if (params.perplexity) {
+////	printf("\n************\n");
+////	printf("%s: please use the 'perplexity' tool for perplexity calculations\n", __func__);
+////	printf("************\n\n");
+
+////	return 0;
+////}
+
+////if (params.embedding) {
+////	printf("\n************\n");
+////	printf("%s: please use the 'embedding' tool for embedding calculations\n", __func__);
+////	printf("************\n\n");
+
+////	return 0;
+////}
 
 	////if (params.n_ctx > 2048) {
 	////fmt.Printf("%s: warning: model does not support context sizes greater than 2048 tokens (%d specified);"
@@ -362,6 +387,9 @@ func main() {
 	////auto embd_inp = ::llama_tokenize(ctx, params.prompt, true);
 
 	////const int n_ctx = llama_n_ctx(ctx);
+	ctxSize := 512
+
+	////params.n_keep    = std::min(params.n_keep,    (int) embd_inp.size());
 
 	////params.n_predict = std::min(params.n_predict, n_ctx - (int) embd_inp.size());
 
@@ -427,9 +455,9 @@ func main() {
 	var embd []uint32
 
 	// FIXME Read from context params
-	lastNSize := 64 // utils.h // repeat_last_n = 64 // params.repeat_last_n;
+	////lastNSize := 64 // utils.h // repeat_last_n = 64 // params.repeat_last_n;
 	////std::vector<gpt_vocab::id> last_n_tokens(last_n_size);
-	lastNTokens := make([]uint32, lastNSize, lastNSize) // FIXME LEN vs CAP
+	lastNTokens := make([]uint32, ctxSize, ctxSize) // FIXME LEN vs CAP
 	///std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
 
 	////if (params.interactive) {
@@ -446,6 +474,10 @@ func main() {
 	inputNoEcho := false
 
 	remainingTokens := uint32(100) // FIXME ////remainingTokens = params.n_predict
+
+	pastCount := 0
+    remainCount := 64 // params.n_predict;
+    consumedCount := 0
 
 	// prompt user immediately after the starting prompt has been loaded
 	////if (params.interactive_start) {
@@ -464,39 +496,47 @@ func main() {
 	// the first thing we will do is to output the prompt, so set color accordingly
 	////set_console_state(CONSOLE_STATE_PROMPT);
 
-	if params.embedding {
-
-		embd = embdInp
-
-		if len(embd) > 0 {
+	////if params.embedding {
+	////	embd = embdInp
+	////	if len(embd) > 0 {
 			////////////////////////////////////////fmt.Printf("\nllamaEval #1")
-			if err := llama.Eval(lctx, embd, uint32(len(embd)), n_past, params.threadsCount); err != nil {
-				fmt.Printf("[HALT] Failed to eval")
-				return
-			}
+	////		if err := llama.Eval(lctx, embd, uint32(len(embd)), n_past, params.threadsCount); err != nil {
+	////			fmt.Printf("[HALT] Failed to eval")
+	////			return
+	////		}
 			/////////////////////////////////////fmt.Printf("\nllamaEval #1 returned")
-		}
-
+	////	}
 		/////////////////////////////////////////////////embeddings := llama.GetEmbeddings(ctx)
-
 		// TODO: print / use the embeddings
-
-		if params.useColor {
+	////	if params.useColor {
 			////printf(ANSI_COLOR_RESET);
-		}
+	////	}
+	////	return
+	////}
 
-		return
-	}
-
-	for remainingTokens > 0 || params.interactive {
+	for remainCount != 0 || params.interactive {
 
 		// predict
 		if len(embd) > 0 {
+			// infinite text generation via context swapping
+            // if we run out of context:
+            // - take the n_keep first tokens from the original prompt (via n_past)
+            // - take half of the last (n_ctx - n_keep) tokens and recompute the logits in a batch
+
+			if (n_past + (int) embd.size() > n_ctx) {
+                const int n_left = n_past - params.n_keep;
+
+                n_past = params.n_keep;
+
+                // insert n_left/2 tokens at the start of embd from last_n_tokens
+                embd.insert(embd.begin(), last_n_tokens.begin() + n_ctx - n_left/2 - embd.size(), last_n_tokens.end() - embd.size());
+			}
+
 
 			////////////////////////////////////////////////fmt.Printf("\nllamaEval #2")
 			////if (llama_eval(ctx, embd.data(), embd.size(), n_past, params.n_threads)) {
 			////fprintf(stderr, "%s : failed to eval\n", __func__);
-			if err := llama.Eval(lctx, embd, uint32(len(embd)), n_past, params.threadsCount); err != nil {
+			if err := llama.Eval(lctx, embd, uint32(len(embd)), pastCount, params.threadsCount); err != nil {
 				fmt.Printf("\n[ERROR] Failed to eval")
 				os.Exit(1)
 			}
@@ -505,10 +545,10 @@ func main() {
 			////t_predict_us += ggml_time_us() - t_start_us;
 		}
 
-		n_past += uint32(len(embd))
+		pastCount += uint32(len(embd))
 		embd = []uint32{} ////embd.clear();
 
-		if len(embdInp) <= int(inputConsumed) && !isInteracting {
+		if len(embdInp) <= int(consumedCount) && !isInteracting {
 
 			// FIXME Get all settings from context params
 			// out of user input, sample next token
@@ -519,15 +559,11 @@ func main() {
 
 			///////////////////////////////////////////////////////////////vocabSize := 32000 // hparamsVocabSize
 
-			////id := 0
+			id := 0
 
 			logits := lctx.Logits
 
 			if params.ignoreEOS {
-				// set the logit of the eos token to zero to avoid sampling it
-				//logits[logits.size() - n_vocab + EOS_TOKEN_ID] = 0;
-				// TODO: this does not work of params.logits_all == true
-				////assert(params.perplexity == false);
 				logits[ml.TOKEN_EOS] = 0
 			}
 
