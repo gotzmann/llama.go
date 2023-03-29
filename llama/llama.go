@@ -190,11 +190,11 @@ func InitFromFile(fileName string, params *ContextParams) (*Context, error) {
 	////}
 
 	////const auto & hparams = ctx->model.hparams;
-	////if (params.logits_all) {
-	////ctx->logits.reserve(hparams.n_ctx*hparams.n_vocab);
-	////} else {
-	////ctx->logits.reserve(hparams.n_ctx);
-	////}
+	if params.LogitsAll {
+		ctx.Logits = make([]float32, 512* /*ctxSize*/ ctx.Model.hparams.vocabSize) // .reserve(hparams.n_ctx*hparams.n_vocab);
+	} else {
+		ctx.Logits = make([]float32, 512 /*ctxSize*/) // .reserve(hparams.n_ctx);
+	}
 
 	////if (params.embedding){
 	///ctx->embedding.reserve(hparams.n_embd);
