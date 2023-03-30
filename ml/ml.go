@@ -1636,7 +1636,7 @@ func max(a, b int) int {
 
 func GraphCompute(ctx *Context, graph *Graph) {
 
-	fmt.Printf("\n\n === GraphCompute : %d nodes ===\n\n", graph.NodesCount) // DEBUG
+	//fmt.Printf("\n\n === GraphCompute : %d nodes ===\n\n", graph.NodesCount) // DEBUG
 
 	threads := graph.ThreadsCount
 
@@ -1682,6 +1682,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		////}
 	}
 
+	fmt.Printf("\n\n === GraphCompute INIT : %d nodes ===\n\n", graph.NodesCount) // DEBUG
 	// initialize tasks + work buffer
 	{
 		workSize := 0
@@ -1692,6 +1693,9 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			////struct ggml_tensor * node = cgraph->nodes[i];
 			node := graph.Nodes[i]
 			node.TasksCount = 1 // GOTZ By Default
+
+			// DEBUG
+			fmt.Printf(" --- #%d { %d [%d,%d] %.4f }", i, node.op, node.NE[1], node.NE[2], node.Data[0])
 
 			switch node.op {
 
@@ -1880,10 +1884,19 @@ func GraphCompute(ctx *Context, graph *Graph) {
 	////const int64_t perf_start_cycles  = ggml_perf_cycles();
 	////const int64_t perf_start_time_us = ggml_perf_time_us();
 
+	fmt.Printf("\n\n === GraphCompute START : %d nodes ===\n\n", graph.NodesCount) // DEBUG
+
 	for i := uint32(0); i < graph.NodesCount; i++ {
 		////PRINT_DEBUG_5("%s: %d/%d\n", __func__, i, cgraph->n_nodes);
 
 		node := graph.Nodes[i]
+
+		// DEBUG
+		fmt.Printf(" --- #%d { %d [%d,%d] %.4f }", i, node.op, node.NE[1], node.NE[2], node.Data[0])
+
+		if i == 10 {
+			fmt.Printf(" -PAUSE- ")
+		}
 
 		// TODO: this could be used to avoid unnecessary computations, but it needs to be improved
 		//if (node->grad == NULL && node->perf_runs > 0) {
@@ -1892,8 +1905,6 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 		////const int64_t perf_node_start_cycles  = ggml_perf_cycles();
 		////const int64_t perf_node_start_time_us = ggml_perf_time_us();
-
-		// INIT
 
 		var wsize uint32
 		var wdata []float32
@@ -1912,8 +1923,8 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			wdata: wdata,
 		}
 
-		/////////////////////////////////////////////////fmt.Printf("\n[COMPUTE] ComputeForward | TASK_INIT | ...")
-		ComputeForward(&params, node)
+		//fmt.Printf("\n[COMPUTE] ComputeForward | TASK_INIT | ...")
+		ComputeForward(&params, node) // TASK_INIT
 
 		// --- COMPUTE
 
@@ -1959,8 +1970,8 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			////atomic_store(&state_shared.has_work, true);
 		}
 
+		//fmt.Printf("\n[COMPUTE] ComputeForward | TASK_COMPUTE | ...")
 		params.Type = TASK_COMPUTE
-		//////////////////////////////////////////////////////////fmt.Printf("\n[COMPUTE] ComputeForward | TASK_COMPUTE | ...")
 		ComputeForward(&params, node)
 
 		// wait for thread pool
@@ -2025,8 +2036,8 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			////atomic_store(&state_shared.has_work, true);
 		}
 
+		//fmt.Printf("\n[COMPUTE] ComputeForward | TASK_FINALIZE | ...")
 		params.Type = TASK_FINALIZE
-		///////////////////////////////////////////////////////fmt.Printf("\n[COMPUTE] ComputeForward | TASK_FINALIZE | ...")
 		ComputeForward(&params, node)
 
 		// wait for thread pool
