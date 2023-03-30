@@ -2316,6 +2316,12 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 	////	}
 	////}
 
+	// DEBUG
+	fmt.Printf("\n\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| DST[%d] = %f |", ii, dst.Data[ii])
+	}
+
 	for i := uint32(0); i < nr; i++ {
 		////const int r = ((int32_t *) src1->data)[i];
 		r := uint32(src1.Data[i]) // FIXME WTF ??
@@ -2330,6 +2336,12 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 		// VecCopyFP32(nc, (*dst.Data)[i*dst.NE[0]:], (*src0.Data)[uint32(r)*src0.NE[0]:])
 		// VecCopyFP32(nc, dst.Data[i*dst.NB[1]/4:], src0.Data[r*src0.NB[1]/4:])
 		VecCopyFP32(nc, dst.Data[i*dst.NE[0]:], src0.Data[r*src0.NE[0]:])
+	}
+
+	// DEBUG
+	fmt.Printf("\n\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| DST[%d] = %f |", ii, dst.Data[ii])
 	}
 }
 
