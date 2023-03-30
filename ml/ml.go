@@ -2304,7 +2304,7 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 	////assert( dst->ne[1] == nr);
 	////assert(src0->nb[0] == sizeof(float));
 
-	if dst.NE[0] != nc || dst.NE[1] != nr || src0.NB[0] != TYPE_SIZE[TYPE_I32] {
+	if dst.NE[0] != nc || dst.NE[1] != nr || src0.NB[0] != TYPE_SIZE[TYPE_F32] /*TYPE_SIZE[TYPE_I32]*/ {
 		fmt.Printf("[HALT]ComputeForwardGetRows : wrong dimensions!")
 		os.Exit(1)
 	}
@@ -2318,7 +2318,9 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 
 	for i := uint32(0); i < nr; i++ {
 		////const int r = ((int32_t *) src1->data)[i];
-		r := src1.Data[i] // FIXME WTF ??
+		r := uint32(src1.Data[i]) // FIXME WTF ??
+
+		fmt.Printf(" [ r = %d | dst = %d | src = %d ]", r, i*dst.NE[0], r*src0.NE[0])
 
 		////ggml_vec_cpy_f32(nc,
 		////        (float *) ((char *)  dst->data + i*dst->nb[1]),
@@ -2326,7 +2328,8 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 
 		// FIXME ASAP and double check!
 		// VecCopyFP32(nc, (*dst.Data)[i*dst.NE[0]:], (*src0.Data)[uint32(r)*src0.NE[0]:])
-		VecCopyFP32(nc, dst.Data[i*dst.NB[1]/4:], src0.Data[uint32(r)*src0.NB[1]/4:])
+		// VecCopyFP32(nc, dst.Data[i*dst.NB[1]/4:], src0.Data[r*src0.NB[1]/4:])
+		VecCopyFP32(nc, dst.Data[i*dst.NE[0]:], src0.Data[r*src0.NE[0]:])
 	}
 }
 
