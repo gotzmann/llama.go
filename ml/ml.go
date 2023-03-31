@@ -2753,6 +2753,8 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	ir0 := dr * ith
 	ir1 := min32(ir0+dr, nr)
 
+	////void * wdata = params->wdata;
+
 	for ir := uint32(ir0); ir < ir1; ir++ {
 
 		// src0 indices
@@ -2760,17 +2762,21 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		i02 := (ir - i03*ne02*ne01) / ne01
 		i01 := (ir - i03*ne02*ne01 - i02*ne01)
 
-		for ic := uint32(0); ic < ne11; ic++ {
-			// src1 indices
-			i13 := i03
-			i12 := i02
-			i11 := ic
+		// src1 indices
+		i13 := i03
+		i12 := i02
+		//i11 := ic
 
-			// dst indices
-			i0 := i01
+		// dst indices
+		i0 := i01
+		//i1 := i11
+		i2 := i02
+		i3 := i03
+
+		for ic := uint32(0); ic < ne11; ic++ {
+
+			i11 := ic
 			i1 := i11
-			i2 := i02
-			i3 := i03
 
 			////ggml_vec_dot_f32(ne00,
 			////	(float *) ((char *)  dst->data + (i0*nb0 + i1*nb1 + i2*nb2 + i3*nb3)),
@@ -2793,6 +2799,14 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 			//	(*src1.Data)[i11*nb11+i12*nb12+i13*nb13])
 		}
 	}
+
+	// DEBUG
+	fmt.Printf("\n>>> ComputeForwardMulMatFP32 <<<")
+	fmt.Printf("\n\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| DST[%d] = %f |", ii, dst.Data[ii])
+	}
+	//os.Exit(0)
 
 	//int64_t t1 = ggml_perf_time_us();
 	//static int64_t acc = 0;
