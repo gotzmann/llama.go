@@ -3211,7 +3211,7 @@ func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	for ii := 0; ii < 8; ii++ {
 		fmt.Printf("| DST[%d] = %.4f |", ii, dst.Data[ii])
 	}
-	os.Exit(1)
+	//os.Exit(1)
 }
 
 // ggml_compute_forward_diag_mask_inf
@@ -3306,6 +3306,23 @@ func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 		return
 	}
 
+	fmt.Printf("\n\n>>> ComputeForwardRopeFP32 <<<")
+	fmt.Printf("\n=== SRC0 === LEN = %d %d %d %d - %d %d %d %d\n", 
+	src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
+	src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| SRC[%d] = %.4f |", ii, src0.Data[ii])
+	}
+	fmt.Printf("\n=== SRC1 === [ %d %d %d ] %f %f %f\n", 
+		src1.NE[0], src1.NE[1], src1.NE[2], 
+		src1.Data[0], src1.Data[1], src1.Data[2]) // DEBUG
+	fmt.Printf("\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| DST[%d] = %.4f |", ii, dst.Data[ii])
+	}
+
+	os.Exit(0)
+
 	negInf := float32(math.Inf(-1)) // TODO use constant
 
 	// TODO: handle transposed/permuted matrices
@@ -3326,7 +3343,7 @@ func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 	for i1 := ir0; int(i1) < ir1; i1++ {
 		////float *p = (float *)((char *) dst->data + i1*dst->nb[1]);
 
-		p := dst.Data[i1*dst.NE[0]:]
+		p := dst.Data[i1*dst.NB[1]/4:]
 
 		////#ifndef NDEBUG
 		////for (int i = 0; i < nc; ++i) {
