@@ -3094,16 +3094,16 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 			}
 
 			for i1 := uint32(0); i1 < ne1; i1++ {
-				for i0 := uint32(0); i0 < dims; i0 += 2 { // WHY 2 ??
+				for i0 := 0; i0 < int(dims); i0 += 2 { // WHY 2 ??
 
 					////const double theta = pow(10000.0, ((double)-i0)/n_dims);
-					theta := math.Pow(10000.0, float64(-i0/dims))
+					theta := math.Pow(10000.0, float64(-i0)/float64(dims))
 
 					cosTheta := math.Cos(float64(p) * theta)
 					sinTheta := math.Sin(float64(p) * theta)
 
 					////const float * const src = (float *)((char *) src0->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
-					offset := i3*nb3/4 + i2*nb2/4 + i1*nb1/4 + i0*nb0/4
+					offset := i3*nb3/4 + i2*nb2/4 + i1*nb1/4 + uint32(i0)*nb0/4
 					src := src0.Data[offset:]
 					////   float * dst_data  = (float *)((char *)  dst->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
 					dstData := dst.Data[offset:]
@@ -3119,7 +3119,7 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 					dstData[0] = float32(x0*cosTheta - x1*sinTheta)
 					dstData[1] = float32(x0*sinTheta + x1*cosTheta)
 
-					x0 = 0.0 // DEBUG
+					//x0 = 0.0 // DEBUG
 				}
 			}
 		}
