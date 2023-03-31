@@ -3108,10 +3108,10 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 					////   float * dst_data  = (float *)((char *)  dst->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
 					dstData := dst.Data[offset:]
 
-					if len(src) <= 0 {
-						fmt.Printf("THATS-IT-02")
+					//if len(src) <= 0 {
+					//	fmt.Printf("THATS-IT-02")
 						//return
-					}
+					//}
 
 					x0 := float64(src[0])
 					x1 := float64(src[1])
@@ -3135,7 +3135,7 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	for ii := 0; ii < 8; ii++ {
 		fmt.Printf("| DST[%d] = %.4f |", ii, dst.Data[ii])
 	}
-	os.Exit(1);
+	//os.Exit(1);
 }
 
 // ggml_compute_forward_scale_f32
@@ -3161,6 +3161,21 @@ func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		return
 	}
 
+	//fmt.Printf("\n\n>>> ComputeForwardScaleFP32 <<<")
+	//fmt.Printf("\n=== SRC0 === LEN = %d %d %d %d - %d %d %d %d\n", 
+	//src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
+	//src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
+	//for ii := 0; ii < 8; ii++ {
+	//	fmt.Printf("| SRC[%d] = %.4f |", ii, src0.Data[ii])
+	//}
+	//fmt.Printf("\n=== SRC1 === [ %d %d %d ] %f \n", 
+	//	src1.NE[0], src1.NE[1], src1.NE[2], src1.Data[0]) // DEBUG
+	//fmt.Printf("\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
+	//for ii := 0; ii < 8; ii++ {
+	//	fmt.Printf("| DST[%d] = %.4f |", ii, dst.Data[ii])
+	//}
+	//os.Exit(1)
+
 	// scale factor
 	v := src1.Data[0]
 
@@ -3182,6 +3197,21 @@ func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		////VecScaleFP32(nc, (*dst.Data)[i1*dst.NE[0]:], v)
 		VecScaleFP32(nc, dst.Data[i1*dst.NB[1]/4:], v)
 	}
+
+	fmt.Printf("\n---")
+	fmt.Printf("\n=== SRC0 === LEN = %d %d %d %d - %d %d %d %d\n", 
+	src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
+	src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| SRC[%d] = %.4f |", ii, src0.Data[ii])
+	}
+	fmt.Printf("\n=== SRC1 === [ %d %d %d ] %f \n", 
+		src1.NE[0], src1.NE[1], src1.NE[2], src1.Data[0]) // DEBUG
+	fmt.Printf("\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
+	for ii := 0; ii < 8; ii++ {
+		fmt.Printf("| DST[%d] = %.4f |", ii, dst.Data[ii])
+	}
+	os.Exit(1)
 }
 
 // ggml_compute_forward_diag_mask_inf
