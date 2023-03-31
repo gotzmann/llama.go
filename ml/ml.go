@@ -2386,6 +2386,7 @@ func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
 				////ggml_float mean = 0.0;
 				mean := 0.0
 				////for (int i00 = 0; i00 < ne00; i00++) {
+				// TODO Simplify to directly access [src]
 				for i00 := uint32(0); i00 < ne00; i00++ {
 					////mean += x[i00] * x[i00];
 					mean += float64(x[i00] * x[i00])
@@ -2394,23 +2395,25 @@ func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
 				////mean /= ne00;
 				mean /= float64(ne00)
 
+				////const float scale = 1.0/sqrt(mean + eps);
+				scale := float32(1.0 / math.Sqrt(mean+eps))
+
+				// TODO Simplify to directly update [dst]
 				////float * y = (float *) ((char *) dst->data + i01*nb1 + i02*nb2 + i03*nb3);
 				y := dst.Data[i01*nb1/4+i02*nb2/4+i03*nb3/4:]
-
+/*
 				////memcpy(y, x, ne00 * sizeof(float));
 				for i := uint32(0); i < ne00*4/4; i++ {
 					y[i] = x[i]
 				}
 
-				// for (int i00 = 0; i00 < ne00; i00++) {
-				//     y[i00] = x[i00];
-				// }
-
-				////const float scale = 1.0/sqrt(mean + eps);
-				scale := 1.0 / math.Sqrt(mean+eps)
-
 				////ggml_vec_scale_f32(ne00, y, scale);
 				VecScaleFP32(ne00, y, float32(scale))
+				*/
+
+				for i := uint32(0); i < ne00; i++ {
+					y[i] = x[i] * scale;
+				}
 			}
 		}
 	}
@@ -2524,7 +2527,9 @@ func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 	for i := uint32(0); i < n; i++ {
 
-		VecMulFP32(nc, dst.Data[i:], src0.Data[i:], src1.Data[i:])
+		// !!! BUG !!!
+		//VecMulFP32(nc, dst.Data[i:], src0.Data[i:], src1.Data[i:])
+		VecMulFP32(nc, dst.Data[i*dst.NE[0]:], src0.Data[i*src0.NE[0]:], src1.Data[i*src1.NE[0]:])
 
 		////ggml_vec_mul_f32(nc,
 		////(float *) ((char *) dst->data  + i*( dst->nb[1])),
