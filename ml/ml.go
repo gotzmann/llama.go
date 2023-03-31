@@ -1688,19 +1688,19 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		workSize := 0
 
 		// thread scheduling for the different operations
+		// TasksCount might be 0, 1, or ThreadsCount
 		for i := uint32(0); i < graph.NodesCount; i++ {
 
 			////struct ggml_tensor * node = cgraph->nodes[i];
 			node := graph.Nodes[i]
-			node.TasksCount = 1 // GOTZ By Default
 
 			// DEBUG
-			fmt.Printf(" --- #%d { %d [%d,%d] %.4f }", i, node.op, node.NE[1], node.NE[2], node.Data[0])
+			fmt.Printf(" --- #%d | %d-%d [ %d,%d ] %.4f ", i, node.op, node.TasksCount, node.NE[1], node.NE[2], node.Data[0])
 
 			switch node.op {
 
 			case OP_DUP:
-				////node.TasksCount = 1
+				node.TasksCount = 1
 			case OP_ADD:
 				node.TasksCount = threads
 			case OP_SUB:
@@ -1716,7 +1716,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			case OP_NEG:
 			case OP_STEP:
 			case OP_RELU:
-				////node.TasksCount = 1
+				node.TasksCount = 1
 			case OP_GELU:
 				node.TasksCount = threads
 			case OP_SILU:
@@ -1791,7 +1791,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			case OP_TRANSPOSE:
 			case OP_GET_ROWS:
 			case OP_DIAG_MASK_INF:
-				////node.TasksCount = 1
+				node.TasksCount = 1
 			case OP_SOFT_MAX:
 				node.TasksCount = threads
 			case OP_ROPE:
@@ -1858,7 +1858,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 				}
 				workSize = max(workSize, cur)
 			case OP_NONE:
-				////node.TasksCount = 1
+				node.TasksCount = 1
 			case OP_COUNT:
 				fmt.Printf("\n[HALT] Something wrong with compute graph!")
 				os.Exit(1)
