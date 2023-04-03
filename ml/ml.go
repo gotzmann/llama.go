@@ -3549,7 +3549,7 @@ func ComputeForwardAddFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	fmt.Printf("\n=== SRC0 | %d %d %d %d === %d %d %d %d ===\n",
 		src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
 		src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
-	for ii := 0; ii < min(10, int(src1.Nelements())); ii++ {
+	for ii := 0; ii < min(10, int(src0.Nelements())); ii++ {
 		fmt.Printf("%.4f  ", src0.Data[ii])
 	}
 
@@ -3563,7 +3563,7 @@ func ComputeForwardAddFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	fmt.Printf("\n=== DST === %d %d %d %d === %d %d %d %d ===\n",
 		dst.NE[0], dst.NE[1], dst.NE[2], dst.NE[3],
 		dst.NB[0], dst.NB[1], dst.NB[2], dst.NB[3]) // DEBUG
-	for ii := 0; ii < min(10, int(src1.Nelements())); ii++ {
+	for ii := 0; ii < min(10, int(dst.Nelements())); ii++ {
 		fmt.Printf("%.4f  ", dst.Data[ii])
 	}
 
@@ -3675,7 +3675,7 @@ func ComputeForwardAddFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		fmt.Printf("%.4f  ", dst.Data[ii])
 	}
 
-	os.Exit(0)
+	//os.Exit(0)
 }
 
 // Sigmoid Linear Unit (SiLU) function
@@ -3713,9 +3713,29 @@ func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
 		return
 	}
 
+	// IDEAL4
+
+	fmt.Printf("\n\n>>> IN <<< ComputeForwardSiluFP32 <<<")
+
+	fmt.Printf("\n=== SRC0 | %d %d %d %d === %d %d %d %d ===\n",
+		src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
+		src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
+	for ii := 0; ii < min(10, int(src0.Nelements())); ii++ {
+		fmt.Printf("%.4f  ", src0.Data[ii])
+	}
+
+	fmt.Printf("\n=== DST === %d %d %d %d === %d %d %d %d ===\n",
+		dst.NE[0], dst.NE[1], dst.NE[2], dst.NE[3],
+		dst.NB[0], dst.NB[1], dst.NB[2], dst.NB[3]) // DEBUG
+	for ii := 0; ii < min(10, int(dst.Nelements())); ii++ {
+		fmt.Printf("%.4f  ", dst.Data[ii])
+	}
+
+	//os.Exit(0)
+
 	// FIXME Works only for 1 thread
 	VecSiluFP32(dst.NE[0], dst.Data, src0.Data)
-	return
+	//return
 	/*
 	   ith := params.ith
 	   nth := params.nth
@@ -3753,6 +3773,24 @@ func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
 	   		////#endif
 	   	}
 	*/
+
+	fmt.Printf("\n\n>>> OUT <<< ComputeForwardSiluFP32 <<<")
+
+	fmt.Printf("\n=== SRC0 | %d %d %d %d === %d %d %d %d ===\n",
+		src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
+		src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
+	for ii := 0; ii < min(10, int(src0.Nelements())); ii++ {
+		fmt.Printf("%.4f  ", src0.Data[ii])
+	}
+
+	fmt.Printf("\n=== DST === %d %d %d %d === %d %d %d %d ===\n",
+		dst.NE[0], dst.NE[1], dst.NE[2], dst.NE[3],
+		dst.NB[0], dst.NB[1], dst.NB[2], dst.NB[3]) // DEBUG
+	for ii := 0; ii < min(10, int(dst.Nelements())); ii++ {
+		fmt.Printf("%.4f  ", dst.Data[ii])
+	}
+
+	//os.Exit(0)
 }
 
 // ---
