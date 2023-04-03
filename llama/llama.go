@@ -462,7 +462,7 @@ func Eval(
 				fmt.Printf("| model.layers[il].wq[%d] = %f |", ii, model.layers[il].wq.Data[ii])
 			}
 
-			Qcur := ml.MulMat(ctx0, model.layers[il].wq, cur) // + OP_VIEW + OP_CPY under hood
+			Qcur := ml.MulMat(ctx0, model.layers[il].wq, cur)
 			Kcur := ml.MulMat(ctx0, model.layers[il].wk, cur)
 			Vcur := ml.MulMat(ctx0, model.layers[il].wv, cur)
 
