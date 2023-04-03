@@ -623,6 +623,12 @@ func Eval(
 
 		// input for next layer
 		inpL = cur
+
+		//fmt.Printf("\n\n=== FIN #%d [ %d,%d ] ===\n", il, inpL.NE[0], inpL.NE[1]) // DEBUG
+		//for ii := 0; ii < 8; ii++ {
+		//	fmt.Printf("%.4f  ", inpL.Data[ii])
+		//}
+		//os.Exit(0)
 	}
 
 	////lctx.use_buf(ctx0, 0);
@@ -678,10 +684,10 @@ func Eval(
 	ml.GraphCompute(ctx0, &gf)
 
 	//fmt.Printf("\n\n=== INPL 08 === LEN = %d\n", len(inpL.Data)) // DEBUG
-	fmt.Printf("\n\n=== INPL 08 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
-	}
+	//fmt.Printf("\n\n=== INPL 08 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
+	//for ii := 0; ii < 8; ii++ {
+	//	fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
+	//}
 
 	// COMMenteD  if (n_past%100 == 0) {
 	// COMMenteD    ggml_graph_print   (&gf);

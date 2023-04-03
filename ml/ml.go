@@ -1966,6 +1966,11 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			////atomic_store(&state_shared.has_work, true);
 		}
 
+		// BREAKPOINT
+		if i == 40 {
+			fmt.Printf("\n\n=== HALT #%d ===", i)
+			os.Exit(0)
+		}
 		//fmt.Printf("\n[COMPUTE] ComputeForward | TASK_COMPUTE | ...")
 		params.Type = TASK_COMPUTE
 		ComputeForward(&params, node)
