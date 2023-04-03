@@ -3542,115 +3542,137 @@ func ComputeForwardAddFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		os.Exit(1)
 	}
 
-	// IDEAL
-	fmt.Printf("\n\n>>> ComputeForwardAddFP32 <<<")
+	// IDEAL3
+
+	fmt.Printf("\n\n>>> IN <<< ComputeForwardAddFP32 <<<")
+
 	fmt.Printf("\n=== SRC0 | %d %d %d %d === %d %d %d %d ===\n",
 		src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
 		src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
+	for ii := 0; ii < min(10, int(src1.Nelements())); ii++ {
 		fmt.Printf("%.4f  ", src0.Data[ii])
 	}
-
-	//fmt.Printf("\n=== SRC1 === [ %d %d %d ] %f %f %f\n",
-	//	src1.NE[0], src1.NE[1], src1.NE[2],
-	//	src1.Data[0], src1.Data[1], src1.Data[2]) // DEBUG
 
 	fmt.Printf("\n=== SRC1 === %d %d %d %d === %d %d %d %d ===\n",
 		src1.NE[0], src1.NE[1], src1.NE[2], src1.NE[3],
 		src1.NB[0], src1.NB[1], src1.NB[2], src1.NB[3]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
+	for ii := 0; ii < min(10, int(src1.Nelements())); ii++ {
 		fmt.Printf("%.4f  ", src1.Data[ii])
 	}
-
-	//fmt.Printf("\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
-	//for ii := 0; ii < 8; ii++ {
-	//	fmt.Printf("| DST[%d] = %.4f |", ii, dst.Data[ii])
-	//}
 
 	fmt.Printf("\n=== DST === %d %d %d %d === %d %d %d %d ===\n",
 		dst.NE[0], dst.NE[1], dst.NE[2], dst.NE[3],
 		dst.NB[0], dst.NB[1], dst.NB[2], dst.NB[3]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
+	for ii := 0; ii < min(10, int(src1.Nelements())); ii++ {
 		fmt.Printf("%.4f  ", dst.Data[ii])
 	}
 
-	os.Exit(0)
+	//os.Exit(0)
 
 	// FIXME Works only for 1 thread
-	VecAddFP32(dst.NE[0], dst.Data, src0.Data, src1.Data)
-	return
+	//VecAddFP32(dst.NE[0], dst.Data, src0.Data, src1.Data)
+	//return
+
+	ith := params.ith
+	nth := params.nth
+
+	n := src0.Nrows()
+	nc := src0.NE[0]
+
+	//nb00 := src0.NB[0]
+	nb01 := src0.NB[1]
+
+	nb10 := src1.NB[0]
+	nb11 := src1.NB[1]
+
+	//nb0 := dst.NB[0]
+	nb1 := dst.NB[1]
+
+	////GGML_ASSERT( nb0 == sizeof(float));
+	////GGML_ASSERT(nb00 == sizeof(float));
+
+	if nb10 == TYPE_SIZE[TYPE_F32] {
+
+		fmt.Printf("\nCONTIGIOUS")
+
+		j0 := (n / nth) * ith
+
+		// j1 := ith == nth - 1 ? n : (n/nth)*(ith + 1)
+		var j1 uint32
+		if ith == nth-1 {
+			j1 = n
+		} else {
+			j1 = (n / nth) * (ith + 1)
+		}
+
+		for j := j0; j < j1; j++ {
+			////ggml_vec_add_f32(nc,
+			////        (float *) ((char *) dst->data  + j*nb1),
+			////        (float *) ((char *) src0->data + j*nb01),
+			////        (float *) ((char *) src1->data + j*nb11));
+
+			////VecAddFP32(nc, dst.Data[j], src0.Data[j], src1.Data[j])
+			//VecAddFP32(nc, dst.Data[j:j+nc], src0.Data[j:j+nc], src1.Data[j:j+nc])
+			VecAddFP32(nc, dst.Data[j*nb1/4:], src0.Data[j*nb01/4:], src1.Data[j*nb11/4:])
+		}
+
+	} else {
+
+		// src1 is not contiguous
+
+		fmt.Printf("\nNON-CONTIGIOUS")
+
+		for j := ith; j < n; j += nth {
+			////float * dst_ptr  = (float *) ((char *) dst->data  + j*nb1);
+			dstPtr := dst.Data[j*nb1/4:]
+			////float * src0_ptr = (float *) ((char *) src0->data + j*nb01);
+			src0Ptr := src0.Data[j*nb01/4:]
+			for i := uint32(0); i < nc; i++ {
+				////float * src1_ptr = (float *) ((char *) src1->data + j*nb11 + i*nb10);
+				src1Ptr := src1.Data[j*nb11/4+i*nb10/4]
+				////dst_ptr[i] = src0_ptr[i] + *src1_ptr;
+				dstPtr[i] = src0Ptr[i] + src1Ptr
+			}
+		}
+	}
 
 	/*
-	   ith := params.ith
-	   nth := params.nth
+		fmt.Printf("\n\n>>> ComputeForwardAddFP32 <<<")
+		fmt.Printf("\n=== SRC0 === LEN = %d %d %d %d - %d %d %d %d\n",
+			src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
+			src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
+		for ii := 0; ii < 8; ii++ {
+			fmt.Printf("| SRC[%d] = %.4f |", ii, src0.Data[ii])
+		}
+		fmt.Printf("\n=== SRC1 === [ %d %d %d ] %f %f %f\n",
+			src1.NE[0], src1.NE[1], src1.NE[2],
+			src1.Data[0], src1.Data[1], src1.Data[2]) // DEBUG
+		fmt.Printf("\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
+		for ii := 0; ii < 8; ii++ {
+			fmt.Printf("| DST[%d] = %.4f |", ii, dst.Data[ii])
+		}*/
 
-	   n := src0.Nrows()
-	   nc := src0.NE[0]
+	fmt.Printf("\n\n>>> OUT <<< ComputeForwardAddFP32 <<<")
 
-	   ////const size_t nb00 = src0->nb[0]
-	   ////const size_t nb01 = src0->nb[1]
-
-	   ////const size_t nb10 = src1->nb[0]
-	   ////const size_t nb11 = src1->nb[1]
-
-	   ////const size_t nb0 = dst->nb[0]
-	   ////const size_t nb1 = dst->nb[1]
-
-	   ////GGML_ASSERT( nb0 == sizeof(float));
-	   ////GGML_ASSERT(nb00 == sizeof(float));
-
-	   ////if (nb10 == sizeof(float)) {
-	   j0 := (n / nth) * ith
-
-	   //// j1 := ith == nth - 1 ? n : (n/nth)*(ith + 1)
-	   var j1 uint32
-
-	   	if ith == nth-1 {
-	   		j1 = n
-	   	} else {
-
-	   		j1 = (n / nth) * (ith + 1)
-	   	}
-
-	   ////if (nb10 == sizeof(float)) {
-
-	   	for j := j0; j < j1; j++ {
-	   		////ggml_vec_add_f32(nc,
-	   		////        (float *) ((char *) dst->data  + j*nb1),
-	   		////        (float *) ((char *) src0->data + j*nb01),
-	   		////        (float *) ((char *) src1->data + j*nb11));
-
-	   		////VecAddFP32(nc, dst.Data[j], src0.Data[j], src1.Data[j])
-	   		VecAddFP32(nc, dst.Data[j:j+nc], src0.Data[j:j+nc], src1.Data[j:j+nc])
-	   	}
-
-	   ////} else {
-
-	   // src1 is not contiguous
-	   ////for j := ith; j < n; j += nth {
-	   ////        float * dst_ptr  = (float *) ((char *) dst->data  + j*nb1);
-	   ////        float * src0_ptr = (float *) ((char *) src0->data + j*nb01);
-	   ////        for i := uint32(0); i < nc; i++ {
-	   ////            float * src1_ptr = (float *) ((char *) src1->data + j*nb11 + i*nb10);
-	   ////            dst_ptr[i] = src0_ptr[i] + *src1_ptr;
-	   ////        }
-	   ////   }
-	   ////}
-	*/
-
-	fmt.Printf("\n\n>>> ComputeForwardAddFP32 <<<")
-	fmt.Printf("\n=== SRC0 === LEN = %d %d %d %d - %d %d %d %d\n",
+	fmt.Printf("\n=== SRC0 | %d %d %d %d === %d %d %d %d ===\n",
 		src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
 		src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| SRC[%d] = %.4f |", ii, src0.Data[ii])
+	for ii := 0; ii < min(10, int(src1.Nelements())); ii++ {
+		fmt.Printf("%.4f  ", src0.Data[ii])
 	}
-	fmt.Printf("\n=== SRC1 === [ %d %d %d ] %f %f %f\n",
-		src1.NE[0], src1.NE[1], src1.NE[2],
-		src1.Data[0], src1.Data[1], src1.Data[2]) // DEBUG
-	fmt.Printf("\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| DST[%d] = %.4f |", ii, dst.Data[ii])
+
+	fmt.Printf("\n=== SRC1 === %d %d %d %d === %d %d %d %d ===\n",
+		src1.NE[0], src1.NE[1], src1.NE[2], src1.NE[3],
+		src1.NB[0], src1.NB[1], src1.NB[2], src1.NB[3]) // DEBUG
+	for ii := 0; ii < min(10, int(src1.Nelements())); ii++ {
+		fmt.Printf("%.4f  ", src1.Data[ii])
+	}
+
+	fmt.Printf("\n=== DST === %d %d %d %d === %d %d %d %d ===\n",
+		dst.NE[0], dst.NE[1], dst.NE[2], dst.NE[3],
+		dst.NB[0], dst.NB[1], dst.NB[2], dst.NB[3]) // DEBUG
+	for ii := 0; ii < min(10, int(src1.Nelements())); ii++ {
+		fmt.Printf("%.4f  ", dst.Data[ii])
 	}
 
 	os.Exit(0)
