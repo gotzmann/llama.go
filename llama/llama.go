@@ -462,7 +462,7 @@ func Eval(
 				fmt.Printf("| model.layers[il].wq[%d] = %f |", ii, model.layers[il].wq.Data[ii])
 			}
 
-			Qcur := ml.MulMat(ctx0, model.layers[il].wq, cur)
+			Qcur := ml.MulMat(ctx0, model.layers[il].wq, cur) // + OP_VIEW + OP_CPY under hood
 			Kcur := ml.MulMat(ctx0, model.layers[il].wk, cur)
 			Vcur := ml.MulMat(ctx0, model.layers[il].wv, cur)
 
@@ -503,7 +503,6 @@ func Eval(
 					fmt.Printf("| k[%d] = %f |", ii, k.Data[ii])
 				}
 
-				// FIXME ASAP "runtime error: index out of range [28672] with length 28672"
 				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Kcur, k))
 				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Vcur, v))
 

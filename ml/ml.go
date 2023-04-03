@@ -2907,16 +2907,16 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 		return
 	}
 
-	fmt.Printf("\n\n>>> ComputeForwardDupFP32 <<<")
+	fmt.Printf("\n\n>>> ComputeForwardDupFP32 IN <<<\n")
 	fmt.Printf("\n=== SRC === LEN = %d %d %d %d - %d %d %d %d\n",
 		src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
 		src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| SRC[%d] = %.4f |", ii, src0.Data[ii])
+	for ii := 0; ii < 12; ii++ {
+		fmt.Printf("%.4f  ", src0.Data[ii])
 	}
 	fmt.Printf("\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| DST[%d] = %.4f |", ii, dst.Data[ii])
+	for ii := 0; ii < 12; ii++ {
+		fmt.Printf("%.4f  ", dst.Data[ii])
 	}
 
 	ne00 := src0.NE[0]
@@ -2946,8 +2946,8 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 
 		fmt.Printf("\nCONTIGIOUS")
 		fmt.Printf("\n\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
-		for ii := 0; ii < 8; ii++ {
-			fmt.Printf("| DST[%d] = %.4f |", ii, dst.Data[ii])
+		for ii := 0; ii < 12; ii++ {
+			fmt.Printf("%.4f  ", dst.Data[ii])
 		}
 		//os.Exit(0);
 
@@ -3049,11 +3049,23 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 		}
 	}
 
-	fmt.Printf("\n\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| DST[%d] = %.4f |", ii, dst.Data[ii])
-	}
+	//fmt.Printf("\n\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
+	//for ii := 0; ii < 8; ii++ {
+	//	fmt.Printf("| DST[%d] = %.4f |", ii, dst.Data[ii])
+	//}
 	//os.Exit(0);
+
+	fmt.Printf("\n\n>>> ComputeForwardDupFP32 OUT <<<\n")
+	fmt.Printf("\n=== SRC === LEN = %d %d %d %d - %d %d %d %d\n",
+		src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
+		src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
+	for ii := 0; ii < 12; ii++ {
+		fmt.Printf("%.4f  ", src0.Data[ii])
+	}
+	fmt.Printf("\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
+	for ii := 0; ii < 12; ii++ {
+		fmt.Printf("%.4f  ", dst.Data[ii])
+	}
 }
 
 // ggml_compute_forward_reshape
@@ -3401,7 +3413,7 @@ func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 		return
 	}
 
-	fmt.Printf("\n\n>>> ComputeForwardSoftMaxFP32 <<<")
+	fmt.Printf("\n\n>>> ComputeForwardSoftMaxFP32 IN <<<\n")
 	fmt.Printf("\n=== SRC0 === LEN = %d %d %d %d - %d %d %d %d\n",
 		src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
 		src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
@@ -3488,7 +3500,7 @@ func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 		////#endif
 	}
 
-	fmt.Printf("\n\n>>> ComputeForwardSoftMaxFP32 <<<")
+	fmt.Printf("\n\n>>> ComputeForwardSoftMaxFP32 OUT <<<\n")
 	fmt.Printf("\n=== SRC0 === LEN = %d %d %d %d - %d %d %d %d\n",
 		src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
 		src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
