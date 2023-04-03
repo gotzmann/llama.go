@@ -2957,95 +2957,98 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 
 	// --- supporting only 4-bytes data for [src0] and FP32 for [dst]
 
-	if src0.Type == TYPE_F32 && dst.Type == TYPE_F32 {
+	//if src0.Type == TYPE_F32 && dst.Type == TYPE_F32 {
 
-		//if src0.NB[0] == TYPE_SIZE[TYPE_F32] {
-		//	if dst.Type == TYPE_F32 {
+	if src0.NB[0] == TYPE_SIZE[TYPE_F32] {
 
-		id := uint32(0) // Row number ??
-		//// rs := ne00 * nb00
-		rs := ne00 * nb00 / 4 // FIXME Row size in 4-bytes elements
+		if dst.Type == TYPE_F32 {
 
-		for i03 := uint32(0); i03 < ne03; i03++ {
-			for i02 := uint32(0); i02 < ne02; i02++ {
-				for i01 := uint32(0); i01 < ne01; i01++ {
-					////const char * src0_ptr = (char *) src0->data + i01*nb01 + i02*nb02 + i03*nb03;
-					src0Ptr := src0.Data[i01*nb01/4+i02*nb02/4+i03*nb03/4:]
-					////char * dst_ptr = (char *) dst->data + id*rs;
-					dstPtr := dst.Data[id*rs:]
+			id := uint32(0) // Row number ??
+			//// rs := ne00 * nb00
+			rs := ne00 * nb00 / 4 // FIXME Row size in 4-bytes elements
 
-					////memcpy(dst_ptr, src0_ptr, rs);
-					for i := uint32(0); i < rs; i++ {
-						dstPtr[i] = src0Ptr[i] // FIXME ASAP / Double Check
+			for i03 := uint32(0); i03 < ne03; i03++ {
+				for i02 := uint32(0); i02 < ne02; i02++ {
+					for i01 := uint32(0); i01 < ne01; i01++ {
+						////const char * src0_ptr = (char *) src0->data + i01*nb01 + i02*nb02 + i03*nb03;
+						src0Ptr := src0.Data[i01*nb01/4+i02*nb02/4+i03*nb03/4:]
+						////char * dst_ptr = (char *) dst->data + id*rs;
+						dstPtr := dst.Data[id*rs:]
+
+						////memcpy(dst_ptr, src0_ptr, rs);
+						for i := uint32(0); i < rs; i++ {
+							dstPtr[i] = src0Ptr[i] // FIXME ASAP / Double Check
+						}
+
+						id++
 					}
-
-					id++
 				}
 			}
+			////} else if (dst->type == GGML_TYPE_F16) {
+			////    int id = 0;
+			////    ggml_fp16_t * dst_ptr = (ggml_fp16_t *) dst->data;
+
+			////    for (int i03 = 0; i03 < ne03; i03++) {
+			////        for (int i02 = 0; i02 < ne02; i02++) {
+			////            for (int i01 = 0; i01 < ne01; i01++) {
+			////                for (int i00 = 0; i00 < ne00; i00++) {
+			////                    const float * src0_ptr = (float *) ((char *) src0->data + i00*nb00 + i01*nb01 + i02*nb02 + i03*nb03);
+
+			////                    dst_ptr[id] = GGML_FP32_TO_FP16(*src0_ptr);
+			////                    id++;
+			////                }
+			////            }
+			////        }
+			////    }
+		} else {
+			////GGML_ASSERT(false); // TODO: implement
+			fmt.Printf("[HALT] ComputeForwardDupFP32 : not supported tensor type!")
+			os.Exit(1)
 		}
-
-		/*
-			    } else if (dst->type == GGML_TYPE_F16) {
-			        int id = 0;
-			        ggml_fp16_t * dst_ptr = (ggml_fp16_t *) dst->data;
-
-			        for (int i03 = 0; i03 < ne03; i03++) {
-			            for (int i02 = 0; i02 < ne02; i02++) {
-			                for (int i01 = 0; i01 < ne01; i01++) {
-			                    for (int i00 = 0; i00 < ne00; i00++) {
-			                        const float * src0_ptr = (float *) ((char *) src0->data + i00*nb00 + i01*nb01 + i02*nb02 + i03*nb03);
-
-			                        dst_ptr[id] = GGML_FP32_TO_FP16(*src0_ptr);
-			                        id++;
-			                    }
-			                }
-			            }
-			        }
-			    } else {
-			        GGML_ASSERT(false); // TODO: implement
-			    }
-			} else {
-
-			    //printf("%s: this is not optimal - fix me\n", __func__);
-
-			    if (dst->type == GGML_TYPE_F32) {
-			        int id = 0;
-			        float * dst_ptr = (float *) dst->data;
-
-			        for (int i03 = 0; i03 < ne03; i03++) {
-			            for (int i02 = 0; i02 < ne02; i02++) {
-			                for (int i01 = 0; i01 < ne01; i01++) {
-			                    for (int i00 = 0; i00 < ne00; i00++) {
-			                        const float * src0_ptr = (float *) ((char *) src0->data + i00*nb00 + i01*nb01 + i02*nb02 + i03*nb03);
-
-			                        dst_ptr[id] = *src0_ptr;
-			                        id++;
-			                    }
-			                }
-			            }
-			        }
-			    } else if (dst->type == GGML_TYPE_F16) {
-			        int id = 0;
-			        ggml_fp16_t * dst_ptr = (ggml_fp16_t *) dst->data;
-
-			        for (int i03 = 0; i03 < ne03; i03++) {
-			            for (int i02 = 0; i02 < ne02; i02++) {
-			                for (int i01 = 0; i01 < ne01; i01++) {
-			                    for (int i00 = 0; i00 < ne00; i00++) {
-			                        const float * src0_ptr = (float *) ((char *) src0->data + i00*nb00 + i01*nb01 + i02*nb02 + i03*nb03);
-
-			                        dst_ptr[id] = GGML_FP32_TO_FP16(*src0_ptr);
-			                        id++;
-			                    }
-			                }
-			            }
-			        } */
 	} else {
-		////GGML_ASSERT(false) // TODO: implement
-		fmt.Printf("[HALT] ComputeForwardDupFP32 : not supported tensor type!")
-		os.Exit(1)
+
+		//printf("%s: this is not optimal - fix me\n", __func__);
+
+		if dst.Type == TYPE_F32 {
+
+			id := 0
+			////dstPtr = (float *) dst->data;
+
+			for i03 := uint32(0); i03 < ne03; i03++ {
+				for i02 := uint32(0); i02 < ne02; i02++ {
+					for i01 := uint32(0); i01 < ne01; i01++ {
+						for i00 := uint32(0); i00 < ne00; i00++ {
+							//src0Ptr := src0.Data[i00*nb00/4 + i01*nb01/4 + i02*nb02/4 + i03*nb03/4:]
+							//dstPtr[id] = *src0_ptr;
+							// FIXME DoubleCheck
+							dst.Data[id] = src0.Data[i00*nb00/4+i01*nb01/4+i02*nb02/4+i03*nb03/4]
+							id++
+						}
+					}
+				}
+			}
+			////} else if (dst->type == GGML_TYPE_F16) {
+			////    int id = 0;
+			////    ggml_fp16_t * dst_ptr = (ggml_fp16_t *) dst->data;
+
+			////    for (int i03 = 0; i03 < ne03; i03++) {
+			////        for (int i02 = 0; i02 < ne02; i02++) {
+			////            for (int i01 = 0; i01 < ne01; i01++) {
+			////                for (int i00 = 0; i00 < ne00; i00++) {
+			////                    const float * src0_ptr = (float *) ((char *) src0->data + i00*nb00 + i01*nb01 + i02*nb02 + i03*nb03);
+
+			////                    dst_ptr[id] = GGML_FP32_TO_FP16(*src0_ptr);
+			////                    id++;
+			////                }
+			////            }
+			////        }
+			////    }
+		} else {
+			////GGML_ASSERT(false) // TODO: implement
+			fmt.Printf("[HALT] ComputeForwardDupFP32 : not supported tensor type!")
+			os.Exit(1)
+		}
 	}
-	//}
 
 	//fmt.Printf("\n\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
 	//for ii := 0; ii < 8; ii++ {
