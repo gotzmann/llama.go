@@ -4837,7 +4837,7 @@ static void ggml_compute_forward_add_f32(
     if (params->type == GGML_TASK_INIT || params->type == GGML_TASK_FINALIZE) {
         return;
     }
-
+/*
     printf("\n\n>>> INT <<< ggml_compute_forward_add_f32 <<<\n");
 
     printf("\n ~~~ SRC0 TYPE %d [ %d,%d,%d,%d - %d,%d,%d,%d ] } ~~~", src0->type,
@@ -4853,7 +4853,7 @@ static void ggml_compute_forward_add_f32(
     printf("\nsrc0 = %f %f %f %f %f %f", *(float*)src0->data, *((float*)src0->data+1), *((float*)src0->data+2), *((float*)src0->data+3), *((float*)src0->data+4), *((float*)src0->data+5)); 
     printf("\nsrc1 = %f %f %f %f %f %f", *(float*)src1->data, *((float*)src1->data+1), *((float*)src1->data+2), *((float*)src1->data+3), *((float*)src1->data+4), *((float*)src1->data+5)); 
     printf("\ndst = %f %f %f %f %f %f", *(float*)dst->data, *((float*)dst->data+1), *((float*)dst->data+2), *((float*)dst->data+3), *((float*)src0->data+4), *((float*)src0->data+5)); 
-
+*/
     //exit(0);
 
     const int ith = params->ith;
@@ -4905,19 +4905,25 @@ static void ggml_compute_forward_add_f32(
 
     printf("\n\n>>> OUT <<< ggml_compute_forward_add_f32 <<<\n");
 
-    printf("\n ~~~ SRC0 TYPE %d [ %d,%d,%d,%d - %d,%d,%d,%d ] } ~~~", src0->type,
+    printf("\n=== SRC0 %d === [ %d,%d,%d,%d - %d,%d,%d,%d ] ===", src0->type,
         src0->ne[0], src0->ne[1], src0->ne[2], src0->ne[3],
         src0->nb[0], src0->nb[1], src0->nb[2], src0->nb[3]); 
-    printf("\n ~~~ SRC1 TYPE %d [ %d,%d,%d,%d - %d,%d,%d,%d ] } ~~~", src1->type,
+    printf("\n=== SRC1 %d === [ %d,%d,%d,%d - %d,%d,%d,%d ] } ===", src1->type,
         src1->ne[0], src1->ne[1], src1->ne[2], src1->ne[3],
         src1->nb[0], src1->nb[1], src1->nb[2], src1->nb[3]);     
-    printf("\n ~~~ DST DYPE %d [ %d,%d,%d,%d - %d,%d,%d,%d ] } ~~~", dst->type,
+    printf("\n=== DST %d === [ %d,%d,%d,%d - %d,%d,%d,%d ] } ===", dst->type,
         dst->ne[0], dst->ne[1], dst->ne[2], dst->ne[3],
         dst->nb[0], dst->nb[1], dst->nb[2], dst->nb[3]); 
 
-    printf("\nsrc0 = %f %f %f %f %f %f", *(float*)src0->data, *((float*)src0->data+1), *((float*)src0->data+2), *((float*)src0->data+3), *((float*)src0->data+4), *((float*)src0->data+5)); 
-    printf("\nsrc1 = %f %f %f %f %f %f", *(float*)src1->data, *((float*)src1->data+1), *((float*)src1->data+2), *((float*)src1->data+3), *((float*)src1->data+4), *((float*)src1->data+5)); 
-    printf("\ndst = %f %f %f %f %f %f", *(float*)dst->data, *((float*)dst->data+1), *((float*)dst->data+2), *((float*)dst->data+3), *((float*)src0->data+4), *((float*)src0->data+5)); 
+    printf("\n%.4f  %.4f  %.4f  %.4f  %.4f  %.4f  | src0", 
+        *(float*)src0->data, *((float*)src0->data+1), *((float*)src0->data+2), 
+        *((float*)src0->data+3), *((float*)src0->data+4), *((float*)src0->data+5)); 
+    printf("\n%.4f  %.4f  %.4f  %.4f  %.4f  %.4f  | src1", 
+        *(float*)src1->data, *((float*)src1->data+1), *((float*)src1->data+2), 
+        *((float*)src1->data+3), *((float*)src1->data+4), *((float*)src1->data+5)); 
+    printf("\n%.4f  %.4f  %.4f  %.4f  %.4f  %.4f  | dst", 
+        *(float*)dst->data, *((float*)dst->data+1), *((float*)dst->data+2), 
+        *((float*)dst->data+3), *((float*)dst->data+4), *((float*)dst->data+5)); 
 
     //exit(0);
 }
@@ -5800,7 +5806,7 @@ static void ggml_compute_forward_silu_f32(
 #endif
     }
 
-        // IDEAL3
+    // IDEAL3
     printf("\n\n>>> OUT <<< ggml_compute_forward_silu_f32 <<<\n");
 
     printf("\n=== SRC === %d [ %d,%d,%d,%d - %d,%d,%d,%d ] } ===", src0->type,
@@ -5817,7 +5823,7 @@ static void ggml_compute_forward_silu_f32(
         GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t*)src0->data+4)), GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t*)src0->data+5))); 
     }
     if (src0->type == GGML_TYPE_F32) {
-        printf("\nsrc = %f %f %f %f %f %f", 
+        printf("\n%f  %f  %f  %f  %f  %f  | src 32b", 
             *(float*)src0->data, *((float*)src0->data+1), *((float*)src0->data+2), 
             *((float*)src0->data+3), *((float*)src0->data+4), *((float*)src0->data+5)); 
     }
@@ -5828,9 +5834,11 @@ static void ggml_compute_forward_silu_f32(
         GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t*)dst->data+4)), GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t*)dst->data+5))); 
     }
     if (dst->type == GGML_TYPE_F32) {
-        printf("\ndst = %f %f %f %f %f %f", 
+        printf("\n%.4f  %.4f  %.4f  %.4f  %.4f  %.4f %.4f  %.4f  %.4f  %.4f  %.4f  %.4f | dst 32b", 
             *(float*)dst->data, *((float*)dst->data+1), *((float*)dst->data+2), 
-            *((float*)dst->data+3), *((float*)src0->data+4), *((float*)src0->data+5)); 
+            *((float*)dst->data+3), *((float*)dst->data+4), *((float*)dst->data+5),
+            *((float*)dst->data+6), *((float*)dst->data+7), *((float*)dst->data+8),
+            *((float*)dst->data+9), *((float*)dst->data+10), *((float*)dst->data+11)); 
     }
     //exit(0);
 
@@ -7595,17 +7603,25 @@ static void ggml_compute_forward_diag_mask_inf_f32(
         dst->ne[0], dst->ne[1], dst->ne[2], dst->ne[3],
         dst->nb[0], dst->nb[1], dst->nb[2], dst->nb[3]); 
 
-    printf("\nsrc0 = %f %f %f %f %f %f %f %f % %f", 
+    printf("\nsrc0 = %f  %f  %f  %f  %f  %f  %f  %f  %f", 
         *(float*)src0->data, *((float*)src0->data+1), *((float*)src0->data+2), 
         *(((float*)(src0->data)+3)), *(((float*)(src0->data)+4)), *((float*)src0->data+5),
         *((float*)src0->data+6), *((float*)src0->data+7), *((float*)src0->data+8), *((float*)src0->data+9));     
 
     printf("\nsrc1 = %d", *(uint32_t*)src1->data); 
 
-    printf("\ndst = %f %f %f %f %f %f %f %f %f %f", 
+    printf("\n%f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f  %f", 
         *(float*)dst->data, *((float*)dst->data+1), *((float*)dst->data+2), 
         *((float*)dst->data+3), *((float*)dst->data+4), *((float*)dst->data+5),
-        *((float*)dst->data+6), *((float*)dst->data+7), *((float*)dst->data+8), *((float*)dst->data+8)); 
+        *((float*)dst->data+6), *((float*)dst->data+7), *((float*)dst->data+8), 
+        *((float*)dst->data+9),*((float*)dst->data+10),*((float*)dst->data+11),
+        *((float*)dst->data+12),*((float*)dst->data+13),*((float*)dst->data+14),
+        *((float*)dst->data+15),*((float*)dst->data+16),*((float*)dst->data+17),
+        *((float*)dst->data+18),*((float*)dst->data+19),*((float*)dst->data+20),
+        *((float*)dst->data+21),*((float*)dst->data+22),*((float*)dst->data+23),
+        *((float*)dst->data+24),*((float*)dst->data+25),*((float*)dst->data+26),
+        *((float*)dst->data+27),*((float*)dst->data+28),*((float*)dst->data+29)
+        ); 
 
 }
 
@@ -9951,11 +9967,11 @@ void ggml_graph_compute(struct ggml_context * ctx, struct ggml_cgraph * cgraph) 
 
             // DEBUG
             if (node->type == GGML_TYPE_F16) {
-                printf("\n\n###### #%d - %d | %d-%d [ %d,%d ] %.4f \n", i, node->op, node->type, node->n_tasks, node->ne[1], node->ne[2], GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t *) node->data)));
+                printf("\n\n###### #%d - %d | %d-%d [ %d,%d,%d,%d ] %.4f \n", i, node->op, node->type, node->n_tasks, node->ne[0], node->ne[1], node->ne[2], node->ne[3], GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t *) node->data)));
             } else if (node->type == GGML_TYPE_F32) {
-                printf("\n\n###### #%d - %d | %d-%d [ %d,%d ] %.4f \n", i, node->op, node->type, node->n_tasks, node->ne[1], node->ne[2], *(((float*) (char *)node->data)));
+                printf("\n\n###### #%d - %d | %d-%d [ %d,%d,%d,%d ] %.4f \n", i, node->op, node->type, node->n_tasks, node->ne[0], node->ne[1], node->ne[2], node->ne[3], *(((float*) (char *)node->data)));
             } else {
-                printf("\n\n###### #%d - %d | %d-%d [ %d,%d ] %d \n", i, node->op, node->type, node->n_tasks, node->ne[1], node->ne[2], *((uint32_t*) node->data));
+                printf("\n\n###### #%d - %d | %d-%d [ %d,%d,%d,%d ] %d \n", i, node->op, node->type, node->n_tasks, node->ne[0], node->ne[1], node->ne[2], node->ne[3], *((uint32_t*) node->data));
             }    
 
             switch (node->op) {
@@ -10182,11 +10198,11 @@ void ggml_graph_compute(struct ggml_context * ctx, struct ggml_cgraph * cgraph) 
 
         // DEBUG
         if (node->type == GGML_TYPE_F16) {
-            printf("\n\n###### #%d - %d | %d [%d,%d] %.4f \n", i, node->op, node->type, node->ne[1], node->ne[2], GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t *) node->data)));
+            printf("\n\n###### #%d - %d | %d [%d,%d,%d,%d] %.4f \n", i, node->op, node->type, node->ne[0], node->ne[1], node->ne[2], node->ne[3], GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t *) node->data)));
         } else if (node->type == GGML_TYPE_F32) {
-            printf("\n\n###### #%d - %d | %d [%d,%d] %.4f \n", i, node->op, node->type, node->ne[1], node->ne[2], *(((float*) node->data)));
+            printf("\n\n###### #%d - %d | %d [%d,%d,%d,%d] %.4f \n", i, node->op, node->type, node->ne[0], node->ne[1], node->ne[2], node->ne[3], *(((float*) node->data)));
         } else {
-            printf("\n\n###### #%d - %d | %d [%d,%d] %d \n", i, node->op, node->type, node->ne[1], node->ne[2], *((uint32_t*) node->data));
+            printf("\n\n###### #%d - %d | %d [%d,%d,%d,%d] %d \n", i, node->op, node->type, node->ne[0], node->ne[1], node->ne[2], node->ne[3], *((uint32_t*) node->data));
         }
 
         // TODO: this could be used to avoid unnecessary computations, but it needs to be improved
@@ -10242,7 +10258,7 @@ void ggml_graph_compute(struct ggml_context * ctx, struct ggml_cgraph * cgraph) 
         }
 
         // BREAKPOINT
-		if (i == 20) {
+		if (i == 40) {
 			printf("\n\n=== HALT #%d ===", i);
 			exit(0);
 		}
