@@ -379,8 +379,8 @@ func Eval(
 	//// LLAMA_ASSERT(!!kv_self.ctx);
 
 	embdSize := model.hparams.embdSize
-	layersCount := uint32(1) // model.hparams.layersCount
-	ctxSize := uint32(512)   // model.hparams.ctxSize // FIXME
+	layersCount := model.hparams.layersCount // uint32(1) // model.hparams.layersCount
+	ctxSize := uint32(512)                   // model.hparams.ctxSize // FIXME
 	headsCount := model.hparams.headsCount
 	vocabSize := model.hparams.vocabSize
 	rotCount := model.hparams.embdSize / model.hparams.headsCount
