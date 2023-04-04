@@ -6463,7 +6463,7 @@ static void ggml_compute_forward_mul_mat_f16_f32(
             *((float*)src1->data+3), *((float*)src1->data+4), *((float*)src1->data+5),
             *((float*)src1->data+6), *((float*)src1->data+7)); 
     }
-
+/*
     if (dst->type == GGML_TYPE_F16) {
         printf("\n%.4f %.4f  %.4f  %.4f  %.4f  %.4f  %.4f %.4f | dst 16b", 
         GGML_COMPUTE_FP16_TO_FP32(*(ggml_fp16_t*)dst->data), GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t*)dst->data+1)), 
@@ -6477,6 +6477,9 @@ static void ggml_compute_forward_mul_mat_f16_f32(
             *((float*)dst->data+3), *((float*)dst->data+4), *((float*)dst->data+5),
             *((float*)dst->data+6), *((float*)dst->data+7));
     }
+*/
+
+    printTensor(dst, "DST"); 
 
     //int64_t t1 = ggml_time_us();
     //static int64_t acc = 0;
@@ -9966,13 +9969,7 @@ void ggml_graph_compute(struct ggml_context * ctx, struct ggml_cgraph * cgraph) 
             struct ggml_tensor * node = cgraph->nodes[i];
 
             // DEBUG
-            if (node->type == GGML_TYPE_F16) {
-                printf("\n\n###### #%d - %d | %d-%d [ %d,%d,%d,%d ] %.4f \n", i, node->op, node->type, node->n_tasks, node->ne[0], node->ne[1], node->ne[2], node->ne[3], GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t *) node->data)));
-            } else if (node->type == GGML_TYPE_F32) {
-                printf("\n\n###### #%d - %d | %d-%d [ %d,%d,%d,%d ] %.4f \n", i, node->op, node->type, node->n_tasks, node->ne[0], node->ne[1], node->ne[2], node->ne[3], *(((float*) (char *)node->data)));
-            } else {
-                printf("\n\n###### #%d - %d | %d-%d [ %d,%d,%d,%d ] %d \n", i, node->op, node->type, node->n_tasks, node->ne[0], node->ne[1], node->ne[2], node->ne[3], *((uint32_t*) node->data));
-            }    
+            printf("\n\n### STEP #%d ### %d | %d-%d [ %d:%d:%d:%d ] ###", i, node->op, node->type, node->n_tasks, node->ne[0], node->ne[1], node->ne[2], node->ne[3]);  
 
             switch (node->op) {
                 case GGML_OP_DUP:
@@ -10197,13 +10194,8 @@ void ggml_graph_compute(struct ggml_context * ctx, struct ggml_cgraph * cgraph) 
         struct ggml_tensor * node = cgraph->nodes[i];
 
         // DEBUG
-        if (node->type == GGML_TYPE_F16) {
-            printf("\n\n###### #%d - %d | %d [%d,%d,%d,%d] %.4f \n", i, node->op, node->type, node->ne[0], node->ne[1], node->ne[2], node->ne[3], GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t *) node->data)));
-        } else if (node->type == GGML_TYPE_F32) {
-            printf("\n\n###### #%d - %d | %d [%d,%d,%d,%d] %.4f \n", i, node->op, node->type, node->ne[0], node->ne[1], node->ne[2], node->ne[3], *(((float*) node->data)));
-        } else {
-            printf("\n\n###### #%d - %d | %d [%d,%d,%d,%d] %d \n", i, node->op, node->type, node->ne[0], node->ne[1], node->ne[2], node->ne[3], *((uint32_t*) node->data));
-        }
+
+        printf("\n\n### STEP #%d ### %d | %d [ %d:%d:%d:%d ]", i, node->op, node->type, node->ne[0], node->ne[1], node->ne[2], node->ne[3]);
 
         // TODO: this could be used to avoid unnecessary computations, but it needs to be improved
         //if (node->grad == NULL && node->perf_runs > 0) {

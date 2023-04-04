@@ -379,8 +379,8 @@ func Eval(
 	//// LLAMA_ASSERT(!!kv_self.ctx);
 
 	embdSize := model.hparams.embdSize
-	layersCount := model.hparams.layersCount
-	ctxSize := uint32(512) // model.hparams.ctxSize // FIXME
+	layersCount := uint32(1) // model.hparams.layersCount
+	ctxSize := uint32(512)   // model.hparams.ctxSize // FIXME
 	headsCount := model.hparams.headsCount
 	vocabSize := model.hparams.vocabSize
 	rotCount := model.hparams.embdSize / model.hparams.headsCount
@@ -662,13 +662,9 @@ func Eval(
 		}
 	}
 
-	fmt.Printf("\n\n=== INPL MATRIX ===\n\n") // DEBUG
-	for nn := 0; nn < int(N); nn++ {
-		fmt.Printf("\n %d * %d ... ", nn, vocabSize)
-		for ii := 0; ii < 12; ii++ {
-			fmt.Printf("%.4f  ", inpL.Data[nn*int(vocabSize)+ii])
-		}
-	}
+	printTensor(inpL, "INPL")
+
+	//printTensor(lctx.Logits, "LOGITS")
 
 	fmt.Printf("\n\n=== LOGITS === %d ===\n", len(lctx.Logits)) // DEBUG
 	for ii := 0; ii < 13; ii++ {
@@ -723,6 +719,29 @@ func Eval(
 	////}
 
 	return nil
+}
+
+func printTensor(tensor *ml.Tensor, name string) {
+	var dt string
+	if tensor.Type == ml.TYPE_F16 {
+		dt = "FP16"
+	}
+	if tensor.Type == ml.TYPE_F32 {
+		dt = "FP32"
+	}
+	if tensor.Type == ml.TYPE_Q4_0 {
+		dt = "INT4"
+	}
+
+	fmt.Printf("\n\n=== [ %s | %s | %d:%d:%d ] ===\n",
+		name, dt, tensor.NE[0], tensor.NE[1], tensor.NE[2])
+
+	for nn := 0; nn < min(12, int(tensor.NE[1])); nn++ {
+		fmt.Printf("\n %d x %d ...\t", nn, tensor.NE[0])
+		for ii := 0; ii < min(12, int(tensor.NE[0])); ii++ {
+			fmt.Printf("%.3f\t", tensor.Data[nn*int(tensor.NE[0])+ii])
+		}
+	}
 }
 
 func sampleTopK(logitsID []pair, topK uint32) []pair {

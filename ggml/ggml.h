@@ -286,6 +286,8 @@ struct ggml_tensor {
     char padding[8];
 };
 
+void printTensor(struct ggml_tensor * tensor, char * name);
+
 // computation graph
 struct ggml_cgraph {
     int n_nodes;

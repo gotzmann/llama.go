@@ -37,6 +37,29 @@ const (
 	TYPE_COUNT DType = 8 // NB! COUNT should be the last
 )
 
+func printTensor(tensor *Tensor, name string) {
+	var dt string
+	if tensor.Type == TYPE_F16 {
+		dt = "FP16"
+	}
+	if tensor.Type == TYPE_F32 {
+		dt = "FP32"
+	}
+	if tensor.Type == TYPE_Q4_0 {
+		dt = "INT4"
+	}
+
+	fmt.Printf("\n\n=== [ %s | %s | %d:%d:%d ] ===\n",
+		name, dt, tensor.NE[0], tensor.NE[1], tensor.NE[2])
+
+	for nn := 0; nn < min(12, int(tensor.NE[1])); nn++ {
+		fmt.Printf("\n %d x %d ...\t", nn, tensor.NE[0])
+		for ii := 0; ii < min(12, int(tensor.NE[0])); ii++ {
+			fmt.Printf("%.3f\t", tensor.Data[nn*int(tensor.NE[0])+ii])
+		}
+	}
+}
+
 // precomputed exp table for f16 (128 KB)
 // static ggml_fp16_t table_exp_f16[1 << 16];
 var TableExpFP16 [1 << 16]float16.Float16
@@ -1695,7 +1718,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			node := graph.Nodes[i]
 
 			// DEBUG
-			fmt.Printf("\n\n###### #%d - %d - %d [ %d,%d,%d,%d ] %.4f \n", i, node.op, node.Type, node.NE[0], node.NE[1], node.NE[2], node.NE[3], node.Data[0])
+			fmt.Printf("\n\n### STEP #%d ### %d - %d [ %d:%d:%d:%d ] ###", i, node.op, node.Type, node.NE[0], node.NE[1], node.NE[2], node.NE[3])
 
 			switch node.op {
 
@@ -1892,7 +1915,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		node := graph.Nodes[i]
 
 		// DEBUG
-		fmt.Printf("\n\n###### #%d - %d - %d [%d,%d,%d,%d] %.4f \n", i, node.op, node.Type, node.NE[0], node.NE[1], node.NE[2], node.NE[3], node.Data[0])
+		fmt.Printf("\n\n### STEP #%d ### %d - %d [ %d:%d:%d:%d ] ###", i, node.op, node.Type, node.NE[0], node.NE[1], node.NE[2], node.NE[3])
 
 		// TODO: this could be used to avoid unnecessary computations, but it needs to be improved
 		//if (node->grad == NULL && node->perf_runs > 0) {
@@ -2842,12 +2865,14 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		fmt.Printf("%.4f  ", src1.Data[ii])
 	}
 
-	fmt.Printf("\n=== DST === %d %d %d %d === %d %d %d %d ===\n",
-		dst.NE[0], dst.NE[1], dst.NE[2], dst.NE[3],
-		dst.NB[0], dst.NB[1], dst.NB[2], dst.NB[3]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("%.4f  ", dst.Data[ii])
-	}
+	printTensor(dst, "DST")
+
+	//fmt.Printf("\n=== DST === %d %d %d %d === %d %d %d %d ===\n",
+	//	dst.NE[0], dst.NE[1], dst.NE[2], dst.NE[3],
+	//	dst.NB[0], dst.NB[1], dst.NB[2], dst.NB[3]) // DEBUG
+	//for ii := 0; ii < 8; ii++ {
+	//	fmt.Printf("%.4f  ", dst.Data[ii])
+	//}
 
 	//fmt.Printf("\n>>> ComputeForwardMulMatFP32 <<<")
 	//fmt.Printf("\n\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
