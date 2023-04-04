@@ -1718,7 +1718,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			node := graph.Nodes[i]
 
 			// DEBUG
-			fmt.Printf("\n\n### STEP #%d ### %d - %d [ %d:%d:%d:%d ] ###", i, node.op, node.Type, node.NE[0], node.NE[1], node.NE[2], node.NE[3])
+			fmt.Printf("\n\n### STEP #%d ### %d - %d [ %d:%d:%d:%d ]", i, node.op, node.Type, node.NE[0], node.NE[1], node.NE[2], node.NE[3])
 
 			switch node.op {
 
@@ -1915,7 +1915,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		node := graph.Nodes[i]
 
 		// DEBUG
-		fmt.Printf("\n\n### STEP #%d ### %d - %d [ %d:%d:%d:%d ] ###", i, node.op, node.Type, node.NE[0], node.NE[1], node.NE[2], node.NE[3])
+		fmt.Printf("\n\n### STEP #%d ### %d - %d [ %d:%d:%d:%d ]", i, node.op, node.Type, node.NE[0], node.NE[1], node.NE[2], node.NE[3])
 
 		// TODO: this could be used to avoid unnecessary computations, but it needs to be improved
 		//if (node->grad == NULL && node->perf_runs > 0) {
@@ -2522,6 +2522,9 @@ func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 			}
 		}
 	}
+
+	printTensor(src0, "REPEAT SRC0")
+	printTensor(dst, "REPEAT DST")
 }
 
 func VecMulFP32(n uint32, z, x, y []float32) {
@@ -2537,6 +2540,11 @@ func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	//fmt.Printf(" [ ComputeForwardMulFP32 ] ")
 	////assert(params->ith == 0);
 	////assert(ggml_are_same_shape(src0, src1) && ggml_are_same_shape(src0, dst));
+
+	if !AreSameShape(src0, src1) || !AreSameShape(src0, dst) {
+		fmt.Printf("\n[HALT] ComputeForwardMulFP32 : different shapes!")
+		os.Exit(1)
+	}
 
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
@@ -2560,6 +2568,10 @@ func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		////(float *) ((char *) src0->data + i*(src0->nb[1])),
 		////(float *) ((char *) src1->data + i*(src1->nb[1])));
 	}
+
+	printTensor(src0, "MUL SRC0")
+	printTensor(src1, "MUL SRC1")
+	printTensor(dst, "MUL DST")
 }
 
 // inline static void ggml_vec_dot_f32(const int n, float * restrict s, const float * restrict x, const float * restrict y) {
@@ -2932,19 +2944,19 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
 	}
-
-	fmt.Printf("\n\n>>> ml.Copy <<< >>> ComputeForwardDupFP32 IN <<<\n")
-	fmt.Printf("\n=== SRC === LEN = %d %d %d %d - %d %d %d %d\n",
-		src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
-		src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
-	for ii := 0; ii < 12; ii++ {
-		fmt.Printf("%.4f  ", src0.Data[ii])
-	}
-	fmt.Printf("\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
-	for ii := 0; ii < 12; ii++ {
-		fmt.Printf("%.4f  ", dst.Data[ii])
-	}
-
+	/*
+		fmt.Printf("\n\n>>> ml.Copy <<< >>> ComputeForwardDupFP32 IN <<<\n")
+		fmt.Printf("\n=== SRC === LEN = %d %d %d %d - %d %d %d %d\n",
+			src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
+			src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
+		for ii := 0; ii < 12; ii++ {
+			fmt.Printf("%.4f  ", src0.Data[ii])
+		}
+		fmt.Printf("\n=== DST === LEN = %d * %d\n", dst.NE[0], dst.NE[1]) // DEBUG
+		for ii := 0; ii < 12; ii++ {
+			fmt.Printf("%.4f  ", dst.Data[ii])
+		}
+	*/
 	ne00 := src0.NE[0]
 	ne01 := src0.NE[1]
 	ne02 := src0.NE[2]
@@ -3803,24 +3815,27 @@ func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
 	   		////#endif
 	   	}
 	*/
+	/*
+		fmt.Printf("\n\n>>> OUT <<< ComputeForwardSiluFP32 <<<")
 
-	fmt.Printf("\n\n>>> OUT <<< ComputeForwardSiluFP32 <<<")
+		fmt.Printf("\n=== SRC0 | %d %d %d %d === %d %d %d %d ===\n",
+			src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
+			src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
+		for ii := 0; ii < min(12, int(src0.Nelements())); ii++ {
+			fmt.Printf("%.4f  ", src0.Data[ii])
+		}
 
-	fmt.Printf("\n=== SRC0 | %d %d %d %d === %d %d %d %d ===\n",
-		src0.NE[0], src0.NE[1], src0.NE[2], src0.NE[3],
-		src0.NB[0], src0.NB[1], src0.NB[2], src0.NB[3]) // DEBUG
-	for ii := 0; ii < min(12, int(src0.Nelements())); ii++ {
-		fmt.Printf("%.4f  ", src0.Data[ii])
-	}
+		fmt.Printf("\n=== DST === %d %d %d %d === %d %d %d %d ===\n",
+			dst.NE[0], dst.NE[1], dst.NE[2], dst.NE[3],
+			dst.NB[0], dst.NB[1], dst.NB[2], dst.NB[3]) // DEBUG
+		for ii := 0; ii < min(12, int(dst.Nelements())); ii++ {
+			fmt.Printf("%.4f  ", dst.Data[ii])
+		}
 
-	fmt.Printf("\n=== DST === %d %d %d %d === %d %d %d %d ===\n",
-		dst.NE[0], dst.NE[1], dst.NE[2], dst.NE[3],
-		dst.NB[0], dst.NB[1], dst.NB[2], dst.NB[3]) // DEBUG
-	for ii := 0; ii < min(12, int(dst.Nelements())); ii++ {
-		fmt.Printf("%.4f  ", dst.Data[ii])
-	}
+		//os.Exit(0)*/
 
-	//os.Exit(0)
+	printTensor(src0, "SRC")
+	printTensor(dst, "DST")
 }
 
 // ---

@@ -4643,7 +4643,7 @@ static void ggml_compute_forward_dup_f32(
     if (params->type == GGML_TASK_INIT || params->type == GGML_TASK_FINALIZE) {
         return;
     }
-
+/*
     printf("\n\n>>> COPY 32 <<< >>> ggml_compute_forward_dup_f32 IN <<<");
     printf("\n=== SRC === %d [ %d,%d,%d,%d - %d,%d,%d,%d ] } ===", src0->type,
         src0->ne[0], src0->ne[1], src0->ne[2], src0->ne[3],
@@ -4654,7 +4654,7 @@ static void ggml_compute_forward_dup_f32(
 
     printf("\nsrc = %f %f %f %f %f %f", *(float*)src0->data, *((float*)src0->data+1), *((float*)src0->data+2), *((float*)src0->data+3), *((float*)src0->data+4), *((float*)src0->data+5)); 
     printf("\ndst = %f %f %f %f %f %f", *(float*)dst->data, *((float*)dst->data+1), *((float*)dst->data+2), *((float*)dst->data+3), *((float*)src0->data+4), *((float*)src0->data+5)); 
-
+*/
     const int ne00 = src0->ne[0];
     const int ne01 = src0->ne[1];
     const int ne02 = src0->ne[2];
@@ -5040,6 +5040,10 @@ static void ggml_compute_forward_mul_f32(
     //printf("\ndst = %f %f %f %f", *(float*)dst->data, *((float*)dst->data+1), *((float*)dst->data+2), *((float*)dst->data+3)); 
 
     //exit(0);
+
+    printTensor(src0, "MUL SRC0");
+    printTensor(src1, "MUL SRC1");
+    printTensor(dst, "MUL DST");
 }
 
 static void ggml_compute_forward_mul(
@@ -5397,6 +5401,9 @@ static void ggml_compute_forward_repeat_f32(
     //printf("\ndst = %f %f %f %f", *(float*)dst->data, *((float*)dst->data+1), *((float*)dst->data+2), *((float*)dst->data+3)); 
 
     //exit(0);
+
+    printTensor(src0, "REPEAT SRC0");
+	printTensor(dst, "REPEAT DST");
 }
 
 static void ggml_compute_forward_repeat(
@@ -5742,7 +5749,7 @@ static void ggml_compute_forward_silu_f32(
     if (params->type == GGML_TASK_INIT || params->type == GGML_TASK_FINALIZE) {
         return;
     }
-
+/*
     // IDEAL3
     printf("\n\n>>> IN <<< ggml_compute_forward_silu_f32 <<<\n");
 
@@ -5776,7 +5783,7 @@ static void ggml_compute_forward_silu_f32(
             *((float*)dst->data+3), *((float*)src0->data+4), *((float*)src0->data+5)); 
     }
     //exit(0);
-
+*/
 
     const int ith = params->ith;
     const int nth = params->nth;
@@ -5805,7 +5812,7 @@ static void ggml_compute_forward_silu_f32(
         }
 #endif
     }
-
+/*
     // IDEAL3
     printf("\n\n>>> OUT <<< ggml_compute_forward_silu_f32 <<<\n");
 
@@ -5841,7 +5848,9 @@ static void ggml_compute_forward_silu_f32(
             *((float*)dst->data+9), *((float*)dst->data+10), *((float*)dst->data+11)); 
     }
     //exit(0);
-
+*/
+    printTensor(src0, "SRC SILU");
+    printTensor(dst, "DST SILU");
 }
 
 static void ggml_compute_forward_silu(
@@ -9969,7 +9978,7 @@ void ggml_graph_compute(struct ggml_context * ctx, struct ggml_cgraph * cgraph) 
             struct ggml_tensor * node = cgraph->nodes[i];
 
             // DEBUG
-            printf("\n\n### STEP #%d ### %d | %d-%d [ %d:%d:%d:%d ] ###", i, node->op, node->type, node->n_tasks, node->ne[0], node->ne[1], node->ne[2], node->ne[3]);  
+            printf("\n\n### STEP #%d ### %d | %d-%d [ %d:%d:%d:%d ]", i, node->op, node->type, node->n_tasks, node->ne[0], node->ne[1], node->ne[2], node->ne[3]);  
 
             switch (node->op) {
                 case GGML_OP_DUP:
