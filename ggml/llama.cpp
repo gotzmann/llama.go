@@ -873,29 +873,7 @@ static bool llama_eval_internal(
     struct ggml_tensor * embd = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, N);
     memcpy(embd->data, tokens, N*ggml_element_size(embd));
 
-    printf("\n\n=== EMBD 01-1 TYPE %d === LEN = %d * %d\n", embd->type, embd->ne[0], embd->ne[1]); // DEBUG
-    for (int ii = 0; ii < 8; ii++) {
-        int32_t *f = (int32_t *) ((char *) embd->data + ii*sizeof(int32_t));
-        printf("| EMBD[%d] = %d |", ii, *f);
-    }
-
     struct ggml_tensor * inpL = ggml_get_rows(ctx0, model.tok_embeddings, embd);
-
-    printf("\n\n=== INPL 01-1 TYPE %d === LEN = %d * %d\n", inpL->type, inpL->ne[0], inpL->ne[1]); // DEBUG
-    for (int ii = 0; ii < 8; ii++) {
-        float *f = (float *) ((char *) inpL->data + ii*sizeof(float));
-        printf("| INPL[%d] = %f |", ii, *f);
-    }
-    printf("\n\n=== INPL 01-2 === LEN = %d\n", inpL->ne[0]); // DEBUG
-    for (int ii = 0; ii < 8; ii++) {
-        float *f2 = (float *) ggml_get_data(inpL) + (n_vocab*(N-1));
-        printf("| INPL[%d] = %f |", ii, *f2);
-    } 
-
-    //printf("\n\n=== INPL 01 === LEN = %d\n", inpL->ne[0]); // DEBUG
-	//for (int ii = 0; ii < 8; ii++) {
-	//	printf("| INPL[%d] = %f |", ii, /*(float*)(inpL->data)[ii]);*/(float *) ((char *) inpL->data + ii*sizeof(float)));
-	//}
 
     // DEBUG
     ////fprintf(stderr, "\n\n[%s] model.tok_embeddings NE[0] = %d\n\n", __func__, model.tok_embeddings->ne[0]);
@@ -911,42 +889,16 @@ static bool llama_eval_internal(
         {
             cur = ggml_rms_norm(ctx0, inpL);
 
-            printf("\n\n=== CUR 01 TYPE %d === LEN = %d * %d\n", cur->type, cur->ne[0], cur->ne[1]); // DEBUG
-            for (int ii = 0; ii < 8; ii++) {
-                float *f = (float *) ((char *) cur->data + ii*sizeof(float));
-                printf("| CUR[%d] = %f |", ii, *f);
-
-            }
-
-            printf("\n\n=== INPL 02 === LEN = %d\n", inpL->ne[0]); // DEBUG
-            for (int ii = 0; ii < 8; ii++) {
-                printf("| INPL[%d] = %f |", ii, /*(float*)(inpL->data)[ii]);*/(float *) ((char *) inpL->data + ii*sizeof(float)));
-            }
-
             // cur = attention_norm*cur
             cur = ggml_mul(ctx0,
                         ggml_repeat(ctx0, model.layers[il].attention_norm, cur),
                         cur);
-
-            printf("\n\n=== CUR 02 TYPE %d === LEN = %d * %d\n", cur->type, cur->ne[0], cur->ne[1]); // DEBUG
-            for (int ii = 0; ii < 8; ii++) {
-                float *f = (float *) ((char *) cur->data + ii*sizeof(float));
-                printf("| CUR[%d] = %f |", ii, *f);
-
-            }
         }
 
         //exit(1);
 
         // self-attention
         {
-            // TYPE_Q4_0
-            printf("\n\n=== model.layers[il].wq TYPE %d === LEN = %d * %d\n", model.layers[il].wq->type, model.layers[il].wq->ne[0], model.layers[il].wq->ne[1]); // DEBUG
-            for (int ii = 0; ii < 8; ii++) {
-                uint16_t *val = (uint16_t *) ((char *) model.layers[il].wq->data + ii*sizeof(uint16_t));
-                printf("| model.layers[il].wq[%d] = %d |", ii, *val);
-            }
-
             struct ggml_tensor * Qcur = ggml_mul_mat(ctx0, model.layers[il].wq, cur);
             struct ggml_tensor * Kcur = ggml_mul_mat(ctx0, model.layers[il].wk, cur);
             struct ggml_tensor * Vcur = ggml_mul_mat(ctx0, model.layers[il].wv, cur);
@@ -1108,13 +1060,6 @@ static bool llama_eval_internal(
         // input for next layer
         inpL = cur;
 
-        //printf("\n\n=== INPL 03 === LEN = %d\n", inpL->ne[0]); // DEBUG
-        //printf("\n\n=== FIN #%d [ %d,%d ] ===\n", il, inpL->ne[0], inpL->ne[1]); // DEBUG
-	    //for (int ii = 0; ii < 8; ii++) {
-		//    float f = * (( (float * )(inpL->data)) + ii*4);
-		//    printf("%.4f  ", f);
-	    //}
-        //exit(0);
     }
 
     // GOTZ lctx.use_buf(ctx0, 0);
@@ -1135,37 +1080,13 @@ static bool llama_eval_internal(
         // inpL = norm*inpL
         inpL = ggml_mul(ctx0,
                     ggml_repeat(ctx0, model.norm, inpL),
-                    inpL);
-
-        //printf("\n\n=== INPL 05 === LEN = %d\n", inpL->ne[0]); // DEBUG
-        printf("\n\n=== INPL 05-1 TYPE %d === LEN = %d * %d\n", inpL->type, inpL->ne[0], inpL->ne[1]); // DEBUG
-	    for (int ii = 0; ii < 8; ii++) {
-		    printf("| INPL[%d] = %f |", ii, /*(float*)(inpL->data)[ii]);*/(float *) ((char *) inpL->data + ii*sizeof(float)));
-	    }            
+                    inpL);         
 
         embeddings = inpL;
     }
 
     // lm_head
     inpL = ggml_mul_mat(ctx0, model.output, inpL);
-
-    //printf("\n\n=== INPL 06 === LEN = %d\n", inpL->ne[0]); // DEBUG
-    //for (int ii = 0; ii < 8; ii++) {
-    //    printf("| INPL[%d] = %f |", ii, /*(float*)(inpL->data)[ii]);*/(float *) ((char *) inpL->data + ii*sizeof(float)));
-    //}
-
-    //printf("\n\n=== INPL 06-1 === LEN = %d\n", inpL->ne[0]); // DEBUG
-    printf("\n\n=== INPL 06-1 TYPE %d === LEN = %d * %d\n", inpL->type, inpL->ne[0], inpL->ne[1]); // DEBUG
-    for (int ii = 0; ii < 8; ii++) {
-        float *f = (float *) ((char *) inpL->data + ii*sizeof(float));
-        printf("| INPL[%d] = %f |", ii, *f);
-
-    }
-    printf("\n\n=== INPL 06-2 === LEN = %d\n", inpL->ne[0]); // DEBUG
-    for (int ii = 0; ii < 8; ii++) {
-        float *f2 = (float *) ggml_get_data(inpL) + (n_vocab*(N-1));
-        printf("| INPL[%d] = %f |", ii, *f2);
-    } 
 
     // GOTZ lctx.use_buf(ctx0, -1);
 
@@ -1175,44 +1096,7 @@ static bool llama_eval_internal(
     // run the computation
     ggml_build_forward_expand(&gf, inpL);
 
-
-    //printf("\n\n=== INPL 07 === LEN = %d\n", inpL->ne[0]); // DEBUG
-    //for (int ii = 0; ii < 8; ii++) {
-    //    printf("| INPL[%d] = %f |", ii, /*(float*)(inpL->data)[ii]);*/(float *) ((char *) inpL->data + ii*sizeof(float)));
-    //}
-
-    //printf("\n\n=== INPL 07-1 === LEN = %d\n", inpL->ne[0]); // DEBUG
-    printf("\n\n=== INPL 07-1 TYPE %d === LEN = %d * %d\n", inpL->type, inpL->ne[0], inpL->ne[1]); // DEBUG
-    for (int ii = 0; ii < 8; ii++) {
-        float *f = (float *) ((char *) inpL->data + ii*sizeof(float));
-        printf("| INPL[%d] = %f |", ii, *f);
-
-    }
-    printf("\n\n=== INPL 07-2 === LEN = %d\n", inpL->ne[0]); // DEBUG
-    for (int ii = 0; ii < 8; ii++) {
-        float *f2 = (float *) ggml_get_data(inpL) + (n_vocab*(N-1));
-        printf("| INPL[%d] = %f |", ii, *f2);
-    } 
-
     ggml_graph_compute       (ctx0, &gf);
-
-    //printf("\n\n=== INPL 08 === LEN = %d\n", inpL->ne[0]); // DEBUG
-    //for (int ii = 0; ii < 8; ii++) {
-    //    printf("| INPL[%d] = %f |", ii, /*(float*)(inpL->data)[ii]);*/(float *) ((char *) inpL->data + ii*sizeof(float)));
-    //}
-
-    //printf("\n\n=== INPL 08-1 === LEN = %d\n", inpL->ne[0]); // DEBUG
-    //printf("\n\n=== INPL 08-1 TYPE %d === LEN = %d * %d\n", inpL->type, inpL->ne[0], inpL->ne[1]); // DEBUG
-    //for (int ii = 0; ii < 8; ii++) {
-    //    float *f = (float *) ((char *) inpL->data + ii*sizeof(float));
-    //    printf("| INPL[%d] = %f |", ii, *f);
-
-    //}
-    //printf("\n\n=== INPL 08-2 === LEN = %d\n", inpL->ne[0]); // DEBUG
-    //for (int ii = 0; ii < 8; ii++) {
-    //    float *f2 = (float *) ggml_get_data(inpL) + (n_vocab*(N-1));
-    //    printf("| INPL[%d] = %f |", ii, *f2);
-    //} 
 
     //if (n_past%100 == 0) {
     //    ggml_graph_print   (&gf);
@@ -1227,23 +1111,11 @@ static bool llama_eval_internal(
         auto & logits_out = lctx.logits;
 
         //printf("\n\n=== INPL 09-1 === LEN = %d\n", inpL->ne[0]); // DEBUG
-        printf("\n\n=== INPL 09 %d === [%d,%d,%d,%d] ===\n", inpL->type, inpL->ne[0], inpL->ne[1], inpL->ne[2], inpL->ne[3]); // DEBUG
-	    for (int ii = 0; ii < 12; ii++) {
-            float f = * (( (float * )(inpL->data)) + ii);
-		    printf("%.4f  ", f);
-
-	    }
-        //printf("\n\n=== INPL 09 OFFSET === LEN = %d\n", inpL->ne[0]); // DEBUG
-	    //for (int ii = 0; ii < 8; ii++) {
-            //float *f2 = (float *) ggml_get_data(inpL) + (n_vocab*(N-1));
-        //    float f = * (( (float * )(inpL->data)) + ii*4);
-        //    printf("%.4f  ", f);
-        //}    
-
-        printf("\n\n=== BEFORE === logits_out.size() = %d\n", logits_out.size()); // DEBUG
-        for (int ii = 0; ii < 13; ii++) {
-            printf("%.4f  ", logits_out[ii]);
-        }
+        //printf("\n\n=== INPL 09 %d === [%d,%d,%d,%d] ===\n", inpL->type, inpL->ne[0], inpL->ne[1], inpL->ne[2], inpL->ne[3]); // DEBUG
+	    //for (int ii = 0; ii < 12; ii++) {
+        //    float f = * (( (float * )(inpL->data)) + ii);
+		//    printf("%.4f  ", f);
+	    //}  
 
         if (lctx.logits_all) {
             logits_out.resize(n_vocab * N);
@@ -1254,16 +1126,20 @@ static bool llama_eval_internal(
             memcpy(logits_out.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
         }
 
-        printf("\n\n=== AFTER === logits_out.size() = %d\n", logits_out.size()); // DEBUG
+        printf("\n\n=== INPL MATRIX ==="); // DEBUG
+	    for (int nn = 0; nn < N; nn++) {
+            printf("\n %d * %d ... ", nn, n_vocab);
+            for (int ii = 0; ii < 12; ii++) {
+                float f = * (( (float * )(inpL->data)) + nn*n_vocab + ii);
+		        printf("%.4f  ", f);
+            }
+	    }
+
+        printf("\n\n=== LOGITS === %d ===\n", logits_out.size()); // DEBUG
         for (int ii = 0; ii < 13; ii++) {
             printf("%.4f  ", logits_out[ii]);
         }
 
-        //printf("\n\n=== INPL 10 === LEN = %d\n", inpL->ne[0]); // DEBUG
-	    //for (int ii = 0; ii < 8; ii++) {
-		//    printf("| INPL[%d] = %f |", ii, /*(float*)(inpL->data)[ii]);*/(float *) ((char *) inpL->data + ii*sizeof(float)));
-        //    printf("| INPL[%d] = %f |", ii, (float *) ggml_get_data(inpL) + (n_vocab*(N-1)));
-	    //}
     }
 
     exit(0); // DEBUG
