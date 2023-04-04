@@ -878,7 +878,7 @@ static bool llama_eval_internal(
     // DEBUG
     ////fprintf(stderr, "\n\n[%s] model.tok_embeddings NE[0] = %d\n\n", __func__, model.tok_embeddings->ne[0]);
 
-    for (int il = 0; il < 1/*n_layer*/; ++il) {
+    for (int il = 0; il < n_layer; ++il) {
         struct ggml_tensor * inpSA = inpL;
 
         struct ggml_tensor * cur;
@@ -906,57 +906,12 @@ static bool llama_eval_internal(
             // store key and value to memory
             if (N >= 1) {
 
-                // TYPE_I32
-                printf("\n\nkv_self.n = %d"), kv_self.n;
-                printf("\n=== kv_self.k TYPE %d === LEN = %d * %d\n", kv_self.k->type, kv_self.k->ne[0], kv_self.k->ne[1]); // DEBUG
-                for (int ii = 0; ii < 8; ii++) {
-                    uint32_t *val = (uint32_t *) ((char *) kv_self.k->data + ii*sizeof(uint32_t));
-                    printf("| kv_self.k[%d] = %d |", ii, *val);
-                }
-                printf("\n=== kv_self.v TYPE %d === LEN = %d * %d\n", kv_self.v->type, kv_self.v->ne[0], kv_self.v->ne[1]); // DEBUG
-                for (int ii = 0; ii < 8; ii++) {
-                    uint32_t *val = (uint32_t *) ((char *) kv_self.v->data + ii*sizeof(uint32_t));
-                    printf("| kv_self.v[%d] = %d |", ii, *val);
-                }
-
-                printf("\n\n(ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past) = %d", (ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past));                
-                printf("\nggml_element_size(kv_self.k) = %d\n\n", ggml_element_size(kv_self.k));
                 // 1D view = ctx, tensor, NE[0], offset
                 struct ggml_tensor * k = ggml_view_1d(ctx0, kv_self.k, N*n_embd, (ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past));
                 struct ggml_tensor * v = ggml_view_1d(ctx0, kv_self.v, N*n_embd, (ggml_element_size(kv_self.v)*n_embd)*(il*n_ctx + n_past));
 
-                // DEBUG
-                if ((ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past) > 0) {
-                    printf("\n >>> N*n_embd = %d", N*n_embd);
-                    printf("\n >>> (ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past) = %d", (ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past));
-                    //exit(1);
-                }
-
-                //printf("\n\nkv_self.n = %d"), kv_self.n;
-                printf("\n=== k TYPE %d === LEN = %d * %d\n", k->type, k->ne[0], k->ne[1]); // DEBUG
-                for (int ii = 0; ii < 8; ii++) {
-                    uint32_t *val = (uint32_t *) ((char *) k->data + ii*sizeof(uint32_t));
-                    printf("| k[%d] = %d |", ii, *val);
-                }
-
-                printf("\n\nkv_self.n = %d"), kv_self.n;
-                printf("\n=== kv_self.k TYPE %d === LEN = %d * %d\n", kv_self.k->type, kv_self.k->ne[0], kv_self.k->ne[1]); // DEBUG
-                for (int ii = 0; ii < 8; ii++) {
-                    uint32_t *val = (uint32_t *) ((char *) kv_self.k->data + ii*sizeof(uint32_t));
-                    printf("| kv_self.k[%d] = %d |", ii, *val);
-                }
-
                 ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
                 ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Vcur, v));
-
-                printf("\n\nkv_self.n = %d"), kv_self.n;
-                printf("\n=== kv_self.k TYPE %d === LEN = %d * %d\n", kv_self.k->type, kv_self.k->ne[0], kv_self.k->ne[1]); // DEBUG
-                for (int ii = 0; ii < 8; ii++) {
-                    uint32_t *val = (uint32_t *) ((char *) kv_self.k->data + ii*sizeof(uint32_t));
-                    printf("| kv_self.k[%d] = %d |", ii, *val);
-                }
-
-                //exit(1); // DEBUG
             }
 
             // Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)

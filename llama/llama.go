@@ -438,16 +438,6 @@ func Eval(
 			// store key and value to memory
 			if N >= 1 {
 
-				fmt.Printf("\n\nkvSelf.N = %d", kvSelf.N)
-				fmt.Printf("\n=== kvSelf.K === LEN = %d * %d\n", kvSelf.K.NE[0], kvSelf.K.NE[1]) // DEBUG
-				for ii := 0; ii < 8; ii++ {
-					fmt.Printf("| kvSelf.K[%d] = %f |", ii, kvSelf.K.Data[ii])
-				}
-				fmt.Printf("\n=== kvSelf.V === LEN = %d * %d\n", kvSelf.V.NE[0], kvSelf.V.NE[1]) // DEBUG
-				for ii := 0; ii < 8; ii++ {
-					fmt.Printf("| kvSelf.V[%d] = %f |", ii, kvSelf.V.Data[ii])
-				}
-
 				////struct ggml_tensor * k = ggml_view_1d(ctx0, kv_self.k, N*n_embd, (ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past));
 				////struct ggml_tensor * v = ggml_view_1d(ctx0, kv_self.v, N*n_embd, (ggml_element_size(kv_self.v)*n_embd)*(il*n_ctx + n_past));
 
@@ -463,22 +453,8 @@ func Eval(
 				k := ml.View1D(ctx0, kvSelf.K, N*embdSize, embdSize*(il*ctxSize+pastCount))
 				v := ml.View1D(ctx0, kvSelf.V, N*embdSize, embdSize*(il*ctxSize+pastCount))
 
-				fmt.Printf("\n\nkvSelf.N = %d", kvSelf.N)
-				fmt.Printf("\n=== k === LEN = %d * %d\n", k.NE[0], k.NE[1]) // DEBUG
-				for ii := 0; ii < 8; ii++ {
-					fmt.Printf("| k[%d] = %f |", ii, k.Data[ii])
-				}
-
 				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Kcur, k))
 				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Vcur, v))
-
-				fmt.Printf("\n\nkvSelf.N = %d", kvSelf.N)
-				fmt.Printf("\n=== k === LEN = %d * %d\n", k.NE[0], k.NE[1]) // DEBUG
-				for ii := 0; ii < 8; ii++ {
-					fmt.Printf("| k[%d] = %f |", ii, k.Data[ii])
-				}
-
-				//os.Exit(1)
 			}
 
 			// Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)
@@ -658,7 +634,7 @@ func Eval(
 		//memcpy(logits_out.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
 		for i := uint32(0); i < vocabSize; i++ {
 			//lctx.Logits[i] = inpL.Data[i]
-			lctx.Logits[i] = inpL.Data[vocabSize*(N-1)]
+			lctx.Logits[i] = inpL.Data[vocabSize*(N-1)+i]
 		}
 	}
 
@@ -671,7 +647,7 @@ func Eval(
 		fmt.Printf("%.4f  ", lctx.Logits[ii])
 	}
 
-	os.Exit(0) // DEBUG
+	//os.Exit(0) // DEBUG
 
 	// --- extract embeddings
 
