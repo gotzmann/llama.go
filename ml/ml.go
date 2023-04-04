@@ -3776,45 +3776,30 @@ func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
 		//os.Exit(0)
 	*/
 	// FIXME Works only for 1 thread
-	VecSiluFP32(dst.NE[0], dst.Data, src0.Data)
+	//VecSiluFP32(dst.NE[0], dst.Data, src0.Data)
 	//return
-	/*
-	   ith := params.ith
-	   nth := params.nth
 
-	   nc := int(src0.NE[0])
-	   nr := src0.Nrows()
+	ith := params.ith
+	nth := params.nth
 
-	   // rows per thread
-	   dr := int((nr + nth - 1) / nth)
+	nc := src0.NE[0]
+	nr := src0.Nrows()
 
-	   // row range for this thread
-	   ir0 := dr * int(ith)
-	   ir1 := int(min(int(ir0+dr), int(nr)))
+	// rows per thread
+	dr := (nr + nth - 1) / nth
 
-	   	for i1 := ir0; i1 < ir1; i1++ {
-	   		////ggml_vec_silu_f32(nc,
-	   		////        (float *) ((char *) dst->data  + i1*( dst->nb[1])),
-	   		////        (float *) ((char *) src0->data + i1*(src0->nb[1])));
+	// row range for this thread
+	ir0 := dr * ith
+	ir1 := uint32(min(int(ir0+dr), int(nr)))
 
-	   		dsttmp := dst.Data[i1*nc : i1*nc+ir1]   // FIXME ??
-	   		src0tmp := src0.Data[i1*nc : i1*nc+ir1] // FIXME ??
+	for i1 := ir0; i1 < ir1; i1++ {
+		////ggml_vec_silu_f32(nc,
+		////        (float *) ((char *) dst->data  + i1*( dst->nb[1])),
+		////        (float *) ((char *) src0->data + i1*(src0->nb[1])));
 
-	   		//VecSiluFP32(nc, dst.Data[i1*dst.NB[1]], src0.Data[i1*src0.NB[1]])
-	   		VecSiluFP32(nc, dsttmp, src0tmp)
+		VecSiluFP32(nc, dst.Data[i1*dst.NB[1]/4:], src0.Data[i1*src0.NB[1]/4:])
+	}
 
-	   		////#ifndef NDEBUG
-
-	   		////for (int k = 0; k < nc; k++) {
-	   		////const float x = ((float *) ((char *) dst->data + i1*( dst->nb[1])))[k];
-	   		////UNUSED(x);
-	   		////assert(!isnan(x));
-	   		////assert(!isinf(x));
-	   		////}
-
-	   		////#endif
-	   	}
-	*/
 	/*
 		fmt.Printf("\n\n>>> OUT <<< ComputeForwardSiluFP32 <<<")
 
