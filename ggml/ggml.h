@@ -198,59 +198,59 @@ struct ggml_object;
 struct ggml_context;
 
 enum ggml_type {
-    GGML_TYPE_Q4_0,
-    GGML_TYPE_Q4_1,
-    GGML_TYPE_I8,
-    GGML_TYPE_I16,
-    GGML_TYPE_I32,
-    GGML_TYPE_F16,
-    GGML_TYPE_F32,
-    GGML_TYPE_COUNT,
+    GGML_TYPE_Q4_0, // 0
+    GGML_TYPE_Q4_1, // 1
+    GGML_TYPE_I8, // 2
+    GGML_TYPE_I16, // 3
+    GGML_TYPE_I32, // 4
+    GGML_TYPE_F16, // 5
+    GGML_TYPE_F32, // 6
+    GGML_TYPE_COUNT, // 7
 };
 
 // available tensor operations:
 enum ggml_op {
     GGML_OP_NONE = 0,
 
-    GGML_OP_DUP,
-    GGML_OP_ADD,
-    GGML_OP_SUB,
-    GGML_OP_MUL,
-    GGML_OP_DIV,
-    GGML_OP_SQR,
-    GGML_OP_SQRT,
-    GGML_OP_SUM,
-    GGML_OP_MEAN,
-    GGML_OP_REPEAT,
-    GGML_OP_ABS,
-    GGML_OP_SGN,
-    GGML_OP_NEG,
-    GGML_OP_STEP,
-    GGML_OP_RELU,
-    GGML_OP_GELU,
-    GGML_OP_SILU,
-    GGML_OP_NORM, // normalize
-    GGML_OP_RMS_NORM,
+    GGML_OP_DUP, // 1
+    GGML_OP_ADD, // 2
+    GGML_OP_SUB, // 3
+    GGML_OP_MUL, // 4
+    GGML_OP_DIV, // 5
+    GGML_OP_SQR, // 6
+    GGML_OP_SQRT, // 7
+    GGML_OP_SUM, // 8
+    GGML_OP_MEAN, // 9
+    GGML_OP_REPEAT, // 10
+    GGML_OP_ABS, // 11
+    GGML_OP_SGN, // 12
+    GGML_OP_NEG, // 13
+    GGML_OP_STEP, // 14
+    GGML_OP_RELU, // 15
+    GGML_OP_GELU, // 16
+    GGML_OP_SILU, // 17
+    GGML_OP_NORM, // 18 normalize
+    GGML_OP_RMS_NORM, // 19
 
-    GGML_OP_MUL_MAT,
+    GGML_OP_MUL_MAT, // 20
 
-    GGML_OP_SCALE,
-    GGML_OP_CPY,
-    GGML_OP_RESHAPE,
-    GGML_OP_VIEW,
-    GGML_OP_PERMUTE,
-    GGML_OP_TRANSPOSE,
-    GGML_OP_GET_ROWS,
-    GGML_OP_DIAG_MASK_INF,
-    GGML_OP_SOFT_MAX,
-    GGML_OP_ROPE,
-    GGML_OP_CONV_1D_1S,
-    GGML_OP_CONV_1D_2S,
+    GGML_OP_SCALE, // 21
+    GGML_OP_CPY, // 22
+    GGML_OP_RESHAPE, // 23
+    GGML_OP_VIEW, // 24
+    GGML_OP_PERMUTE, // 25
+    GGML_OP_TRANSPOSE, // 26
+    GGML_OP_GET_ROWS, // 27
+    GGML_OP_DIAG_MASK_INF, // 28
+    GGML_OP_SOFT_MAX, // 29
+    GGML_OP_ROPE, // 30
+    GGML_OP_CONV_1D_1S, // 31
+    GGML_OP_CONV_1D_2S, // 32
 
-    GGML_OP_FLASH_ATTN,
-    GGML_OP_FLASH_FF,
+    GGML_OP_FLASH_ATTN, // 33
+    GGML_OP_FLASH_FF, // 34
 
-    GGML_OP_COUNT,
+    GGML_OP_COUNT, // 35
 };
 
 // n-dimensional tensor
@@ -342,6 +342,9 @@ void ggml_free(struct ggml_context * ctx);
 size_t ggml_used_mem(const struct ggml_context * ctx);
 
 size_t ggml_set_scratch(struct ggml_context * ctx, struct ggml_scratch scratch);
+
+bool ggml_mlock_supported(void);
+bool ggml_mlock(struct ggml_context * ctx, char ** err_p);
 
 struct ggml_tensor * ggml_new_tensor(
         struct ggml_context * ctx,
@@ -740,6 +743,13 @@ enum ggml_opt_result ggml_opt(
         struct ggml_context * ctx,
         struct ggml_opt_params params,
         struct ggml_tensor * f);
+
+//
+// quantization
+//
+
+size_t ggml_quantize_q4_0(const float * src, void * dst, int n, int k, int qk, int64_t * hist);
+size_t ggml_quantize_q4_1(const float * src, void * dst, int n, int k, int qk, int64_t * hist);
 
 //
 // system info
