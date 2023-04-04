@@ -1892,7 +1892,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		node := graph.Nodes[i]
 
 		// DEBUG
-		fmt.Printf("\n\n###### #%d - %d - %d [%d,%d] %.4f \n", i, node.op, node.Type, node.NE[1], node.NE[2], node.Data[0])
+		fmt.Printf("\n\n###### #%d - %d - %d [%d,%d,%d,%d] %.4f \n", i, node.op, node.Type, node.NE[0], node.NE[1], node.NE[2], node.NE[3], node.Data[0])
 
 		// TODO: this could be used to avoid unnecessary computations, but it needs to be improved
 		//if (node->grad == NULL && node->perf_runs > 0) {
@@ -1967,7 +1967,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		}
 
 		// BREAKPOINT
-		if i == 40 {
+		if i > 1300 {
 			fmt.Printf("\n\n=== HALT #%d ===", i)
 			os.Exit(0)
 		}

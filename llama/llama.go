@@ -701,15 +701,15 @@ func Eval(
 
 	//logitsOut := lctx.Logits // FIXME ASAP What we'll doing with this? Just lost in thin air?
 
-	fmt.Printf("\n\n=== INPL 09 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
+	fmt.Printf("\n\n=== INPL 09 === [%d,%d,%d,%d] ===\n", inpL.NE[0], inpL.NE[1], inpL.NE[2], inpL.NE[3]) // DEBUG
+	for ii := 0; ii < 12; ii++ {
+		fmt.Printf("%.4f  ", inpL.Data[ii])
 	}
 
-	fmt.Printf("\n\n=== BEFORE === len(logitsOut) = %d\n", len(lctx.Logits)) // DEBUG
-	for ii := 0; ii < 7; ii++ {
-		fmt.Printf("| logitsOut[%d] = %f |", ii, lctx.Logits[ii])
-	}
+	//fmt.Printf("\n\n=== BEFORE === LEN(logitsOut) = %d\n", len(lctx.Logits)) // DEBUG
+	//for ii := 0; ii < 12; ii++ {
+	//	fmt.Printf("%.4f  ", lctx.Logits[ii])
+	//}
 
 	if lctx.LogitsAll {
 
@@ -742,8 +742,8 @@ func Eval(
 	}
 
 	fmt.Printf("\n\n=== AFTER === len(logitsOut) = %d\n", len(lctx.Logits)) // DEBUG
-	for ii := 0; ii < 7; ii++ {
-		fmt.Printf("| logitsOut[%d] = %f |", ii, lctx.Logits[ii])
+	for ii := 0; ii < 13; ii++ {
+		fmt.Printf("%.4f  ", lctx.Logits[ii])
 	}
 
 	os.Exit(0) // DEBUG
@@ -1073,7 +1073,8 @@ func LoadModel(
 	vocab := lctx.Vocab
 
 	// FIXME Reserve extra space for tokensCount (N) = 8 (as with LogitsAll == true)
-	lctx.Logits = make([]float32, vocabSize*8, vocabSize*8) // NewFloatSlice(vocabSize, vocabSize) // FIXME ASAP
+	//lctx.Logits = make([]float32, vocabSize*8, vocabSize*8) // NewFloatSlice(vocabSize, vocabSize) // FIXME ASAP
+	lctx.Logits = make([]float32, vocabSize, vocabSize) // use just vocab size as CPP version does by default
 
 	//hparamsCtx = n_ctx
 

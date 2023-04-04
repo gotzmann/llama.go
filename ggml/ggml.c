@@ -10258,7 +10258,7 @@ void ggml_graph_compute(struct ggml_context * ctx, struct ggml_cgraph * cgraph) 
         }
 
         // BREAKPOINT
-		if (i == 40) {
+		if (i > 1300) {
 			printf("\n\n=== HALT #%d ===", i);
 			exit(0);
 		}

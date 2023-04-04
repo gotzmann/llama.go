@@ -1227,9 +1227,9 @@ static bool llama_eval_internal(
         auto & logits_out = lctx.logits;
 
         //printf("\n\n=== INPL 09-1 === LEN = %d\n", inpL->ne[0]); // DEBUG
-        printf("\n\n=== INPL 09 START TYPE %d === LEN = %d * %d\n", inpL->type, inpL->ne[0], inpL->ne[1]); // DEBUG
-	    for (int ii = 0; ii < 8; ii++) {
-            float f = * (( (float * )(inpL->data)) + ii*4);
+        printf("\n\n=== INPL 09 %d === [%d,%d,%d,%d] ===\n", inpL->type, inpL->ne[0], inpL->ne[1], inpL->ne[2], inpL->ne[3]); // DEBUG
+	    for (int ii = 0; ii < 12; ii++) {
+            float f = * (( (float * )(inpL->data)) + ii);
 		    printf("%.4f  ", f);
 
 	    }
@@ -1241,7 +1241,7 @@ static bool llama_eval_internal(
         //}    
 
         printf("\n\n=== BEFORE === logits_out.size() = %d\n", logits_out.size()); // DEBUG
-        for (int ii = 0; ii < 8; ii++) {
+        for (int ii = 0; ii < 13; ii++) {
             printf("%.4f  ", logits_out[ii]);
         }
 
@@ -1255,7 +1255,7 @@ static bool llama_eval_internal(
         }
 
         printf("\n\n=== AFTER === logits_out.size() = %d\n", logits_out.size()); // DEBUG
-        for (int ii = 0; ii < 8; ii++) {
+        for (int ii = 0; ii < 13; ii++) {
             printf("%.4f  ", logits_out[ii]);
         }
 
