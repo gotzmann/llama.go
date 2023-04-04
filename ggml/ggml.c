@@ -6244,7 +6244,7 @@ static void ggml_compute_forward_mul_mat_f16_f32(
     int64_t t0 = ggml_perf_time_us();
     UNUSED(t0);
 
-    printf("\n\n>>> IN <<< ggml_compute_forward_mul_mat_f16_f32 <<<\n");
+    //printf("\n\n>>> IN <<< ggml_compute_forward_mul_mat_f16_f32 <<<\n");
 
     const int ne00 = src0->ne[0];
     const int ne01 = src0->ne[1];
@@ -6433,13 +6433,13 @@ static void ggml_compute_forward_mul_mat_f16_f32(
         GGML_COMPUTE_FP16_TO_FP32(*(ggml_fp16_t*)src0->data), GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t*)src0->data+1)), 
         GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t*)src0->data+2)), GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t*)src0->data+3)), 
         GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t*)src0->data+4)), GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t*)src0->data+5)), 
-        GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t*)src0->data+6)), GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t*)src0->data+6))); 
+        GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t*)src0->data+6)), GGML_COMPUTE_FP16_TO_FP32(*((ggml_fp16_t*)src0->data+7))); 
     }
     if (src0->type == GGML_TYPE_F32) {
         printf("\n%.4f %.4f  %.4f  %.4f  %.4f  %.4f  %.4f %.4f | src0 32b", 
             *(float*)src0->data, *((float*)src0->data+1), *((float*)src0->data+2), 
             *((float*)src0->data+3), *((float*)src0->data+4), *((float*)src0->data+5),
-            *((float*)src0->data+6), *((float*)src0->data+6)); 
+            *((float*)src0->data+6), *((float*)src0->data+7)); 
     }
 
     if (src1->type == GGML_TYPE_F16) {
@@ -6453,7 +6453,7 @@ static void ggml_compute_forward_mul_mat_f16_f32(
         printf("\n%.4f %.4f  %.4f  %.4f  %.4f  %.4f  %.4f %.4f | src1 32b", 
             *(float*)src1->data, *((float*)src1->data+1), *((float*)src1->data+2), 
             *((float*)src1->data+3), *((float*)src1->data+4), *((float*)src1->data+5),
-            *((float*)src1->data+6), *((float*)src1->data+6)); 
+            *((float*)src1->data+6), *((float*)src1->data+7)); 
     }
 
     if (dst->type == GGML_TYPE_F16) {
@@ -6466,8 +6466,8 @@ static void ggml_compute_forward_mul_mat_f16_f32(
     if (dst->type == GGML_TYPE_F32) {
         printf("\n%.4f %.4f  %.4f  %.4f  %.4f  %.4f  %.4f %.4f | dst 32b", 
             *(float*)dst->data, *((float*)dst->data+1), *((float*)dst->data+2), 
-            *((float*)dst->data+3), *((float*)src0->data+4), *((float*)src0->data+5),
-            *((float*)src0->data+6), *((float*)src0->data+7));
+            *((float*)dst->data+3), *((float*)dst->data+4), *((float*)dst->data+5),
+            *((float*)dst->data+6), *((float*)dst->data+7));
     }
 
     //int64_t t1 = ggml_time_us();
@@ -6702,7 +6702,7 @@ static void ggml_compute_forward_mul_mat_q4_0_f32(
         }
     }
 
-    printf("\n\n>>> OUT <<< ggml_compute_forward_mul_mat_q4_0_f32 OUT <<<\n");
+    printf("\n\n>>> OUT <<< ggml_compute_forward_mul_mat_q4_0_f32 <<<\n");
 
     printf("\n=== SRC0 === %d [ %d,%d,%d,%d - %d,%d,%d,%d ] ===", src0->type,
         src0->ne[0], src0->ne[1], src0->ne[2], src0->ne[3],
@@ -6714,11 +6714,11 @@ static void ggml_compute_forward_mul_mat_q4_0_f32(
         dst->ne[0], dst->ne[1], dst->ne[2], dst->ne[3],
         dst->nb[0], dst->nb[1], dst->nb[2], dst->nb[3]); 
 
-    // --- QK=32, 24 packet INT4 + 1 FLOAT scale
-    
+    // IDEAL5
+    // --- QK=32, 4 bytes for 1 float scale + 24 bytes for packed INT4 + INT4    
     if (src0->type == GGML_TYPE_Q4_0) {
         //f0 = *(char*)src0->data & 0x16)
-        float scale = *((((float*) (src0->data)) + 0));
+        float scale = *(float*)src0->data;
         printf("\nscale = %f", scale);
 
         int32_t u = 0;
@@ -6729,49 +6729,49 @@ static void ggml_compute_forward_mul_mat_q4_0_f32(
         memcpy(&u, ((char*)src0->data)+4, 4);
         //memcpy(&sign, ((char*)src0->data)+4, 4);
         //sign = (u>>)&1;
-        float b1 = (((u>>24)&0x15)-8) * scale;
+        float b1 = (((u>>24)&0x0000000F)-8) * scale;
         //if (sign) b1 *= -1;
 
         memcpy(&u, ((char*)src0->data)+4, 4);
         //memcpy(&sign, ((char*)src0->data)+4, 4);
         //sign = (u>>27)&1;
-        float b2 = (((u>>28)&0x15)-8) * scale;
+        float b2 = (((u>>28)&0x0000000F)-8) * scale;
         //if (sign) b2 *= -1;
 
         memcpy(&u, ((char*)src0->data)+4, 4);
         //memcpy(&sign, ((char*)src0->data)+4, 4);
         //sign = (u>>23)&1;
-        float b3 = (((u>>16)&0x15)-8) * scale;
+        float b3 = (((u>>16)&0x0000000F)-8) * scale;
         //if (sign) b3 *= -1;
 
         memcpy(&u, ((char*)src0->data)+4, 4);
         //memcpy(&sign, ((char*)src0->data)+4, 4);
         //sign = (u>>19)&1;
-        float b4 = (((u>>20)&0x15)-8) * scale;
+        float b4 = (((u>>20)&0x0000000F)-8) * scale;
         //if (sign) b4 *= -1;
 
-        memcpy(&u, ((char*)src0->data)+8, 4);
+        memcpy(&u, ((char*)src0->data)+4, 4);
         //memcpy(&sign, ((char*)src0->data)+4, 4);
         //sign = (u>>15)&1;
-        float b5 = (((u>>8)&0x15)-8) * scale;
+        float b5 = (((u>>8)&0x0000000F)-8) * scale;
         //if (sign) b5 *= -1;
 
-        memcpy(&u, ((char*)src0->data)+8, 4);
+        memcpy(&u, ((char*)src0->data)+4, 4);
         //memcpy(&sign, ((char*)src0->data)+4, 4);
         //sign = (u>>11)&1;
-        float b6 = (((u>>12)&0x15)-8) * scale;
+        float b6 = (((u>>12)&0x0000000F)-8) * scale;
         //if (sign) b6 *= -1;
 
-        memcpy(&u, ((char*)src0->data)+8, 4);
+        memcpy(&u, ((char*)src0->data)+4, 4);
         //memcpy(&sign, ((char*)src0->data)+4, 4);
         //sign = (u>>7)&1;
-        float b7 = (((u>>0)&0x15)-8) * scale;
+        float b7 = ((u&0xF)-8) * scale;
         //if (sign) b7 *= -1;
 
-        memcpy(&u, ((char*)src0->data)+8, 4);
+        memcpy(&u, ((char*)src0->data)+4, 4);
         //memcpy(&sign, ((char*)src0->data)+4, 4);
         //sign = (u>>3)&1;
-        float b8 = (((u>>4)&0x15)-8) * scale;
+        float b8 = (((u>>4)&0xF)-8) * scale;
         //if (sign) b8 *= -1;
 
 /*
@@ -7433,7 +7433,7 @@ static void ggml_compute_forward_get_rows_f16(
 
         // DEBUG
     printf(" ~~~ [%d,%d] %.4f } ~~~", dst->ne[1], dst->ne[2], *((float*) dst->data));  
-    exit(1); // DEBUG
+    //exit(1); // DEBUG
 }
 
 static void ggml_compute_forward_get_rows_f32(
