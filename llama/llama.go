@@ -416,13 +416,6 @@ func Eval(
 
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
 
-	fmt.Printf("\n\n=== INPL 01 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
-	}
-
-	////fmt.Printf("\n\nmodel.tokEmbeddings = %+v", model.tokEmbeddings) // DEBUG
-
 	for il := uint32(0); il < layersCount; il++ {
 
 		inpSA := inpL
@@ -431,43 +424,16 @@ func Eval(
 		// norm
 		cur = ml.RMSNorm(ctx0, inpL)
 
-		fmt.Printf("\n\n=== CUR 01 === LEN = %d * %d\n", cur.NE[0], cur.NE[1]) // DEBUG
-		for ii := 0; ii < 8; ii++ {
-			fmt.Printf("| CUR[%d] = %f |", ii, cur.Data[ii])
-		}
-
 		// cur = attention_norm*cur
 		rep := ml.Repeat(ctx0, model.layers[il].attentionNorm, cur)
 
-		fmt.Printf("\n\n=== REP === LEN = %d * %d\n", rep.NE[0], rep.NE[1]) // DEBUG
-		for ii := 0; ii < 8; ii++ {
-			fmt.Printf("| REP[%d] = %f |", ii, rep.Data[ii])
-		}
-
 		cur = ml.Mul(ctx0, rep, cur)
-
-		fmt.Printf("\n\n=== CUR 02 === LEN = %d * %d\n", cur.NE[0], cur.NE[1]) // DEBUG
-		for ii := 0; ii < 8; ii++ {
-			fmt.Printf("| CUR[%d] = %f |", ii, cur.Data[ii])
-		}
-
-		//os.Exit(1)
-
-		////////////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] Self-attention #%d...", il)
 
 		// self-attention
 		{
-			fmt.Printf("\n=== model.layers[il].wq === LEN = %d * %d\n", model.layers[il].wq.NE[0], model.layers[il].wq.NE[1]) // DEBUG
-			for ii := 0; ii < 8; ii++ {
-				fmt.Printf("| model.layers[il].wq[%d] = %f |", ii, model.layers[il].wq.Data[ii])
-			}
-
 			Qcur := ml.MulMat(ctx0, model.layers[il].wq, cur)
 			Kcur := ml.MulMat(ctx0, model.layers[il].wk, cur)
 			Vcur := ml.MulMat(ctx0, model.layers[il].wv, cur)
-
-			//fmt.Printf("\n\nOK\n %+v %+v %+v", Qcur, Kcur, Vcur)
-			//os.Exit(0)
 
 			// store key and value to memory
 			if N >= 1 {
@@ -583,10 +549,6 @@ func Eval(
 				cur)
 		}
 
-		/////////////////////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] Feed-forward network #%d...", il)
-
-		////lctx.use_buf(ctx0, 1);
-
 		inpFF := ml.Add(ctx0, cur, inpSA)
 
 		// feed-forward network
@@ -624,16 +586,7 @@ func Eval(
 		// input for next layer
 		inpL = cur
 
-		//fmt.Printf("\n\n=== FIN #%d [ %d,%d ] ===\n", il, inpL.NE[0], inpL.NE[1]) // DEBUG
-		//for ii := 0; ii < 8; ii++ {
-		//	fmt.Printf("%.4f  ", inpL.Data[ii])
-		//}
-		//os.Exit(0)
 	}
-
-	////lctx.use_buf(ctx0, 0);
-
-	/////////////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] RMS Norm...")
 
 	// used at the end to optionally extract the embeddings
 	////var embeddings *ml.Tensor
@@ -647,47 +600,18 @@ func Eval(
 		ml.Repeat(ctx0, model.norm, inpL),
 		inpL)
 
-	//fmt.Printf("\n\n=== INPL 05 === LEN = %d\n", len(inpL.Data)) // DEBUG
-	fmt.Printf("\n\n=== INPL 05 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
-	}
-
 	embeddings := inpL
-
-	///////////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] LM Head...")
 
 	// lm_head
 	inpL = ml.MulMat(ctx0, model.output, inpL)
-
-	//fmt.Printf("\n\n=== INPL 06 === LEN = %d\n", len(inpL.Data)) // DEBUG
-	fmt.Printf("\n\n=== INPL 06 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
-	}
-
-	////lctx.use_buf(ctx0, -1);
 
 	// logits -> probs
 	// COMMentED inpL = ggml_soft_max(ctx0, inpL);
 
 	// run the computation
-	////////////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] BuildForwardExpand...")
 	ml.BuildForwardExpand(&gf, inpL)
 
-	fmt.Printf("\n\n=== INPL 07 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
-	}
-
-	///////////////////////////////////////////////////////////////////fmt.Printf("\n[EVAL] GraphCompute...")
 	ml.GraphCompute(ctx0, &gf)
-
-	//fmt.Printf("\n\n=== INPL 08 === LEN = %d\n", len(inpL.Data)) // DEBUG
-	//fmt.Printf("\n\n=== INPL 08 === LEN = %d * %d\n", inpL.NE[0], inpL.NE[1]) // DEBUG
-	//for ii := 0; ii < 8; ii++ {
-	//	fmt.Printf("| INPL[%d] = %f |", ii, inpL.Data[ii])
-	//}
 
 	// COMMenteD  if (n_past%100 == 0) {
 	// COMMenteD    ggml_graph_print   (&gf);
@@ -701,14 +625,9 @@ func Eval(
 
 	//logitsOut := lctx.Logits // FIXME ASAP What we'll doing with this? Just lost in thin air?
 
-	fmt.Printf("\n\n=== INPL 09 === [%d,%d,%d,%d] ===\n", inpL.NE[0], inpL.NE[1], inpL.NE[2], inpL.NE[3]) // DEBUG
-	for ii := 0; ii < 12; ii++ {
-		fmt.Printf("%.4f  ", inpL.Data[ii])
-	}
-
-	//fmt.Printf("\n\n=== BEFORE === LEN(logitsOut) = %d\n", len(lctx.Logits)) // DEBUG
+	//fmt.Printf("\n\n=== INPL 09 === [%d,%d,%d,%d] ===\n", inpL.NE[0], inpL.NE[1], inpL.NE[2], inpL.NE[3]) // DEBUG
 	//for ii := 0; ii < 12; ii++ {
-	//	fmt.Printf("%.4f  ", lctx.Logits[ii])
+	//	fmt.Printf("%.4f  ", inpL.Data[ii])
 	//}
 
 	if lctx.LogitsAll {
@@ -736,12 +655,22 @@ func Eval(
 		// FIXME Double Check !! Replace with copy() for slices
 
 		// FIXME ASAP Logits LEN = 32,000 without *N | INPL LEN = 256,000
+		//memcpy(logits_out.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
 		for i := uint32(0); i < vocabSize; i++ {
-			lctx.Logits[i] = inpL.Data[i]
+			//lctx.Logits[i] = inpL.Data[i]
+			lctx.Logits[i] = inpL.Data[vocabSize*(N-1)]
 		}
 	}
 
-	fmt.Printf("\n\n=== AFTER === len(logitsOut) = %d\n", len(lctx.Logits)) // DEBUG
+	fmt.Printf("\n\n=== INPL MATRIX ===\n\n") // DEBUG
+	for nn := 0; nn < int(N); nn++ {
+		fmt.Printf("\n %d * %d ... ", nn, vocabSize)
+		for ii := 0; ii < 12; ii++ {
+			fmt.Printf("%.4f  ", inpL.Data[nn*int(vocabSize)+ii])
+		}
+	}
+
+	fmt.Printf("\n\n=== LOGITS === %d ===\n", len(lctx.Logits)) // DEBUG
 	for ii := 0; ii < 13; ii++ {
 		fmt.Printf("%.4f  ", lctx.Logits[ii])
 	}
