@@ -20,62 +20,42 @@ import (
 //
 
 type gptParams struct {
-	seed         int    //         = -1;   // RNG seed
-	threadsCount uint32 //     = std::min(4, (int32_t) std::thread::hardware_concurrency());
-	predictCount uint32 //    = 128;  // new tokens to predict
-	repeatLastN  uint32 // = 64;   // last n tokens to penalize
-	partsCount   int    //       = -1;   // amount of model parts (-1 = determine from model dimensions)
-	ctxSize      uint32 //       = 512;  // context size
-	batchSize    uint32 //       = 8;    // batch size for prompt processing
+	seed         int    // -1 // RNG seed
+	threadsCount uint32 // min(4, std::thread::hardware_concurrency())
+	predictCount uint32 // 128 // new tokens to predict
+	repeatLastN  uint32 // 64 // last n tokens to penalize
+	partsCount   int    // -1 // amount of model parts (-1 = determine from model dimensions)
+	ctxSize      uint32 // 512 // context size
+	batchSize    uint32 // 8 // batch size for prompt processing
 	keepCount    uint32
 
-	// sampling parameters
-	topK          uint32  // = 40;
-	topP          float32 // = 0.95f;
-	temp          float32 // = 0.80f;
-	repeatPenalty float32 // = 1.10f;
+	// --- sampling parameters
 
-	model       string //  = "models/lamma-7B/ggml-model.bin"; // model path
-	prompt      string // = "";
-	inputPrefix string // = ""; // string to prefix user inputs with
+	topK          uint32  // 40
+	topP          float32 // 0.95
+	temp          float32 // 0.80
+	repeatPenalty float32 // 1.10
 
-	antiprompt []string // ; // string upon seeing which more user input is prompted
+	model       string // model path
+	prompt      string // ""
+	inputPrefix string // "" // string to prefix user inputs with
 
-	memoryFP16   bool //      = true;  // use f16 instead of f32 for memory kv
-	randomPrompt bool //  = false; // do not randomize prompt if none provided
-	useColor     bool //         = false; // use color to distinguish generations and inputs
-	interactive  bool //       = false; // interactive mode
+	antiprompt []string // string upon seeing which more user input is prompted
 
-	embedding        bool //         = false; // get only sentence embedding
-	interactiveStart bool /// = false; // wait for user input immediately
+	memoryFP16   bool // true // use f16 instead of f32 for memory kv
+	randomPrompt bool // false // do not randomize prompt if none provided
+	useColor     bool // false // use color to distinguish generations and inputs
+	interactive  bool // false // interactive mode
 
-	instruct      bool //         = false; // instruction mode (used for Alpaca models)
-	ignoreEOS     bool // bool       = false; // do not stop generating after eos
-	perplexity    bool //       = false; // compute perplexity over the prompt
-	use_mlock     bool // bool         = false; // use mlock to keep model in memory
-	memTest       bool //          = false; // compute maximum memory usage
+	embedding        bool // false // get only sentence embedding
+	interactiveStart bool // false // wait for user input immediately
+
+	instruct      bool // false // instruction mode (used for Alpaca models)
+	ignoreEOS     bool // false // do not stop generating after eos
+	perplexity    bool // false // compute perplexity over the prompt
+	use_mlock     bool // false // use mlock to keep model in memory
+	memTest       bool // false // compute maximum memory usage
 	verbosePrompt bool
-}
-
-func defaultGPTParams(fileName string) gptParams {
-	return gptParams{
-
-		model: fileName,
-
-		seed:         -1,
-		threadsCount: 1, // FIXME
-		predictCount: 128,
-		repeatLastN:  64,
-		partsCount:   -1,
-		batchSize:    8,
-
-		topK:          40,
-		topP:          0.95,
-		temp:          0.80,
-		repeatPenalty: 1.10,
-
-		memoryFP16: true,
-	}
 }
 
 /* Keep track of current color of output, and emit ANSI code if it changes. */
@@ -243,7 +223,25 @@ func main() {
 	////ggml_time_init();
 
 	////gpt_params params;
-	params := defaultGPTParams("./models/7B/ggml-model-f32.bin")
+	params := gptParams{
+
+		model: "./models/7B/ggml-model-f32.bin",
+
+		ctxSize:      512,
+		seed:         -1,
+		threadsCount: 1, // FIXME
+		predictCount: 128,
+		repeatLastN:  64,
+		partsCount:   -1,
+		batchSize:    8,
+
+		topK:          40,
+		topP:          0.95,
+		temp:          0.80,
+		repeatPenalty: 1.10,
+
+		memoryFP16: true,
+	}
 
 	////if (gpt_params_parse(argc, argv, params) == false) {
 	////    return 1;
@@ -460,7 +458,7 @@ func main() {
 	///std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
 
 	// TODO: replace with ring-buffer
-	lastNTokens := make([]uint32, 0, params.ctxSize) // FIXME LEN vs CAP
+	lastNTokens := make([]uint32, params.ctxSize, params.ctxSize) // FIXME LEN vs CAP
 
 	////if (params.interactive) {
 	////fmt.Printf("== Running in interactive mode. ==\n"
@@ -521,7 +519,7 @@ func main() {
 			// - take the n_keep first tokens from the original prompt (via n_past)
 			// - take half of the last (n_ctx - n_keep) tokens and recompute the logits in a batch
 
-			if pastCount+uint32(len(embd)) > 512 /*params.ctxSize*/ { // FIXME
+			if pastCount+uint32(len(embd)) > params.ctxSize {
 				leftCount := pastCount - params.keepCount
 				pastCount = params.keepCount
 

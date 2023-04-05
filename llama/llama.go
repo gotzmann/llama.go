@@ -128,7 +128,7 @@ func KVCacheInit(hparams *HParams, cache *KVCache, dt ml.DType /*, int n_ctx*/) 
 	////cache.k = ggml_new_tensor_1d(cache.ctx, wtype, n_elements);
 	////cache.v = ggml_new_tensor_1d(cache.ctx, wtype, n_elements);
 
-	size := hparams.embdSize * hparams.layersCount * 512 /* FIXME hparams.ctxSize */
+	size := hparams.embdSize * hparams.layersCount * hparams.ctxSize
 	cache.K = ml.NewTensor1D(nil, dt, size)
 	cache.V = ml.NewTensor1D(nil, dt, size)
 	// FIXME Should we alter cache.N ??
@@ -240,14 +240,14 @@ type Layer struct {
 
 // default hparams (LLaMA 7B)
 type HParams struct {
-	ctxSize     uint32 // = 512;   // this is provided as user input?
-	vocabSize   uint32 // = 32000;
-	embdSize    uint32 //  = 4096;
-	multSize    uint32 //  = 256;
-	headsCount  uint32 //  = 32;
-	layersCount uint32 // = 32;
-	rotCount    uint32 //   = 64;
-	f16         uint32 //    = 1;
+	ctxSize     uint32 // 512 // this is provided as user input?
+	vocabSize   uint32 // 32000
+	embdSize    uint32 // 4096
+	multSize    uint32 // 256
+	headsCount  uint32 // 32
+	layersCount uint32 // 32
+	rotCount    uint32 // 64
+	f16         uint32 // 1
 }
 
 type ModelType uint8
@@ -375,12 +375,12 @@ func Eval(
 	model := lctx.Model
 	kvSelf := model.kvSelf
 
-	fmt.Printf("\n=== N = %d", N)
+	//fmt.Printf("\n=== N = %d", N)
 	//// LLAMA_ASSERT(!!kv_self.ctx);
 
 	embdSize := model.hparams.embdSize
 	layersCount := model.hparams.layersCount // uint32(1) // model.hparams.layersCount
-	ctxSize := uint32(512)                   // model.hparams.ctxSize // FIXME
+	ctxSize := model.hparams.ctxSize
 	headsCount := model.hparams.headsCount
 	vocabSize := model.hparams.vocabSize
 	rotCount := model.hparams.embdSize / model.hparams.headsCount
@@ -776,14 +776,16 @@ func SampleTopPTopK(
 
 	////auto & rng = lctx.rng;
 
-	////////////////////////////////logitsCount := uint32(len(vocab.ID2Token))
+	////logitsCount := uint32(len(vocab.ID2Token))
 	logitsCount := lctx.Model.hparams.vocabSize
 	logits := lctx.Logits
 
-	fmt.Printf("\nlogitsCount = %d", logitsCount)   // DEBUG
-	fmt.Printf("\nlen(logits) = %d\n", len(logits)) // DEBUG
-	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| logits[%d] = %f |", ii, (logits)[ii])
+	if ml.DEBUG {
+		fmt.Printf("\nlogitsCount = %d", logitsCount)   // DEBUG
+		fmt.Printf("\nlen(logits) = %d\n", len(logits)) // DEBUG
+		for ii := 0; ii < 8; ii++ {
+			fmt.Printf("| logits[%d] = %f |", ii, (logits)[ii])
+		}
 	}
 
 	////const auto * plogits = logits.data() + logits.size() - n_logits;
