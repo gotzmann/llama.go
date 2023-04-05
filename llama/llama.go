@@ -35,7 +35,7 @@ var (
 )
 
 type pair struct {
-	first  float64
+	first  float32
 	second uint32
 }
 
@@ -769,9 +769,9 @@ func SampleTopPTopK(
 	lastNTokens []uint32,
 	lastNTokensSize uint32, // FIXME Remove
 	topK uint32,
-	topP float64,
-	temp float64,
-	repeatPenalty float64,
+	topP float32,
+	temp float32,
+	repeatPenalty float32,
 ) uint32 {
 
 	////auto & rng = lctx.rng;
@@ -798,6 +798,20 @@ func SampleTopPTopK(
 		}
 	}
 
+	////if (temp <= 0) {
+	////    // select the token with the highest logit directly
+	////    float max_logit = plogits[0];
+	////    llama_vocab::id max_id = 0;
+	////
+	////    for (int i = 1; i < n_logits; ++i) {
+	////        if (plogits[i] > max_logit) {
+	////            max_logit = plogits[i];
+	////            max_id = i;
+	////        }
+	////    }
+	////    return max_id;
+	////}
+
 	////const auto * plogits = logits.data() + logits.size() - n_logits;
 	//plogits := logits[len(logits)-int(logitsCount):] // FIXME ASAP
 	plogits := logits[:]
@@ -807,7 +821,7 @@ func SampleTopPTopK(
 	logitsID := make([]pair, 0, logitsCount) // FIXME LEN vs CAP
 
 	{
-		scale := 1.0 / temp
+		scale := float32(1.0 / temp)
 		for i := uint32(0); i < logitsCount; i++ {
 
 			// repetition penalty from ctrl paper (https://arxiv.org/abs/1909.05858)
@@ -819,14 +833,14 @@ func SampleTopPTopK(
 				// if score < 0 then repetition penalty has to multiplied to reduce the previous token probability
 				if plogits[i] < 0.0 {
 					////logits_id.push_back(std::make_pair(logits[i]*scale*repeat_penalty, i));
-					logitsID = append(logitsID, pair{float64(plogits[i]) * scale * repeatPenalty, i})
+					logitsID = append(logitsID, pair{plogits[i] * scale * repeatPenalty, i})
 				} else {
 					////logits_id.push_back(std::make_pair(logits[i]*scale/repeat_penalty, i));
-					logitsID = append(logitsID, pair{float64(plogits[i]) * scale / repeatPenalty, i})
+					logitsID = append(logitsID, pair{plogits[i] * scale / repeatPenalty, i})
 				}
 				// else append pair to logitsID	scaling probability
 			} else {
-				logitsID = append(logitsID, pair{float64(plogits[i]) * scale, i})
+				logitsID = append(logitsID, pair{plogits[i] * scale, i})
 			}
 		}
 	}
@@ -835,7 +849,7 @@ func SampleTopPTopK(
 	sampleTopK(logitsID, topK)
 
 	////double maxl = -INFINITY;
-	maxl := math.Inf(-1)
+	maxl := float32(math.Inf(-1))
 	////for (const auto & kv : logits_id) {
 	for _, kv := range logitsID {
 		//// maxl = std::max(maxl, kv.first);
@@ -844,24 +858,24 @@ func SampleTopPTopK(
 
 	// compute probs for the top k tokens
 	////probs.reserve(logits_id.size());
-	probs := make([]float64, 0, len(logitsID)) // FIXME LEN vs CAP
+	probs := make([]float32, 0, len(logitsID)) // FIXME LEN vs CAP
 
 	sum := 0.0
 	////for (const auto & kv : logits_id) {
 	for _, kv := range logitsID {
 		// double p = exp(kv.first - maxl);
-		p := math.Exp(kv.first - maxl)
-		probs = append(probs, p)
+		p := math.Exp(float64(kv.first - maxl))
+		probs = append(probs, float32(p))
 		sum += p
 	}
 
 	// normalize the probs
 	for i := range probs {
-		probs[i] = probs[i] / sum
+		probs[i] = probs[i] / float32(sum)
 	}
 
 	if topP < 1.0 {
-		cumsum := 0.0
+		cumsum := float32(0.0)
 		for i := uint32(0); i < uint32(len(probs)); i++ {
 			cumsum += probs[i]
 			if cumsum >= topP {
@@ -1471,7 +1485,7 @@ func LoadModel(
 	return nil
 }
 
-func max(a, b float64) float64 {
+func max(a, b float32) float32 {
 	if a >= b {
 		return a
 	}
