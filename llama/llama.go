@@ -767,7 +767,7 @@ func sampleTopK(logitsID []pair, topK uint32) []pair {
 func SampleTopPTopK(
 	lctx *Context,
 	lastNTokens []uint32,
-	lastNTokensSize uint32,
+	lastNTokensSize uint32, // FIXME Remove
 	topK uint32,
 	topP float64,
 	temp float64,
@@ -775,10 +775,20 @@ func SampleTopPTopK(
 ) uint32 {
 
 	////auto & rng = lctx.rng;
-
 	////logitsCount := uint32(len(vocab.ID2Token))
 	logitsCount := lctx.Model.hparams.vocabSize
 	logits := lctx.Logits
+
+	// DEBUG
+	fmt.Printf("\n\n>>> SampleTopPTopK <<<\n")
+	fmt.Printf("\n=== LOGITS | %d ===\n", len(logits))
+	for i := 0; i < 8; i++ {
+		fmt.Printf("%.4f ", logits[i])
+	}
+	fmt.Printf("\n=== LAST N TOKENS | %d ===\n", len(lastNTokens))
+	for i := 0; i < int(lastNTokensSize); i++ {
+		fmt.Printf("%d ", lastNTokens[i])
+	}
 
 	if ml.DEBUG {
 		fmt.Printf("\nlogitsCount = %d", logitsCount)   // DEBUG
