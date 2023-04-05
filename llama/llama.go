@@ -1,7 +1,6 @@
 package llama
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"log"
@@ -20,8 +19,9 @@ import (
 
 const (
 	LLAMA_FILE_VERSION           = 1
-	LLAMA_FILE_MAGIC             = 0x67676d66 // 'ggmf' in hex
-	LLAMA_FILE_MAGIC_UNVERSIONED = 0x67676d6c // pre-versioned files
+	LLAMA_FILE_MAGIC             = 0x67676a74 // 'ggjt' in hex
+	LLAMA_FILE_MAGIC_OLD         = 0x67676d66 // 'ggmf' in hex
+	LLAMA_FILE_MAGIC_UNVERSIONED = 0x67676d6c // 'ggml' pre-versioned files
 )
 
 var (
@@ -409,14 +409,13 @@ func Eval(
 		embd.Data[id] = float32(tokens[id]) // FIXME copy() for slices
 	}
 
-	fmt.Printf("\n\n=== EMBD === LEN = %d * %d\n", embd.NE[0], embd.NE[1]) // DEBUG
-	for ii := 0; ii < 8; ii++ {
-		fmt.Printf("| EMBD[%d] = %f |", ii, embd.Data[ii])
-	}
-
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
 
 	for il := uint32(0); il < layersCount; il++ {
+
+		if il > 0 {
+			break // DEBUG
+		}
 
 		inpSA := inpL
 		cur := &ml.Tensor{}
@@ -638,16 +637,14 @@ func Eval(
 		}
 	}
 
-	printTensor(inpL, "INPL")
+	if ml.DEBUG {
+		printTensor(inpL, "INPL")
 
-	//printTensor(lctx.Logits, "LOGITS")
-
-	fmt.Printf("\n\n=== LOGITS === %d ===\n", len(lctx.Logits)) // DEBUG
-	for ii := 0; ii < 13; ii++ {
-		fmt.Printf("%.4f  ", lctx.Logits[ii])
+		fmt.Printf("\n\n=== LOGITS === %d ===\n", len(lctx.Logits)) // DEBUG
+		for ii := 0; ii < 13; ii++ {
+			fmt.Printf("%.4f  ", lctx.Logits[ii])
+		}
 	}
-
-	//os.Exit(0) // DEBUG
 
 	// --- extract embeddings
 
@@ -889,7 +886,7 @@ func SampleTopPTopK(
 
 // llama_model_load
 // load the model's weights from a file
-// WAS func LoadModel(fileName string, model *Model, vocab *ml.Vocab) error {
+// see convert-pth-to-ggml.py for details on format
 
 func LoadModel(
 	fileName string, //const std::string & fname,
@@ -904,25 +901,18 @@ func LoadModel(
 
 	fmt.Printf("\n[LoadModel] Loading model from '%s' - please wait ...\n", fileName)
 
-	data, err := os.Open(fileName)
+	file, err := os.Open(fileName)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer data.Close()
-	reader := bufio.NewReader(data)
-	//reader := io.NewReader(data)
+	defer file.Close()
+	//reader := bufio.NewReader(data)
 
-	//var magic []byte
-	//magic := make([]byte, 4)
-	//if _, err := reader.Read(magic); err != nil {
-	//	return err
-	//}
+	// --- check header magic and format version
 
-	//var magicInt int32
-	//magicInt := int32(magic[3])<<24 | int32(magic[2])<<16 | int32(magic[1])<<8 | int32(magic[0])
-	magic, _ := readInt(reader)
+	magic := readInt(file)
 
-	if magic == LLAMA_FILE_MAGIC_UNVERSIONED {
+	if magic == LLAMA_FILE_MAGIC_UNVERSIONED || magic == LLAMA_FILE_MAGIC_OLD {
 		fmt.Printf("\n[ERROR] Invalid model file '%s'! Too old, regenerate!", fileName)
 		return fmt.Errorf("invalid model file")
 	}
@@ -932,55 +922,22 @@ func LoadModel(
 		return fmt.Errorf("invalid model file")
 	}
 
-	version, _ := readInt(reader)
+	version := readInt(file)
 
 	if version != LLAMA_FILE_VERSION {
 		fmt.Printf("\n[ERROR] Invalid model file '%s'! Unsupported version", fileName)
 		return fmt.Errorf("invalid model file")
 	}
 
-	/*
-		if magic != 0x67676d6c {
-			fmt.Printf("\n[llamaModelLoad] Invalid model file '%s' (bad magic)", fileName)
-			return nil // FIXME ERR
-		} */
-
-	//var buf []byte // std::vector<char> f_buf(1024*1024);
-	//	buf := make([]byte, 1024*1024)
-	//	if _, err := reader.Read(buf); err != nil {
-	//		fmt.Printf("\n[llamaModelLoad] Error '%w'", err)
-	//		return nil
-	//	}
-
-	////auto fin = std::ifstream(fname, std::ios::binary);
-	////fin.rdbuf()->pubsetbuf(f_buf.data(), f_buf.size());
-	////if (!fin) {
-	////    fmt.Printf("%s: failed to open '%s'\n", __func__, fname.c_str());
-	////    return false;
-	////}
-	/*
-	   // verify magic
-	   {
-	       uint32_t magic;
-	       fin.read((char *) &magic, sizeof(magic));
-	       if (magic != 0x67676d6c) {
-	           fmt.Printf("%s: invalid model file '%s' (bad magic)\n", __func__, fname.c_str());
-	           return false;
-	       }
-	   }
-	*/
-
-	///////////////////////////////////////////////////////////////////////var n_ff, n_parts uint32
-
 	// --- load hparams
 
-	vocabSize, _ := readInt(reader)   // vocab_size
-	embdSize, _ := readInt(reader)    // dim
-	multSize, _ := readInt(reader)    // multiple_of
-	headsCount, _ := readInt(reader)  // n_heads
-	layersCount, _ := readInt(reader) // n_layers
-	rotCount, _ := readInt(reader)    // rot = dim // n_heads [obsolete]
-	f16, _ := readInt(reader)         // ftype
+	vocabSize := readInt(file)   // vocab_size
+	embdSize := readInt(file)    // dim
+	multSize := readInt(file)    // multiple_of
+	headsCount := readInt(file)  // n_heads
+	layersCount := readInt(file) // n_layers
+	rotCount := readInt(file)    // rot = dim // n_heads [obsolete]
+	f16 := readInt(file)         // ftype
 
 	model := lctx.Model
 
@@ -1049,42 +1006,15 @@ func LoadModel(
 
 	fmt.Printf("\n\n[LoadModel] Loading vocab...\n")
 
-	// --- Python ---
-	// fout.write(struct.pack("i", len(text)))
-	// fout.write(text)
-	// fout.write(struct.pack("f", tokenizer.get_score(i)))
-
-	// Allocate memory and increase len / cap for the whole space
-	// FIXME Was already done with NewVocab() call
-	/////////////////////////////////////////////////////////vocab.ID2Token = slices.Grow(vocab.ID2Token, int(vocabSize))
-	///////////////////////////////////////////////////////////////////vocab.ID2Token = vocab.ID2Token[0:vocabSize:vocabSize]
-
 	for i := uint32(0); i < vocabSize; i++ {
 
-		len, _ := readInt(reader)
-		//word := make([]byte, len)
-		//if count, err := io.ReadFull(reader, word); err != nil || count != int(len) {
-		//	fmt.Printf("\n[llamaModelLoad] Problem reading vocabulary from '%s'", fileName)
-		//	return nil // FIXME ERR
-		//}
-		token := readString(reader, len)
-		score := readFP32(reader)
-
-		//if i%6 == 0 {
-		//	fmt.Println()
-		//}
-		//fmt.Printf("| vocab[%d] = %s ] ", i, string(word))
+		len := readInt(file)
+		token := readString(file, len)
+		score := readFP32(file)
 
 		vocab.Token2ID[token] = i
 		vocab.ID2Token[i] = ml.TokenScore{Token: token, Score: score}
-
-		// DEBUG
-		if i%1000 == 0 {
-			fmt.Printf("| %+v ", ml.TokenScore{Token: token, Score: score}) // DEBUG
-		}
 	}
-
-	//return nil
 
 	// for the big tensors, we have the option to store the data in 16-bit floats or quantized
 	// in order to save memory and also to speed up the computation
@@ -1092,11 +1022,8 @@ func LoadModel(
 
 	////switch (model.hparams.f16) {
 	//// case 0: wtype = GGML_TYPE_F32;  break;
-
 	////case 1: wtype = GGML_TYPE_F16;  break;
-
-	/////////////////////////////////////////////////////////////////////wtype := ml.TYPE_F16 // FIXME dtype
-
+	////wtype := ml.TYPE_F16 // FIXME dtype
 	////case 2: wtype = GGML_TYPE_Q4_0; break;
 	////case 3: wtype = GGML_TYPE_Q4_1; break;
 	////default:
@@ -1107,63 +1034,9 @@ func LoadModel(
 	////        }
 	////}
 
-	//wtype2 := ml.TYPE_F32
-
-	////auto & ctx = model.ctx;
 	ctx := model.ctx
 
-	// FIXME Context size calculations - do we need this ??
-	//{
-	//typeSize := ml.TypeSizeFloat(wtype)
-	//////////////////////////////////////////////////////////////////typeSize := ml.TYPE_SIZE[wtype]
-	////ctxSize := uint32(0)
-	////const auto & hparams = model.hparams;
-	/////////////////////////////////////////////////////////////////embd := hparamsEmbd
-	////////////////////////////////////////////////////////////////layers := hparamsLayers
-	////const int n_ctx   = hparams.n_ctx;
-	///////////////////////////////////////////////////////////////////vocabSize := hparamsVocabSize
-
-	////ctxSize += embd * vocabSize * typeSize                              /* ggml_type_sizef(wtype) */         // tok_embeddings
-	////ctxSize += embd * 4                                                 /* ggml_type_sizef(GGML_TYPE_F32) */ // norm
-	////ctxSize += embd * vocabSize * typeSize                              /* ggml_type_sizef(wtype) */         // output
-	////ctxSize += layers * (embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */) // attention_norm
-
-	////ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wq
-	////ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wk
-	////ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wv
-	////ctxSize += layers * (embd * embd * typeSize /* ggml_type_sizef(wtype) */) // wo
-
-	/////ctxSize += layers * (embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */) // ffn_norm
-
-	////ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w1
-	////ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w2
-	////ctxSize += layers * (n_ff * embd * typeSize /* ggml_type_sizef(wtype) */) // w3
-
-	////ctxSize += ctxSize * layers * embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */ // memory_k
-	/////ctxSize += ctxSize * layers * embd * 4 /* ggml_type_sizef(GGML_TYPE_F32) */ // memory_v
-
-	////ctxSize += (5 + 10*layers) * 256 // object overhead
-
-	////fmt.Printf("\nggml ctx size = %.2f MB", float32(ctxSize)/(1024*1024))
-	//}
-
-	// --- create the ggml context
-	////{
-	//// lctx.model.buf.resize(ctx_size);
-
-	////params := ml.InitParams{
-	////MemSize:   uint64(ctxSize),
-	////MemBuffer: nil,
-	////}
-
-	///////////////////////////////////////////////////////////////model.ctx = ml.Init(ml.InitParams{})
-	////if model.ctx == nil {
-	////fmt.Printf("\nggml_init() failed")
-	////return nil // FIXME ERR
-	////}
-	////}
-
-	// prepare memory for the weights
+	// --- prepare memory for the weights
 	{
 		//const auto & hparams = model.hparams;
 
@@ -1281,7 +1154,7 @@ func LoadModel(
 
 		// load weights
 		{
-			n_tensors := uint32(0)
+			tensorsCount := uint32(0)
 
 			////total_size := uint64(0)
 
@@ -1293,16 +1166,17 @@ func LoadModel(
 				//fin.read(reinterpret_cast<char *>(&length), sizeof(length));
 				//fin.read(reinterpret_cast<char *>(&ftype),  sizeof(ftype));
 
-				dims, err := readInt(reader)
+				dims := readInt(file)
 
 				// FIXME Check for EOF
-				if err != nil || dims > 2 {
+				//if err != nil || dims > 2 {
+				if dims == 0 || dims > 2 {
 					fmt.Printf("\n[STOP] Model was read...")
 					break
 				}
 
-				length, _ := readInt(reader)
-				ftype, _ := readInt(reader)
+				length := readInt(file)
+				ftype := readInt(file)
 
 				//fmt.Printf("\ndims = %d", dims)
 				//fmt.Printf("\nlength = %d", length)
@@ -1317,28 +1191,28 @@ func LoadModel(
 				ne := [2]uint32{1, 1} // FIXME Why only 2 ??
 				for i := uint32(0); i < dims; i++ {
 					////fin.read(reinterpret_cast<char *>(&ne[i]), sizeof(ne[i]));
-					ne[i], _ = readInt(reader)
+					ne[i] = readInt(file)
 					////nelements *= ne[i]
 					nelements *= ne[i]
 				}
 
 				////std::string name(length, 0);
 				////fin.read(&name[0], length);
-				name := readString(reader, length)
+				name := readString(file, length)
 				//fmt.Printf("\nname = %s", name)
 
 				typeStr := "FP32"
 				if ftype == 1 {
 					typeStr = "FP16"
 				}
-				nStr := fmt.Sprintf("%d", nelements)
-				if nelements > 1000000 {
-					nStr = fmt.Sprintf("%.1f M", float32(nelements)/1024/1024)
-				}
+				//memStr := fmt.Sprintf("%d", nelements)
+				//if nelements > 1000000 {
+				memStr := fmt.Sprintf("%dM", nelements*4/1024/1024) // FIXME element size
+				//}
 
 				// DEBUG
 				//fmt.Printf("\n\n=== Tensor # %d === [ %s | %s | dims = %d | n = %s ] ===\n\n", n_tensors, typeStr, name, dims, nStr)
-				fmt.Printf("\n[ # %d | %s | %s | dims = %d | n = %s ]", n_tensors, typeStr, name, dims, nStr)
+				fmt.Printf("\n=== LAYER #%d === %s | %s | %s ===", tensorsCount, typeStr, name, memStr)
 				//if n_tensors%3 == 0 {
 				//	fmt.Printf("\n")
 				//}
@@ -1457,17 +1331,10 @@ func LoadModel(
 
 					if part_id == 0 {
 
-						////fin.read(reinterpret_cast<char *>(tensor->data), ggml_nbytes(tensor));
-						// NB! ggml_nbytes == (ggml_nelements(tensor)*GGML_TYPE_SIZE[tensor->type])/GGML_BLCK_SIZE[tensor->type];
-						//fmt.Printf("\n\nReading %d Tensor elements...\n", tensor.Nelements())
-
-						//dataHeader := (*reflect.SliceHeader) (unsafe.Pointer(&tensor.Data))
-						//dataHeader.Data
-
 						if ftype == 1 { // --- FP16
 
 							for n := uint32(0); n < tensorSize; n++ {
-								tensor.Data[n] = readFP16ToFP32(reader)
+								tensor.Data[n] = readFP16ToFP32(file)
 							}
 
 						} else { // --- FP32
@@ -1475,48 +1342,34 @@ func LoadModel(
 							var fake []byte
 
 							fakeHeader := (*reflect.SliceHeader)(unsafe.Pointer(&fake))
-							// FIXME unsafe.Pointer(tensor.Data) VS unsafe.Pointer(&tensor.Data)
-							// FIXME It's REALLY depends on how Data defined in Tensor struct (pointer VS simple slice)
-							///////////////////////////dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&tensor.Data))
-							///////////////////////////dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(tensor.Data))
+							// NB! unsafe.Pointer(tensor.Data) for *Data VS unsafe.Pointer(&tensor.Data) for Data
 							dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&tensor.Data))
 
 							fakeHeader.Data = dataHeader.Data
 							fakeHeader.Len = int(tensorSize * 4)
 							fakeHeader.Cap = int(tensorSize * 4)
 
+							// --- all tensors in file are aligned for 32 bytes
+
+							alignment := int64(32)
+							offset, _ := file.Seek(0, io.SeekCurrent)
+							for ; offset%alignment != 0; offset++ {
+							}
+							file.Seek(offset, io.SeekStart)
+
 							//fmt.Printf("\n== FAKE []BYTE LEN = %d", len(fake))
-							if count, err := io.ReadFull(reader, fake); err != nil || count != int(tensorSize*4) {
+							if count, err := io.ReadFull(file, fake); err != nil || count != int(tensorSize*4) {
 								fmt.Printf("\n[ERROR] Failed to read BIG FP32 chunk from model!")
 								fmt.Printf("\n[ERROR] COUNT = %d | ERR = %s", count, err.Error())
 								os.Exit(1)
 							}
-							//os.Exit(0)
-
-							//for n := uint32(0); n < tensorSize; n++ {
-							//	tensor.Data[n] = readFP32(reader)
-							//}
 						}
-
-						// DEBUG Print each 1,000th or 10,000,000th element
-						//if tensorSize > 10000000 && n%10000000 == 0 {
-						//	fmt.Printf("| %f |", tensor.Data[n])
-						//} else {
-						//	if tensorSize < 10000 && n%1000 == 0 {
-						//		fmt.Printf("| %f |", tensor.Data[n])
-						//	}
-						//}
-						//}
 
 					} else {
 						////fin.seekg(ggml_nbytes(tensor), std::ios::cur);
 						fmt.Printf("\n[ERROR] The multi-part models are not supported yet")
 						os.Exit(1)
 					}
-
-					//os.Exit(0)
-
-					////total_size += ggml_nbytes(tensor)
 
 				} else {
 
@@ -1566,7 +1419,7 @@ func LoadModel(
 
 				//fmt.Printf("%42s - [%5d, %5d], type = %6s, %6.2f MB\n", name.data(), ne[0], ne[1], ftype == 0 ? "float" : "f16", ggml_nbytes(tensor)/1024.0/1024.0);
 
-				n_tensors++
+				tensorsCount++
 				model.loadedCount++
 
 				// progress
@@ -1614,14 +1467,12 @@ func max(a, b float64) float64 {
 }
 
 // NB! INT = 32 bits
-func readInt(reader *bufio.Reader) (uint32, error) {
+func readInt(file *os.File) uint32 {
 	buf := make([]byte, 4)
-	if count, err := io.ReadFull(reader, buf); err != nil || count != 4 {
-		fmt.Print("\n[ERROR] Failed to read data from model")
-		//os.Exit(1)
-		return 0, err
+	if count, err := file.Read(buf); err != nil || count != 4 {
+		return 0
 	}
-	return uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0]), nil
+	return uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0])
 }
 
 /*
@@ -1635,33 +1486,29 @@ func readFloat(reader *bufio.Reader) (float32, error) {
 	return // uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0]), nil
 } */
 
-func readString(reader *bufio.Reader, len uint32) string {
+func readString(file *os.File, len uint32) string {
 	buf := make([]byte, len)
-	if count, err := io.ReadFull(reader, buf); err != nil || count != int(len) {
-		fmt.Print("\n[ERROR] Failed to read data from model")
-		os.Exit(1)
+	if count, err := file.Read(buf); err != nil || count != int(len) {
+		return ""
 	}
 	return string(buf)
 }
 
-func readFP16ToFP32(reader *bufio.Reader) float32 {
+func readFP16ToFP32(file *os.File) float32 {
 	buf := make([]byte, 2)
-	if count, err := io.ReadFull(reader, buf); err != nil || count != 2 {
-		fmt.Print("\n[ERROR] Failed to read data from model")
-		os.Exit(1)
+	if count, err := file.Read(buf); err != nil || count != 2 {
+		return 0.0
 	}
 	bits := uint16(buf[1])<<8 | uint16(buf[0])
 	f16 := float16.Frombits(bits)
 	return f16.Float32()
 }
 
-func readFP32(reader *bufio.Reader) float32 {
+func readFP32(file *os.File) float32 {
 	buf := make([]byte, 4)
-	if count, err := io.ReadFull(reader, buf); err != nil || count != 4 {
-		fmt.Print("\n[ERROR] Failed to read data from model")
-		os.Exit(1)
+	if count, err := file.Read(buf); err != nil || count != 4 {
+		return 0.0
 	}
 	bits := uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0])
-	//bits := uint32(buf[1])<<24 | uint32(buf[0])<<16 | uint32(buf[3])<<8 | uint32(buf[2])
 	return math.Float32frombits(bits)
 }
