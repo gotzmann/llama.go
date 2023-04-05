@@ -422,7 +422,7 @@ func main() {
 	for i := 0; i < len(embdInp); i++ {
 		////////////////////////////////////fmt.Printf("\n%d => '%s'", embdInp[i], vocab.ID2Token[embdInp[i]])
 		////llama_token_to_str(ctx, embd_inp[i]));
-		fmt.Printf("| %d => '%s' |", embdInp[i], ml.Token2Str(lctx.Vocab, embdInp[i]))
+		fmt.Printf("%d:'%s'  ", embdInp[i], ml.Token2Str(lctx.Vocab, embdInp[i]))
 	}
 
 	////if (params.interactive) {
@@ -521,7 +521,7 @@ func main() {
 			// - take the n_keep first tokens from the original prompt (via n_past)
 			// - take half of the last (n_ctx - n_keep) tokens and recompute the logits in a batch
 
-			if pastCount+uint32(len(embd)) > params.ctxSize {
+			if pastCount+uint32(len(embd)) > 512 /*params.ctxSize*/ { // FIXME
 				leftCount := pastCount - params.keepCount
 				pastCount = params.keepCount
 
@@ -620,6 +620,8 @@ func main() {
 				fmt.Printf("%s", ml.Token2Str(lctx.Vocab, id))
 			}
 			////fflush(stdout);
+
+			//os.Exit(0)
 		}
 
 		// reset color to default if we there is no pending user input
@@ -715,6 +717,8 @@ func main() {
 		////remaining_tokens = params.n_predict;
 		////is_interacting = true;
 		////}
+
+		//os.Exit(0)
 	}
 
 	////#if defined (_WIN32)
