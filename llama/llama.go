@@ -785,6 +785,10 @@ func SampleTopPTopK(
 	for i := 0; i < 8; i++ {
 		fmt.Printf("%.4f ", logits[i])
 	}
+	fmt.Printf(" ... ")
+	for i := int(len(logits)) - 1; i >= int(len(logits))-8; i-- {
+		fmt.Printf("%.4f ", logits[i])
+	}
 	fmt.Printf("\n=== LAST N TOKENS | %d ===\n", len(lastNTokens))
 	for i := 0; i < int(lastNTokensSize); i++ {
 		fmt.Printf("%d ", lastNTokens[i])
@@ -845,8 +849,42 @@ func SampleTopPTopK(
 		}
 	}
 
+	fmt.Printf("\n=== LOGITS ID AFTER | %d ===\n", len(logitsID))
+	for i := 0; i < min(6, len(logitsID)); i++ {
+		fmt.Printf("{ %.3f | %d }", logitsID[i].first, logitsID[i].second)
+	}
+	fmt.Printf(" ... ")
+	for i := len(logitsID) - 6; i < len(logitsID)-1; i++ {
+		fmt.Printf("{ %.3f | %d } ", logitsID[i].first, logitsID[i].second)
+	}
+
 	// sort logitsID slice and return only top K elements
-	sampleTopK(logitsID, topK)
+	//// sampleTopK(logitsID, topK)
+
+	// NB! Inline logic for [sampleTopK] right here
+
+	//// std::partial_sort(
+	////	logits_id.begin(),
+	////	logits_id.begin() + top_k, logits_id.end(),
+	////	[](const std::pair<float, llama_vocab::id> & a, const std::pair<float, llama_vocab::id> & b) {
+	//// return a.first > b.first;
+	//// });
+	//// logits_id.resize(top_k);
+
+	sort.Slice(
+		logitsID[:topK],
+		func(i, j int) bool {
+			return logitsID[i].first > logitsID[j].first // FIXME ASAP We need bigger elements first
+		})
+
+	fmt.Printf("\n=== LOGITS ID SORTED | TOP K = %d ===\n", topK)
+	for i := 0; i < min(6, len(logitsID)); i++ {
+		fmt.Printf("{ %.3f | %d }", logitsID[i].first, logitsID[i].second)
+	}
+	fmt.Printf(" ... ")
+	for i := len(logitsID) - 6; i < len(logitsID)-1; i++ {
+		fmt.Printf("{ %.3f | %d } ", logitsID[i].first, logitsID[i].second)
+	}
 
 	////double maxl = -INFINITY;
 	maxl := float32(math.Inf(-1))
@@ -855,6 +893,8 @@ func SampleTopPTopK(
 		//// maxl = std::max(maxl, kv.first);
 		maxl = max(maxl, kv.first)
 	}
+
+	fmt.Printf("\nmaxl = %.3f", maxl)
 
 	// compute probs for the top k tokens
 	////probs.reserve(logits_id.size());

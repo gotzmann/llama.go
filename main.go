@@ -547,10 +547,10 @@ func main() {
 
 			// FIXME Get all settings from context params
 			// out of user input, sample next token
-			topK := uint32(40)             // FIXME utils.h // top_k = 40;
-			topP := float64(0.95)          // FIXME utils.h // top_p = 0.95f;
-			temp := float64(0.80)          // FIXME utils.h // temp  = 0.80f;
-			repeatPenalty := float64(1.30) // utils.h // repeat_penalty  = 1.30f;
+			topK := params.topK                   // uint32(40)             // FIXME utils.h // top_k = 40;
+			topP := params.topP                   // float32(0.95)          // FIXME utils.h // top_p = 0.95f;
+			temp := params.temp                   /// (0.80)          // FIXME utils.h // temp  = 0.80f;
+			repeatPenalty := params.repeatPenalty // float32(1.30) // utils.h // repeat_penalty  = 1.30f;
 
 			///////////////////////////////////////////////////////////////vocabSize := 32000 // hparamsVocabSize
 
