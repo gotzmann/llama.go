@@ -886,6 +886,17 @@ func SampleTopPTopK(
 		fmt.Printf("{ %.3f | %d } ", logitsID[i].first, logitsID[i].second)
 	}
 
+	logitsID = logitsID[:topK]
+
+	fmt.Printf("\n=== LOGITS ID RESIZED | %d ===\n", len(logitsID))
+	for i := 0; i < min(6, len(logitsID)); i++ {
+		fmt.Printf("{ %.3f | %d }", logitsID[i].first, logitsID[i].second)
+	}
+	fmt.Printf(" ... ")
+	for i := len(logitsID) - 6; i < len(logitsID)-1; i++ {
+		fmt.Printf("{ %.3f | %d } ", logitsID[i].first, logitsID[i].second)
+	}
+
 	////double maxl = -INFINITY;
 	maxl := float32(math.Inf(-1))
 	////for (const auto & kv : logits_id) {
