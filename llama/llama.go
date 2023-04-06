@@ -5,10 +5,12 @@ import (
 	"io"
 	"log"
 	"math"
+	"math/rand"
 	"os"
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/x448/float16"
@@ -375,7 +377,7 @@ func Eval(
 	model := lctx.Model
 	kvSelf := model.kvSelf
 
-	//fmt.Printf("\n=== N = %d", N)
+	fmt.Printf("\n=== N = %d", N)
 	//// LLAMA_ASSERT(!!kv_self.ctx);
 
 	embdSize := model.hparams.embdSize
@@ -637,14 +639,16 @@ func Eval(
 		}
 	}
 
-	if ml.DEBUG {
-		printTensor(inpL, "INPL")
+	//if ml.DEBUG {
+	printTensor(inpL, "INPL")
 
-		fmt.Printf("\n\n=== LOGITS === %d ===\n", len(lctx.Logits)) // DEBUG
-		for ii := 0; ii < 13; ii++ {
-			fmt.Printf("%.4f  ", lctx.Logits[ii])
-		}
+	fmt.Printf("\n\n=== LOGITS === %d ===\n", len(lctx.Logits)) // DEBUG
+	for ii := 0; ii < 13; ii++ {
+		fmt.Printf("%.4f  ", lctx.Logits[ii])
 	}
+	//}
+
+	//os.Exit(0)
 
 	// --- extract embeddings
 
@@ -872,9 +876,9 @@ func SampleTopPTopK(
 	//// logits_id.resize(top_k);
 
 	sort.Slice(
-		logitsID[:topK],
-		func(i, j int) bool {
-			return logitsID[i].first > logitsID[j].first // FIXME ASAP We need bigger elements first
+		logitsID, // logitsID[:topK],
+		func(a, b int) bool {
+			return logitsID[a].first > logitsID[b].first
 		})
 
 	fmt.Printf("\n=== LOGITS ID SORTED | TOP K = %d ===\n", topK)
@@ -897,6 +901,7 @@ func SampleTopPTopK(
 		fmt.Printf("{ %.3f | %d } ", logitsID[i].first, logitsID[i].second)
 	}
 
+	// FIXME Why loop? We've already SORTED logitsID and the MAX is just the FIRST element
 	////double maxl = -INFINITY;
 	maxl := float32(math.Inf(-1))
 	////for (const auto & kv : logits_id) {
@@ -911,7 +916,7 @@ func SampleTopPTopK(
 	////probs.reserve(logits_id.size());
 	probs := make([]float32, 0, len(logitsID)) // FIXME LEN vs CAP
 
-	sum := 0.0
+	sum := float64(0.0)
 	////for (const auto & kv : logits_id) {
 	for _, kv := range logitsID {
 		// double p = exp(kv.first - maxl);
@@ -920,13 +925,32 @@ func SampleTopPTopK(
 		sum += p
 	}
 
+	fmt.Printf("\n=== PROBS | %d ===\n", len(probs))
+	for i := 0; i < min(6, len(probs)); i++ {
+		fmt.Printf("%.3f  ", probs[i])
+	}
+	fmt.Printf(" ... ")
+	for i := len(logitsID) - 6; i < len(probs)-1; i++ {
+		fmt.Printf("%.3f  ", probs[i])
+	}
+
 	// normalize the probs
 	for i := range probs {
-		probs[i] = probs[i] / float32(sum)
+		probs[i] /= float32(sum)
+	}
+
+	fmt.Printf("\n=== PROBS NORM | %d ===\n", len(probs))
+	for i := 0; i < min(6, len(probs)); i++ {
+		fmt.Printf("%.3f  ", probs[i])
+	}
+	fmt.Printf(" ... ")
+	for i := len(logitsID) - 6; i < len(probs)-1; i++ {
+		fmt.Printf("%.3f  ", probs[i])
 	}
 
 	if topP < 1.0 {
-		cumsum := float32(0.0)
+
+		cumsum := float32(0.0) // TODO float64 for better math?
 		for i := uint32(0); i < uint32(len(probs)); i++ {
 			cumsum += probs[i]
 			if cumsum >= topP {
@@ -934,6 +958,9 @@ func SampleTopPTopK(
 				probs = probs[:i+1]
 				////logits_id.resize(i + 1) // FIXME ASAP
 				logitsID = logitsID[:i+1]
+
+				fmt.Printf("\nLOOP BREAK !")
+
 				break
 			}
 		}
@@ -944,21 +971,45 @@ func SampleTopPTopK(
 		}
 	}
 
-	// COMMENTED printf("\n");
-	// COMMENTED for (int i = 0; i < (int) 10; i++) {
-	// COMMENTED    printf("%d: '%s' %f\n", i, vocab.id_to_token.at(logits_id[i].second).c_str(), probs[i]);
-	// COMMENTED }
-	// COMMENTED printf("\n\n");
-	// COMMENTED exit(0);
+	if len(probs) > 6 {
+		fmt.Printf("\n=== PROBS POST | %d ===\n", len(probs))
+		for i := 0; i < min(6, len(probs)); i++ {
+			fmt.Printf("%.3f  ", probs[i])
+		}
+		fmt.Printf(" ... ")
+		for i := len(logitsID) - 6; i < len(probs)-1; i++ {
+			fmt.Printf("%.3f  ", probs[i])
+		}
+	}
 
 	////std::discrete_distribution<> dist(probs.begin(), probs.end());
 	////int idx = dist(rng);
-
 	////return logits_id[idx].second;
 
-	fmt.Printf("\nSampleTopPTopK = %d", logitsID[0].second) // DEBUG
+	// --- discrete distribution
+	//     TODO Do we need something better than Serge Gotsuliak's hand-crafted formula here?
 
-	return logitsID[0].second // FIXME ASAP
+	seed := time.Now().UnixNano()
+	source := rand.NewSource(seed)
+
+	for i := 0; i < len(probs); i++ {
+		f := float32(source.Int63()) / (1 << 63)
+		probs[i] = probs[i] * probs[i] * f * f
+	}
+
+	idx := 0
+	maxProb := probs[0]
+	for i := 1; i < len(probs); i++ {
+		if probs[i] > maxProb {
+			idx = i
+			maxProb = probs[i]
+		}
+	}
+
+	fmt.Printf("\nidx = %d", idx)
+	fmt.Printf("\nlogitsID = %d | weight = %f", logitsID[idx].second, logitsID[idx].first)
+
+	return logitsID[idx].second
 }
 
 // llama_model_load

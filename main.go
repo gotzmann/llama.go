@@ -219,6 +219,8 @@ var isInteracting bool = false
 */
 func main() {
 
+	final := ""
+
 	// has to be called once at the start of the program to init ggml stuff
 	////ggml_time_init();
 
@@ -230,7 +232,7 @@ func main() {
 		ctxSize:      512,
 		seed:         -1,
 		threadsCount: 1, // FIXME
-		predictCount: 128,
+		predictCount: 8, // 128, // FIXME
 		repeatLastN:  64,
 		partsCount:   -1,
 		batchSize:    8,
@@ -374,7 +376,7 @@ func main() {
 	////params.prompt.insert(0, 1, ' ');
 
 	// tokenize the prompt
-	prompt := "How to create conversational AI:" // [  1  1128  304  1653  9678  1288  319  29902  29901  ]
+	prompt := "What is your name?" // [  1  1128  304  1653  9678  1288  319  29902  29901  ]
 	// Add a space in front of the first character to match OG llama tokenizer behavior
 	prompt = " " + prompt
 	////std::vector<gpt_vocab::id> embd_inp = ::llama_tokenize(vocab, params.prompt, true);
@@ -472,7 +474,7 @@ func main() {
 
 	inputNoEcho := false
 	pastCount := uint32(0)
-	remainCount := uint32(100) // params.predictCount
+	remainCount := params.predictCount
 	consumedCount := uint32(0)
 
 	// prompt user immediately after the starting prompt has been loaded
@@ -616,6 +618,8 @@ func main() {
 			for _, id := range embd { // FIXME Ordered / Unordered ??
 				////fmt.Printf("%s", vocab.ID2Token[id])
 				fmt.Printf("%s", ml.Token2Str(lctx.Vocab, id))
+				final += ml.Token2Str(lctx.Vocab, id)
+				fmt.Printf("\nFINAL = %s", final)
 			}
 			////fflush(stdout);
 
