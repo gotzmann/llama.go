@@ -415,9 +415,9 @@ func Eval(
 
 	for il := uint32(0); il < layersCount; il++ {
 
-		if il > 0 {
-			break // DEBUG
-		}
+		//if il > 0 {
+		//	break // DEBUG
+		//}
 
 		inpSA := inpL
 		cur := &ml.Tensor{}
