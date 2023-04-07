@@ -227,230 +227,46 @@ func main() {
 	// https://patorjk.com/software/taag/#p=display&f=3-D&t=llama.go%0A%0ALLaMA.go
 	// Isometric 1, Modular, Rectangles, Rozzo, Small Isometric 1, 3-D
 
-	logo6 := `
-888 888                                                    
-888 888  ,"Y88b 888 888 8e   ,"Y88b      e88 888  e88 88e  
-888 888 "8" 888 888 888 88b "8" 888     d888 888 d888 888b 
-888 888 ,ee 888 888 888 888 ,ee 888 d8b Y888 888 Y888 888P 
-888 888 "88 888 888 888 888 "88 888 Y8P  "88 888  "88 88"  
-                                          ,  88P           
-                                         "8",P"`
+	logo := `                                                    
+    /88       /88        /888/888   /888/8888/888   /888/888       /888/888   /888/888    
+    /888      /888      /888 //888 /8888/8888/8888 /888 //888     /8888///   /8888/8888  
+    /8888/88  /8888/88  /8888/8888 /8888/8888/8888 /8888/8888 /88 /8888/8888 /8888/8888 
+    /8888/888 /8888/888 /888 //888 /8888//88 /8888 /888 //888 /888//888/888/ //888/888/
+    //// ///  //// ///  ///   ///  ////  //  ////  ///   ///  ///  /// ///    /// ///`
 
-	logo5 := `[light_cyan]
-     ___       ___       ___       ___       ___       ___       ___                  
-    /\__\     /\__\     /\  \     /\__\     /\  \     /\  \     /\  \                 
-   /:/  /    /:/  /    /::\  \   /::L_L_   /::\  \   /::\  \   /::\  \                
-  /:/__/    /:/__/    /::\:\__\ /:/L:\__\ /::\:\__\ /:/\:\__\ /:/\:\__\               
-  \:\  \    \:\  \    \/\::/  / \/_/:/  / \/\::/  / \:\:\/__/ \:\/:/  /               
-   \:\__\    \:\__\     /:/  /    /:/  /    /:/  /   \::/  /   \::/  /                
-    \/__/     \/__/     \/__/     \/__/     \/__/     \/__/     \/__/`
-
-	logo4 := `[light_yellow]
-     ___       ___       ___           ___           ___           ___           ___                            
-    /\__\     /\__\     /\  \         /\__\         /\  \         /\  \         /\  \                           
-   /:/  /    /:/  /    /::\  \       /::|  |       /::\  \       /::\  \       /::\  \                          
-  /:/  /    /:/  /    /:/\:\  \     /:|:|  |      /:/\:\  \     /:/\:\  \     /:/\:\  \                         
- /:/  /    /:/  /    /::\~\:\  \   /:/|:|__|__   /::\~\:\  \   /:/  \:\  \   /:/  \:\  \                        
-/:/__/    /:/__/    /:/\:\ \:\__\ /:/ |::::\__\ /:/\:\ \:\__\ /:/__/_\:\__\ /:/__/ \:\__\                       
-\:\  \    \:\  \    \/__\:\/:/  / \/__/~~/:/  / \/__\:\/:/  / \:\  /\ \/__/ \:\  \ /:/  /                       
- \:\  \    \:\  \        \::/  /        /:/  /       \::/  /   \:\ \:\__\    \:\  /:/  /                        
-  \:\  \    \:\  \       /:/  /        /:/  /        /:/  /     \:\/:/  /     \:\/:/  /                         
-   \:\__\    \:\__\     /:/  /        /:/  /        /:/  /       \::/  /       \::/  /                          
-    \/__/     \/__/     \/__/         \/__/         \/__/         \/__/         \/__/`
-
-	logo3 := `[light_cyan]
-     _ _                                                  
-    | | |___ _____ ___   ___ ___                          
-    | | | .'|     | .'|_| . | . |                         
-    |_|_|__,|_|_|_|__,|_|_  |___|                         
-                        |___|`
-
-	logo2 := `[light_magenta]
-     __    __        _____ _____           
-    |  |  |  |   ___|     |  _  |  ___ ___ 
-    |  |__|  |__| .'| | | |     |_| . | . |
-    |_____|_____|__,|_|_|_|__|__|_|_  |___|
-                                  |___|`
-
-	logo := `
-     **  **                                                                 
-    /** /**                                     *****                       
-    /** /**  ******   **********   ******      **///**  ******              
-    /** /** //////** //**//**//** //////**    /**  /** **////**             
-    /** /**  *******  /** /** /**  *******    //******/**   /**             
-    /** /** **////**  /** /** /** **////**  ** /////**/**   /**
-    *** ***//******** *** /** /**//********/**  ***** //******
-   /// ///  //////// ///  //  //  //////// //  /////   //////`
-
-	bestLogo := `
-    **  **                                                                  
-   /** /**                                                                  
-   /** /**  ******   **********   ******       ******   ******              
-   /** /** //////** //**//**//** //////**     **////   **////**             
-   /** /**  *******  /** /** /**  *******    /**   /**/**   /**             
-   /** /** **////**  /** /** /** **////**    /**   /**/**   /**             
-   *** ***//******** *** /** /**//******** **//****** //******              
-  /// ///  //////// ///  //  //  //////// //  //////   //////`
-
-	charLogo := `
- 888  888                                                    
-8888 8888   88888 888 888 8     88888      888 888  888 888   
-8888 8888  8  888 888 888 88   8  888     8888 888 8888 8888 
-8888 8888 888 888 888 888 888 888 888 888 8888 888 8888 8888 
-8888 8888 888 888 888 888 888 888 888 888  888 888  888 888  
-                                             888           
-                                         888888`
-	/*
-	   	transformerLogoZero := `
-	     /88      /88        /88/8888/888/8888/88   /88/8888     /888/888  /888/888
-	     /888     /888      /888/8888/888/8888/888 /888/8888   /8888/    /8888/8888
-	     /8888/88 /8888/88 /8888/8888/888/8888/888/8888/8888/88/8888/8888/8888/8888
-	     /8888/888/8888/888/8888/8888/888 /88 /888/8888/8888/888/888/888  /888/888
-	     //// /// //// /// //// //// //// /// /// //// //// /// /// ///   /// ///` */
-
-	transformerLogo := `                                                    
- /88       /88        /888/888   /888/8888/888   /888/888       /888/888   /888/888    
- /888      /888      /888 //888 /8888/8888/8888 /888 //888     /8888///   /8888/8888  
- /8888/88  /8888/88  /8888/8888 /8888/8888/8888 /8888/8888 /88 /8888/8888 /8888/8888 
- /8888/888 /8888/888 /888 //888 /8888//88 /8888 /888 //888 /888//888/888/ //888/888/
- //// ///  //// ///  ///   ///  ////  //  ////  ///   ///  ///  /// ///    /// ///`
-
-	colors := map[rune]string{'*': "[light_blue]", '/': "[dark_gray]"}
-
-	colorizedLogo := "[black]"
+	logoColored := ""
+	prevColor := ""
 	color := "[black]"
-	for _, char := range bestLogo {
-		if char == '*' || char == '/' /* && color != colors[char]*/ {
-			color = colors[char]
-			//colorizedLogo += color
-		} else {
-			color = "[black]"
-		}
-		if char == '*' {
-			char = '▒'
-		}
-		colorizedLogo += color + string(char) + "[reset]"
-	}
-
-	solarizedLogo := "[black]"
-	color = ""
-	for _, char := range logo6 {
-		if char == '8' {
-			color = "[red]"
-		} else {
-			color = "[light_red]"
-		}
-		solarizedLogo += color + string(char) + "[reset]"
-	}
-
-	charLogoTransformed := "[black]"
-	color = ""
-	pos := 0
-	line := -1
-	for _, char := range transformerLogo {
+	line := 0
+	for _, char := range logo {
 		if char == '\n' {
-			pos = 0
 			line++
-		} else if char == '/' && line < 2 {
-			color = "[blue]"
-		} else if char == '/' && line > 1 {
+			continue
+		} else if char == '/' {
 			color = "[blue]"
 		} else if char == '8' {
 			char = '▒'
-
-			if line == 0 {
-				color = "[light_blue]"
-			}
 			if line == 1 {
-				color = "[magenta]"
+				color = "[light_blue]"
 			}
 			if line == 2 {
-				color = "[light_magenta]"
+				color = "[magenta]"
 			}
 			if line == 3 {
-				color = "[light_blue]"
-			}
-			if line == 4 {
 				color = "[light_magenta]"
 			}
-			if line == 5 {
-				color = "[dark_gray]"
+			if line == 4 {
+				color = "[light_blue]"
 			}
-
-			/*
-				if pos >= 0 { // l
-					color = "[light_blue]"
-				}
-				if pos >= 10 { // l
-					color = "[blue]"
-				}
-				if pos >= 19 { // a
-					color = "[light_red]"
-				}
-				if pos >= 28 { // m
-					color = "[white]"
-				}
-				if pos >= 41 { // a
-					color = "[yellow]"
-				}
-				if pos >= 52 { // .
-					color = "[dark_gray]"
-				}
-				if pos >= 55 { // g
-					color = "[cyan]"
-				}
-				if pos >= 64 { // o
-					color = "[yellow]"
-				}
-				if pos >= 80 {
-					color = "[dark_gray]"
-				}
-				//color = "[red]"
-			*/
-		} else {
-			color = "[black]"
 		}
-		solarizedLogo += color + string(char) + "[reset]"
-		pos++
+		if color == prevColor {
+			logoColored += string(char)
+		} else {
+			logoColored += "reset" + color + string(char)
+		}
 	}
 
-	transformer := "[black]"
-	color = ""
-	for _, char := range charLogo {
-		if char == '8' {
-			char = '▒'
-			color = "[red]"
-		} else {
-			color = "[black]"
-		}
-		solarizedLogo += color + string(char) + "[reset]"
-	}
-
-	colorstring.Println(logo)
-	fmt.Printf("\n\n")
-
-	colorstring.Printf(colorizedLogo)
-	fmt.Printf("\n\n")
-
-	colorstring.Printf(solarizedLogo)
-	fmt.Printf("\n\n")
-
-	colorstring.Printf(charLogoTransformed)
-	fmt.Printf("\n\n")
-
-	colorstring.Printf(transformer)
-
-	colorstring.Printf(transformer)
-	fmt.Printf("\n\n")
-
-	colorstring.Println(logo2)
-
-	colorstring.Println(logo4)
-
-	colorstring.Printf(logo3)
-	fmt.Printf("\n\n")
-
-	colorstring.Printf(logo5)
+	colorstring.Printf(logoColored)
 	fmt.Printf("\n\n")
 
 	colorstring.Printf("[light_magenta]    [ LLaMMa.go ][reset] [light_yellow]v0.1[reset]")
