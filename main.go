@@ -6,6 +6,10 @@ import (
 
 	// "golang.org/x/exp/slices"
 	// "github.com/x448/float16"
+	// github.com/schollz/progressbar/v3
+	// https://github.com/mitchellh/colorstring
+
+	"github.com/schollz/progressbar/v3"
 
 	"github.com/gotzmann/llama.go/llama"
 	"github.com/gotzmann/llama.go/ml"
@@ -220,6 +224,37 @@ var isInteracting bool = false
 func main() {
 
 	final := ""
+	/*
+		bar := progressbar.Default(100)
+		for i := 0; i < 100; i++ {
+			bar.Add(1)
+			time.Sleep(40 * time.Millisecond)
+		}*/
+
+	// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
+	bar := progressbar.NewOptions(1000,
+		progressbar.OptionFullWidth(),
+		//progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionSetPredictTime(false),
+		progressbar.OptionSetElapsedTime(false),
+		//progressbar.OptionShowBytes(true),
+		//progressbar.OptionSetWidth(40),
+		progressbar.OptionSetDescription("[cyan][1/3][reset] Writing moshable file..."),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			//Saucer:        "[green]▒[reset]",
+			Saucer:        "[light_magenta]≡[reset]",
+			SaucerHead:    "[white]≡[reset]", // "[green]>[reset]", ▒ » × ║ │ ≡
+			SaucerPadding: "[dark_gray]≡[reset]",
+			BarStart:      "[dark_gray]║[reset]",
+			BarEnd:        "[dark_gray]║[reset]",
+		}))
+	for i := 0; i < 1000; i++ {
+		bar.Add(1)
+		//time.Sleep(5 * time.Millisecond)
+	}
+
+	//os.Exit(0)
 
 	// has to be called once at the start of the program to init ggml stuff
 	////ggml_time_init();

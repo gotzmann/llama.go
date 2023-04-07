@@ -13,6 +13,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/schollz/progressbar/v3"
 	"github.com/x448/float16"
 	"golang.org/x/exp/slices"
 
@@ -1027,8 +1028,6 @@ func LoadModel(
 	////void *progress_callback_user_data
 ) error {
 
-	fmt.Printf("\n[LoadModel] Loading model from '%s' - please wait ...\n", fileName)
-
 	file, err := os.Open(fileName)
 	if err != nil {
 		log.Fatal(err)
@@ -1116,13 +1115,15 @@ func LoadModel(
 	////model.type = e_model::MODEL_65B;
 	////}
 
-	fmt.Printf("\nvocab  = %d", vocabSize)
-	fmt.Printf("\nembd   = %d", embdSize)
-	fmt.Printf("\nmult   = %d", multSize)
-	fmt.Printf("\nheads  = %d", headsCount)
-	fmt.Printf("\nlayers = %d", layersCount)
-	fmt.Printf("\nrot    = %d", rotCount)
-	fmt.Printf("\nf16    = %d", f16)
+	if ml.DEBUG {
+		fmt.Printf("\nvocab  = %d", vocabSize)
+		fmt.Printf("\nembd   = %d", embdSize)
+		fmt.Printf("\nmult   = %d", multSize)
+		fmt.Printf("\nheads  = %d", headsCount)
+		fmt.Printf("\nlayers = %d", layersCount)
+		fmt.Printf("\nrot    = %d", rotCount)
+		fmt.Printf("\nf16    = %d", f16)
+	}
 
 	//fmt.Printf("\nctx   = %d", hparamsCtx)
 	//fmt.Printf("\nn_ff    = %d", n_ff)
@@ -1132,9 +1133,28 @@ func LoadModel(
 
 	// --- load vocab
 
-	fmt.Printf("\n\n[LoadModel] Loading vocab...\n")
+	//fmt.Printf("\n\n[LoadModel] Loading vocab...\n")
+
+	vocabBar := progressbar.NewOptions(
+		int(vocabSize),
+		progressbar.OptionFullWidth(),
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionSetPredictTime(false),
+		progressbar.OptionSetElapsedTime(false),
+		progressbar.OptionSetDescription("[dark_gray][ 1/2 ][reset] [light_yellow][ INIT ][reset] Loading model vocabulary"),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[light_magenta]≡[reset]",
+			SaucerHead:    "[white]≡[reset]",
+			SaucerPadding: "[dark_gray]≡[reset]",
+			BarStart:      "[dark_gray]║[reset]",
+			BarEnd:        "[dark_gray]║[reset]",
+		}))
 
 	for i := uint32(0); i < vocabSize; i++ {
+
+		if i%100 == 0 {
+			vocabBar.Set(int(i))
+		}
 
 		len := readInt(file)
 		token := readString(file, len)
@@ -1143,6 +1163,9 @@ func LoadModel(
 		vocab.Token2ID[token] = i
 		vocab.ID2Token[i] = ml.TokenScore{Token: token, Score: score}
 	}
+
+	vocabBar.Finish()
+	fmt.Printf("\n")
 
 	// for the big tensors, we have the option to store the data in 16-bit floats or quantized
 	// in order to save memory and also to speed up the computation
@@ -1258,6 +1281,23 @@ func LoadModel(
 	////progress_callback(0.0, progress_callback_user_data);
 	////}
 
+	//fmt.Printf("\n[LoadModel] Loading model from '%s' - please wait ...\n", fileName)
+
+	// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
+	bar := progressbar.NewOptions(int(layersCount*9),
+		progressbar.OptionFullWidth(),
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionSetPredictTime(false),
+		progressbar.OptionSetElapsedTime(false),
+		progressbar.OptionSetDescription("[dark_gray][ 2/2 ][reset] [light_yellow][ INIT ][reset] Loading model weights   "),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[light_magenta]≡[reset]",
+			SaucerHead:    "[white]≡[reset]",
+			SaucerPadding: "[dark_gray]≡[reset]",
+			BarStart:      "[dark_gray]║[reset]",
+			BarEnd:        "[dark_gray]║[reset]",
+		}))
+
 	for i := 0; i < int(partsCount); i++ {
 
 		part_id := i
@@ -1268,7 +1308,7 @@ func LoadModel(
 			fname_part += "." + fmt.Sprintf("%d", i)
 		}
 
-		fmt.Printf("\n\n[llamaModelLoad] Loading model part %d / %d from '%s'\n", i+1, partsCount, fname_part)
+		//fmt.Printf("\n\n[llamaModelLoad] Loading model part %d / %d from '%s'\n", i+1, partsCount, fname_part)
 
 		// --- Python ---
 		// fout.write(struct.pack("iii", len(data.shape), len(sname), ftype_cur))
@@ -1324,26 +1364,16 @@ func LoadModel(
 					nelements *= ne[i]
 				}
 
-				////std::string name(length, 0);
-				////fin.read(&name[0], length);
 				name := readString(file, length)
-				//fmt.Printf("\nname = %s", name)
 
-				typeStr := "FP32"
-				if ftype == 1 {
-					typeStr = "FP16"
+				if ml.DEBUG {
+					typeStr := "FP32"
+					if ftype == 1 {
+						typeStr = "FP16"
+					}
+					memStr := fmt.Sprintf("%dM", nelements*4/1024/1024) // FIXME element size
+					fmt.Printf("\n=== LAYER #%d === %s | %s | %s ===", tensorsCount, typeStr, name, memStr)
 				}
-				//memStr := fmt.Sprintf("%d", nelements)
-				//if nelements > 1000000 {
-				memStr := fmt.Sprintf("%dM", nelements*4/1024/1024) // FIXME element size
-				//}
-
-				// DEBUG
-				//fmt.Printf("\n\n=== Tensor # %d === [ %s | %s | dims = %d | n = %s ] ===\n\n", n_tensors, typeStr, name, dims, nStr)
-				fmt.Printf("\n=== LAYER #%d === %s | %s | %s ===", tensorsCount, typeStr, name, memStr)
-				//if n_tensors%3 == 0 {
-				//	fmt.Printf("\n")
-				//}
 
 				if _, ok := model.tensors[name]; !ok {
 					fmt.Printf("\n[ERROR] Unknown tensor '%s' in model file", name)
@@ -1549,6 +1579,7 @@ func LoadModel(
 
 				tensorsCount++
 				model.loadedCount++
+				bar.Add(1)
 
 				// progress
 				////if (progress_callback) {
@@ -1576,6 +1607,7 @@ func LoadModel(
 		}
 
 		////fin.close();
+		bar.Finish()
 	}
 
 	////lctx.t_load_us = ggml_time_us() - t_start_us;
