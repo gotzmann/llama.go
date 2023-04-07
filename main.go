@@ -808,7 +808,7 @@ func showLogo() {
 	}
 
 	colorstring.Printf(logoColored)
-	fmt.Printf("\n\n")
+	fmt.Printf("\n")
 
 	colorstring.Printf("    [magenta]≡≡≡ [light_magenta][ llama.go v0.1 ][light_blue] [ Pure Go implementation of Meta's Large Language Model ][magenta] ≡≡≡")
 	fmt.Printf("\n\n")
