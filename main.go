@@ -222,55 +222,10 @@ var isInteracting bool = false
 +#endif
 +
 */
+
 func main() {
 
-	// https://patorjk.com/software/taag/#p=display&f=3-D&t=llama.go%0A%0ALLaMA.go
-	// Isometric 1, Modular, Rectangles, Rozzo, Small Isometric 1, 3-D
-
-	logo := `                                                    
-    /88       /88        /888/888   /888/8888/888   /888/888       /888/888   /888/888    
-    /888      /888      /888 //888 /8888/8888/8888 /888 //888     /8888///   /8888/8888  
-    /8888/88  /8888/88  /8888/8888 /8888/8888/8888 /8888/8888 /88 /8888/8888 /8888/8888 
-    /8888/888 /8888/888 /888 //888 /8888//88 /8888 /888 //888 /888//888/888/ //888/888/
-    //// ///  //// ///  ///   ///  ////  //  ////  ///   ///  ///  /// ///    /// ///`
-
-	logoColored := ""
-	prevColor := ""
-	color := "[black]"
-	line := 0
-	for _, char := range logo {
-		if char == '\n' {
-			line++
-			continue
-		} else if char == '/' {
-			color = "[blue]"
-		} else if char == '8' {
-			char = '▒'
-			if line == 1 {
-				color = "[light_blue]"
-			}
-			if line == 2 {
-				color = "[magenta]"
-			}
-			if line == 3 {
-				color = "[light_magenta]"
-			}
-			if line == 4 {
-				color = "[light_blue]"
-			}
-		}
-		if color == prevColor {
-			logoColored += string(char)
-		} else {
-			logoColored += "reset" + color + string(char)
-		}
-	}
-
-	colorstring.Printf(logoColored)
-	fmt.Printf("\n\n")
-
-	colorstring.Printf("[light_magenta]    [ LLaMMa.go ][reset] [light_yellow]v0.1[reset]")
-	fmt.Printf("\n\n")
+	showLogo()
 
 	final := ""
 	/*
@@ -815,4 +770,47 @@ func main() {
 	////llama_free(ctx);
 
 	////set_console_state(CONSOLE_STATE_DEFAULT);
+}
+
+// TODO Show actual version
+func showLogo() {
+
+	// https://patorjk.com/software/taag/#p=display&f=3-D&t=llama.go%0A%0ALLaMA.go
+	// Isometric 1, Modular, Rectangles, Rozzo, Small Isometric 1, 3-D
+
+	logo := `                                                    
+    /88       /88         /888/888   /888/8888/888   /888/888      /8888/888  /8888/888    
+    /888      /888      /888/ /888 /8888/8888/8888 /888/ /888     /8888 ///  /8888 /888  
+    /8888/88  /8888/88  /8888/8888 /8888/8888/8888 /8888/8888 /88 /8888 8888 /888 /8888 
+    /8888/888 /8888/888 /888 /8888 /8888//88 /8888 /888 /8888 /888//8888/888 /888/8888
+    //// ///  //// ///  ///  ////  ////  //  ////  ///  ////  ///  //// ///  /// ////`
+
+	logoColored := ""
+	prevColor := ""
+	color := ""
+	line := 0
+	colors := []string{"[black]", "[light_blue]", "[magenta]", "[light_magenta]", "[light_blue]"}
+
+	for _, char := range logo {
+		if char == '\n' {
+			line++
+		} else if char == '/' {
+			color = "[blue]"
+		} else if char == '8' {
+			color = colors[line]
+			char = '▒'
+		}
+		if color == prevColor {
+			logoColored += string(char)
+		} else {
+			logoColored += color + string(char)
+		}
+	}
+
+	colorstring.Printf(logoColored)
+	fmt.Printf("\n\n")
+
+	colorstring.Printf("    [magenta]≡≡≡ [light_magenta][ llama.go v0.1 ][light_blue] [ Pure Go implementation of Meta's Large Language Model ][magenta] ≡≡≡")
+	fmt.Printf("\n\n")
+
 }
