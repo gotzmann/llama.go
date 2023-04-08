@@ -8,8 +8,10 @@ import (
 	// "github.com/x448/float16"
 	// github.com/schollz/progressbar/v3
 	// https://github.com/mitchellh/colorstring
+	// github.com/pkg/profile
 
 	"github.com/mitchellh/colorstring"
+	"github.com/pkg/profile"
 	"github.com/schollz/progressbar/v3"
 
 	"github.com/gotzmann/llama.go/llama"
@@ -224,6 +226,8 @@ var isInteracting bool = false
 */
 
 func main() {
+
+	defer profile.Start(profile.ProfilePath(".")).Stop()
 
 	showLogo()
 

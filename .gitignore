@@ -1,5 +1,7 @@
 .env
 .idea
+*.pprof
+*.pdf
 /models
 /vendor
 __debug_bin
