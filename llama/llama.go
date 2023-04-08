@@ -1138,14 +1138,15 @@ func LoadModel(
 	vocabBar := progressbar.NewOptions(
 		int(vocabSize),
 		progressbar.OptionFullWidth(),
+		//progressbar.OptionSetWidth(40),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionSetPredictTime(false),
 		progressbar.OptionSetElapsedTime(false),
-		progressbar.OptionSetDescription("[dark_gray][ 1/2 ][reset] [light_yellow][ INIT ][reset] Loading model vocabulary"),
+		progressbar.OptionSetDescription("[light_magenta][ INIT ][light_blue] Loading model vocab..."),
 		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[light_magenta]≡[reset]",
-			SaucerHead:    "[white]≡[reset]",
-			SaucerPadding: "[dark_gray]≡[reset]",
+			Saucer:        "[light_magenta]▒[reset]",
+			SaucerHead:    "[white]▒[reset]",
+			SaucerPadding: "[dark_gray]▒[reset]",
 			BarStart:      "[dark_gray]║[reset]",
 			BarEnd:        "[dark_gray]║[reset]",
 		}))
@@ -1286,14 +1287,15 @@ func LoadModel(
 	// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
 	bar := progressbar.NewOptions(int(layersCount*9),
 		progressbar.OptionFullWidth(),
+		//progressbar.OptionSetWidth(40),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionSetPredictTime(false),
 		progressbar.OptionSetElapsedTime(false),
-		progressbar.OptionSetDescription("[dark_gray][ 2/2 ][reset] [light_yellow][ INIT ][reset] Loading model weights   "),
+		progressbar.OptionSetDescription("[light_magenta][ INIT ][light_blue] Loading model weights...[light_cyan]"),
 		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[light_magenta]≡[reset]",
-			SaucerHead:    "[white]≡[reset]",
-			SaucerPadding: "[dark_gray]≡[reset]",
+			Saucer:        "[light_magenta]▒[reset]",
+			SaucerHead:    "[white]▒[reset]",
+			SaucerPadding: "[dark_gray]▒[reset]",
 			BarStart:      "[dark_gray]║[reset]",
 			BarEnd:        "[dark_gray]║[reset]",
 		}))

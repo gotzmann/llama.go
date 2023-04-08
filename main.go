@@ -247,9 +247,9 @@ func main() {
 		progressbar.OptionSetDescription("[cyan][1/3][reset] Writing moshable file..."),
 		progressbar.OptionSetTheme(progressbar.Theme{
 			//Saucer:        "[green]▒[reset]",
-			Saucer:        "[light_magenta]≡[reset]",
-			SaucerHead:    "[white]≡[reset]", // "[green]>[reset]", ▒ » × ║ │ ≡
-			SaucerPadding: "[dark_gray]≡[reset]",
+			Saucer:        "[light_magenta]▒[reset]",
+			SaucerHead:    "[white]▒[reset]", // "[green]>[reset]", ▒ » × ║ │ ≡
+			SaucerPadding: "[dark_gray]▒[reset]",
 			BarStart:      "[dark_gray]║[reset]",
 			BarEnd:        "[dark_gray]║[reset]",
 		}))
@@ -779,11 +779,11 @@ func showLogo() {
 	// Isometric 1, Modular, Rectangles, Rozzo, Small Isometric 1, 3-D
 
 	logo := `                                                    
-/88       /88         /888/888   /88/8888/88   /888/888      /8888/88   /888/888    
-/888      /888      /888/ /888 /888/8888/888 /888/ /888     /8888 //   /8888//888  
-/8888/88  /8888/88  /8888/8888 /888/8888/888 /8888/8888 /88 /8888/8888 /888 /8888 
-/8888/888 /8888/888 /888 /8888 /888//88 /888 /888 /8888 /888//8888/88   /888/888
-//// ///  //// ///  ///  ////  ///  //  ///  ///  ////  ///  //// //    /// ///`
+  /88       /88         /888/888   /88/8888/88   /888/888      /8888/88   /888/888    
+  /888      /888      /888/ /888 /888/8888/888 /888/ /888     /8888 //   /8888//888  
+  /8888/88  /8888/88  /8888/8888 /888/8888/888 /8888/8888 /88 /8888/8888 /888 /8888 
+  /8888/888 /8888/888 /888 /8888 /888//88 /888 /888 /8888 /888//8888/88  //888/888
+  //// ///  //// ///  ///  ////  ///  //  ///  ///  ////  ///  //// //    /// ///`
 
 	logoColored := ""
 	prevColor := ""
@@ -810,7 +810,7 @@ func showLogo() {
 	colorstring.Printf(logoColored)
 	fmt.Printf("\n\n")
 
-	colorstring.Printf("    [magenta]≡≡≡ [light_magenta][ llama.go v0.1 ][light_blue] [ Pure Go implementation of Meta's Large Language Model ][magenta] ≡≡≡")
+	colorstring.Printf("   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v0.1 ] [light_blue][ Pure Go implementation of Meta's LLaMA GPT model ] [magenta]▒▒▒▒")
 	fmt.Printf("\n\n")
 
 }
