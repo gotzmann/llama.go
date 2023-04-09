@@ -2,5 +2,5 @@
 LLaMA inference on CPU in pure Golang
 
 <p align="center">
-  <img width="600" src="terminal.png">
+  <img width="100%" src="terminal.png">
 </p>
