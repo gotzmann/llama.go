@@ -378,7 +378,7 @@ func Eval(
 	model := lctx.Model
 	kvSelf := model.kvSelf
 
-	fmt.Printf("\n=== N = %d", N)
+	//fmt.Printf("\n=== N = %d", N)
 	//// LLAMA_ASSERT(!!kv_self.ctx);
 
 	embdSize := model.hparams.embdSize
@@ -416,9 +416,9 @@ func Eval(
 
 	for il := uint32(0); il < layersCount; il++ {
 
-		if il > 0 {
-			break // DEBUG
-		}
+		//if il > 0 {
+		//	break // DEBUG
+		//}
 
 		inpSA := inpL
 		cur := &ml.Tensor{}
@@ -640,14 +640,14 @@ func Eval(
 		}
 	}
 
-	//if ml.DEBUG {
-	printTensor(inpL, "INPL")
+	if ml.DEBUG {
+		printTensor(inpL, "INPL")
 
-	fmt.Printf("\n\n=== LOGITS === %d ===\n", len(lctx.Logits)) // DEBUG
-	for ii := 0; ii < 13; ii++ {
-		fmt.Printf("%.4f  ", lctx.Logits[ii])
+		fmt.Printf("\n\n=== LOGITS === %d ===\n", len(lctx.Logits)) // DEBUG
+		for ii := 0; ii < 13; ii++ {
+			fmt.Printf("%.4f  ", lctx.Logits[ii])
+		}
 	}
-	//}
 
 	//os.Exit(0)
 
@@ -784,26 +784,19 @@ func SampleTopPTopK(
 	logitsCount := lctx.Model.hparams.vocabSize
 	logits := lctx.Logits
 
-	// DEBUG
-	fmt.Printf("\n\n>>> SampleTopPTopK <<<\n")
-	fmt.Printf("\n=== LOGITS | %d ===\n", len(logits))
-	for i := 0; i < 8; i++ {
-		fmt.Printf("%.4f ", logits[i])
-	}
-	fmt.Printf(" ... ")
-	for i := int(len(logits)) - 1; i >= int(len(logits))-8; i-- {
-		fmt.Printf("%.4f ", logits[i])
-	}
-	fmt.Printf("\n=== LAST N TOKENS | %d ===\n", len(lastNTokens))
-	for i := 0; i < int(lastNTokensSize); i++ {
-		fmt.Printf("%d ", lastNTokens[i])
-	}
-
 	if ml.DEBUG {
-		fmt.Printf("\nlogitsCount = %d", logitsCount)   // DEBUG
-		fmt.Printf("\nlen(logits) = %d\n", len(logits)) // DEBUG
-		for ii := 0; ii < 8; ii++ {
-			fmt.Printf("| logits[%d] = %f |", ii, (logits)[ii])
+		fmt.Printf("\n\n>>> SampleTopPTopK <<<\n")
+		fmt.Printf("\n=== LOGITS | %d ===\n", len(logits))
+		for i := 0; i < 8; i++ {
+			fmt.Printf("%.4f ", logits[i])
+		}
+		fmt.Printf(" ... ")
+		for i := int(len(logits)) - 1; i >= int(len(logits))-8; i-- {
+			fmt.Printf("%.4f ", logits[i])
+		}
+		fmt.Printf("\n=== LAST N TOKENS | %d ===\n", len(lastNTokens))
+		for i := 0; i < int(lastNTokensSize); i++ {
+			fmt.Printf("%d ", lastNTokens[i])
 		}
 	}
 
@@ -854,13 +847,15 @@ func SampleTopPTopK(
 		}
 	}
 
-	fmt.Printf("\n=== LOGITS ID AFTER | %d ===\n", len(logitsID))
-	for i := 0; i < min(6, len(logitsID)); i++ {
-		fmt.Printf("{ %.3f | %d }", logitsID[i].first, logitsID[i].second)
-	}
-	fmt.Printf(" ... ")
-	for i := len(logitsID) - 6; i < len(logitsID)-1; i++ {
-		fmt.Printf("{ %.3f | %d } ", logitsID[i].first, logitsID[i].second)
+	if ml.DEBUG {
+		fmt.Printf("\n=== LOGITS ID AFTER | %d ===\n", len(logitsID))
+		for i := 0; i < min(6, len(logitsID)); i++ {
+			fmt.Printf("{ %.3f | %d }", logitsID[i].first, logitsID[i].second)
+		}
+		fmt.Printf(" ... ")
+		for i := len(logitsID) - 6; i < len(logitsID)-1; i++ {
+			fmt.Printf("{ %.3f | %d } ", logitsID[i].first, logitsID[i].second)
+		}
 	}
 
 	// sort logitsID slice and return only top K elements
@@ -882,24 +877,28 @@ func SampleTopPTopK(
 			return logitsID[a].first > logitsID[b].first
 		})
 
-	fmt.Printf("\n=== LOGITS ID SORTED | TOP K = %d ===\n", topK)
-	for i := 0; i < min(6, len(logitsID)); i++ {
-		fmt.Printf("{ %.3f | %d }", logitsID[i].first, logitsID[i].second)
-	}
-	fmt.Printf(" ... ")
-	for i := len(logitsID) - 6; i < len(logitsID)-1; i++ {
-		fmt.Printf("{ %.3f | %d } ", logitsID[i].first, logitsID[i].second)
+	if ml.DEBUG {
+		fmt.Printf("\n=== LOGITS ID SORTED | TOP K = %d ===\n", topK)
+		for i := 0; i < min(6, len(logitsID)); i++ {
+			fmt.Printf("{ %.3f | %d }", logitsID[i].first, logitsID[i].second)
+		}
+		fmt.Printf(" ... ")
+		for i := len(logitsID) - 6; i < len(logitsID)-1; i++ {
+			fmt.Printf("{ %.3f | %d } ", logitsID[i].first, logitsID[i].second)
+		}
 	}
 
 	logitsID = logitsID[:topK]
 
-	fmt.Printf("\n=== LOGITS ID RESIZED | %d ===\n", len(logitsID))
-	for i := 0; i < min(6, len(logitsID)); i++ {
-		fmt.Printf("{ %.3f | %d }", logitsID[i].first, logitsID[i].second)
-	}
-	fmt.Printf(" ... ")
-	for i := len(logitsID) - 6; i < len(logitsID)-1; i++ {
-		fmt.Printf("{ %.3f | %d } ", logitsID[i].first, logitsID[i].second)
+	if ml.DEBUG {
+		fmt.Printf("\n=== LOGITS ID RESIZED | %d ===\n", len(logitsID))
+		for i := 0; i < min(6, len(logitsID)); i++ {
+			fmt.Printf("{ %.3f | %d }", logitsID[i].first, logitsID[i].second)
+		}
+		fmt.Printf(" ... ")
+		for i := len(logitsID) - 6; i < len(logitsID)-1; i++ {
+			fmt.Printf("{ %.3f | %d } ", logitsID[i].first, logitsID[i].second)
+		}
 	}
 
 	// FIXME Why loop? We've already SORTED logitsID and the MAX is just the FIRST element
@@ -911,7 +910,7 @@ func SampleTopPTopK(
 		maxl = max(maxl, kv.first)
 	}
 
-	fmt.Printf("\nmaxl = %.3f", maxl)
+	//fmt.Printf("\nmaxl = %.3f", maxl)
 
 	// compute probs for the top k tokens
 	////probs.reserve(logits_id.size());
@@ -926,13 +925,15 @@ func SampleTopPTopK(
 		sum += p
 	}
 
-	fmt.Printf("\n=== PROBS | %d ===\n", len(probs))
-	for i := 0; i < min(6, len(probs)); i++ {
-		fmt.Printf("%.3f  ", probs[i])
-	}
-	fmt.Printf(" ... ")
-	for i := len(logitsID) - 6; i < len(probs)-1; i++ {
-		fmt.Printf("%.3f  ", probs[i])
+	if ml.DEBUG {
+		fmt.Printf("\n=== PROBS | %d ===\n", len(probs))
+		for i := 0; i < min(6, len(probs)); i++ {
+			fmt.Printf("%.3f  ", probs[i])
+		}
+		fmt.Printf(" ... ")
+		for i := len(logitsID) - 6; i < len(probs)-1; i++ {
+			fmt.Printf("%.3f  ", probs[i])
+		}
 	}
 
 	// normalize the probs
@@ -940,13 +941,15 @@ func SampleTopPTopK(
 		probs[i] /= float32(sum)
 	}
 
-	fmt.Printf("\n=== PROBS NORM | %d ===\n", len(probs))
-	for i := 0; i < min(6, len(probs)); i++ {
-		fmt.Printf("%.3f  ", probs[i])
-	}
-	fmt.Printf(" ... ")
-	for i := len(logitsID) - 6; i < len(probs)-1; i++ {
-		fmt.Printf("%.3f  ", probs[i])
+	if ml.DEBUG {
+		fmt.Printf("\n=== PROBS NORM | %d ===\n", len(probs))
+		for i := 0; i < min(6, len(probs)); i++ {
+			fmt.Printf("%.3f  ", probs[i])
+		}
+		fmt.Printf(" ... ")
+		for i := len(logitsID) - 6; i < len(probs)-1; i++ {
+			fmt.Printf("%.3f  ", probs[i])
+		}
 	}
 
 	if topP < 1.0 {
@@ -959,9 +962,6 @@ func SampleTopPTopK(
 				probs = probs[:i+1]
 				////logits_id.resize(i + 1) // FIXME ASAP
 				logitsID = logitsID[:i+1]
-
-				fmt.Printf("\nLOOP BREAK !")
-
 				break
 			}
 		}
@@ -972,14 +972,16 @@ func SampleTopPTopK(
 		}
 	}
 
-	if len(probs) > 6 {
-		fmt.Printf("\n=== PROBS POST | %d ===\n", len(probs))
-		for i := 0; i < min(6, len(probs)); i++ {
-			fmt.Printf("%.3f  ", probs[i])
-		}
-		fmt.Printf(" ... ")
-		for i := len(logitsID) - 6; i < len(probs)-1; i++ {
-			fmt.Printf("%.3f  ", probs[i])
+	if ml.DEBUG {
+		if len(probs) > 6 {
+			fmt.Printf("\n=== PROBS POST | %d ===\n", len(probs))
+			for i := 0; i < min(6, len(probs)); i++ {
+				fmt.Printf("%.3f  ", probs[i])
+			}
+			fmt.Printf(" ... ")
+			for i := len(logitsID) - 6; i < len(probs)-1; i++ {
+				fmt.Printf("%.3f  ", probs[i])
+			}
 		}
 	}
 
@@ -1007,8 +1009,10 @@ func SampleTopPTopK(
 		}
 	}
 
-	fmt.Printf("\nidx = %d", idx)
-	fmt.Printf("\nlogitsID = %d | weight = %f", logitsID[idx].second, logitsID[idx].first)
+	if ml.DEBUG {
+		fmt.Printf("\nidx = %d", idx)
+		fmt.Printf("\nlogitsID = %d | weight = %f", logitsID[idx].second, logitsID[idx].first)
+	}
 
 	return logitsID[idx].second
 }

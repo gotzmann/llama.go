@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	// "golang.org/x/exp/slices"
 	// "github.com/x448/float16"
@@ -227,6 +228,8 @@ var isInteracting bool = false
 
 func main() {
 
+	runtime.GOMAXPROCS(8)
+
 	defer profile.Start(profile.ProfilePath(".")).Stop()
 
 	showLogo()
@@ -419,7 +422,7 @@ func main() {
 	////params.prompt.insert(0, 1, ' ');
 
 	// tokenize the prompt
-	prompt := "Why Golang is popular?" // [  1  1128  304  1653  9678  1288  319  29902  29901  ]
+	prompt := "Why Golang is so popular?" // [  1  1128  304  1653  9678  1288  319  29902  29901  ]
 	// Add a space in front of the first character to match OG llama tokenizer behavior
 	prompt = " " + prompt
 	////std::vector<gpt_vocab::id> embd_inp = ::llama_tokenize(vocab, params.prompt, true);

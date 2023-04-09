@@ -13,11 +13,11 @@ import (
 const (
 	DEBUG = false
 
-	MAX_DIMS     = 4
-	MAX_NODES    = 4096
-	MAX_PARAMS   = 16
-	MAX_CONTEXTS = 64
-	MAX_OPT      = 4
+	MAX_DIMS   = 4
+	MAX_NODES  = 4096
+	MAX_PARAMS = 16
+	////MAX_CONTEXTS = 64
+	MAX_OPT = 4
 
 	QK = 32 // quantization
 
@@ -97,7 +97,7 @@ const (
 	OP_RELU
 	OP_GELU
 	OP_SILU
-	OP_NORM // normalize
+	OP_NORM
 	OP_RMS_NORM
 
 	OP_MUL_MAT
@@ -129,11 +129,6 @@ type Tensor struct {
 	NE   [MAX_DIMS]uint32 // number of elements
 	NB   [MAX_DIMS]uint32 // stride in bytes: // FIXME ASAP
 
-	// nb[0] = sizeof(type)
-	// nb[1] = nb[0]   * ne[0] + padding
-	// nb[i] = nb[i-1] * ne[i-1]
-
-	// compute data
 	op optype
 
 	isParam bool
@@ -141,9 +136,8 @@ type Tensor struct {
 	grad *Tensor
 	src0 *Tensor
 	src1 *Tensor
-	opt  [MAX_OPT]*Tensor
+	opt  [MAX_OPT]*Tensor // FIXME Do we need this?
 
-	// thread scheduling
 	TasksCount uint32
 
 	// performance
@@ -726,8 +720,9 @@ type Graph struct {
 	LeafsCount   uint32 // FIXME Do not need, having len() ??
 	ThreadsCount uint32
 
-	WorkSize uint32
-	Work     *Tensor
+	////WorkSize uint32
+	////Work     *Tensor
+	Jobs chan *ComputeParams
 
 	Nodes [MAX_NODES]*Tensor
 	Grads [MAX_NODES]*Tensor
@@ -739,18 +734,18 @@ type Graph struct {
 	////int64_t perf_time_us;
 }
 
-type State struct {
-	Contexts [MAX_CONTEXTS]ContextContainer
-}
+////type State struct {
+////	Contexts [MAX_CONTEXTS]ContextContainer
+////}
 
-type ContextContainer struct {
-	Used bool
-	Ctx  Context
-}
+////type ContextContainer struct {
+////	Used bool
+////	Ctx  Context
+////}
 
 // global state
-var gState State
-var gStateBarrier int // FIXME atomic_int
+////var gState State
+////var gStateBarrier int // FIXME atomic_int
 
 type InitParams struct {
 	// memory pool
@@ -759,22 +754,21 @@ type InitParams struct {
 }
 
 // scratch buffer
-type Scratch struct {
-	Offs uint64
-	Size uint64
-	Data []byte
-}
+////type Scratch struct {
+////	Offs uint64
+////	Size uint64
+////	Data []byte
+////}
 
-type Object struct {
-	Offs uint64
-	Size uint64
-
-	Next *Object
-
-	//Padding [8]byte
-}
+////type Object struct {
+////	Offs uint64
+////	Size uint64
+////	Next *Object
+////Padding [8]byte
+////}
 
 // ml/ggml.c:2248
+// TODO Do we need this?
 type Context struct {
 	//MemSize        uint64
 	//MemBuffer      []byte
@@ -786,8 +780,8 @@ type Context struct {
 	//ObjectsBegin *Object
 	//ObjectsEnd   *Object
 
-	//Scratch     Scratch
-	//ScratchSave Scratch
+	// Scratch     Scratch
+	// ScratchSave Scratch
 }
 
 // ggml_new_tensor_1d
@@ -1618,9 +1612,16 @@ const (
 
 type ComputeParams struct {
 	Type TaskType
-	ith  uint32
-	nth  uint32
-	wg   sync.WaitGroup
+
+	ith uint32
+	nth uint32
+
+	src0 *Tensor
+	src1 *Tensor
+	dst  *Tensor
+
+	wg *sync.WaitGroup
+
 	// work buffer for all threads
 	////wsize uint32
 	////wdata []float32 // byte // FIXME *void
@@ -1644,28 +1645,62 @@ type ComputeState struct {
 
 // Golang doesn’t have unary Bitwise NOT(~) like other programming languages
 // Here, you have to use Bitwise XOR(^) operator as Bitwise NOT
-func up32(n uint32) uint32 {
+func up32(n uint32) uint32 { // FIXME Not needed ?
 	return uint32(n+31) & ^uint32(31)
 }
 
-func up(n, m uint32) uint32 {
+func up(n, m uint32) uint32 { // FIXME Not needed ?
 	// assert m is a power of 2
 	////GGML_ASSERT((m & (m - 1)) == 0);
 	return uint32(n+m-1) & ^uint32(m-1)
 }
 
-func max(a, b int) int {
+func max(a, b int) int { // FIXME Not needed ?
 	if a >= b {
 		return a
 	}
 	return b
 }
 
+// Job is goroutine existing while the computation loop is active
+// The main purpose of the Job is to perform some part
+// of time consuming matrix multiplications
+func Job(listen <-chan *ComputeParams) {
+	fmt.Printf("\nJOB STARTED...")
+	for params := range listen {
+
+		//fmt.Printf("\n...JOB SIGNAL")
+		ComputeForwardMulMatFP32(
+			params,
+			params.src0,
+			params.src1,
+			params.dst)
+
+		// DEBUG MULTI_THREAD
+		//if params.nth > 1 {
+		//	defer params.wg.Done()
+		//defer fmt.Printf("\nTHREAD #%d ... defer Done()", params.ith)
+		//}
+
+		//fmt.Printf("\n...JOB DONE")
+		params.wg.Done()
+	}
+	fmt.Printf("\nJOB FINISHED...")
+}
+
 func GraphCompute(ctx *Context, graph *Graph) {
 
 	//fmt.Printf("\n\n === GraphCompute : %d nodes ===\n\n", graph.NodesCount) // DEBUG
 
-	threads := graph.ThreadsCount
+	threads := uint32(8) // graph.ThreadsCount
+
+	// --- init N job goroutines and channel to send tasks for them
+	graph.Jobs = make(chan *ComputeParams) // TODO Right place to init?
+	defer close(graph.Jobs)
+
+	for i := uint32(0); i < threads; i++ {
+		go Job(graph.Jobs)
+	}
 
 	////struct ggml_compute_state_shared state_shared = {
 	////    spin      = LOCK_INITIALIZER,
@@ -1675,7 +1710,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 	////    stop      = false,
 	////};
 
-	var workers []ComputeState
+	////var workers []ComputeState
 	if threads > 1 {
 		//////workers = alloca(sizeof(struct ggml_compute_state)*(threads - 1))
 		////fmt.Printf("\n[HALT] Parallelism is not allowed!")
@@ -1948,7 +1983,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		}
 
 		//fmt.Printf("\n[COMPUTE] ComputeForward | TASK_INIT | ...")
-		ComputeForward(&params, node) // TASK_INIT
+		ComputeForward(graph, &params, node) // TASK_INIT
 
 		// --- COMPUTE
 
@@ -1971,18 +2006,18 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			////}
 
 			// launch thread pool
-			for j := uint32(0); j < threads-1; j++ {
-				workers[j].params = &ComputeParams{
-					Type: TASK_COMPUTE,
-					ith:  j + 1,
-					nth:  node.TasksCount,
-					////.wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
-					////.wdata = cgraph->work ? cgraph->work->data : NULL,
-					////wsize: wsize,
-					////wdata: wdata,
-				}
-				workers[j].node = node
-			}
+			////for j := uint32(0); j < threads-1; j++ {
+			////	workers[j].params = &ComputeParams{
+			////		Type: TASK_COMPUTE,
+			////		ith:  j + 1,
+			////		nth:  node.TasksCount,
+			////.wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
+			////.wdata = cgraph->work ? cgraph->work->data : NULL,
+			////wsize: wsize,
+			////wdata: wdata,
+			////	}
+			////	workers[j].node = node
+			////}
 
 			////atomic_fetch_sub(&state_shared.n_ready, 1);
 
@@ -2002,7 +2037,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 		//fmt.Printf("\n[COMPUTE] ComputeForward | TASK_COMPUTE | ...")
 		params.Type = TASK_COMPUTE
-		ComputeForward(&params, node)
+		ComputeForward(graph, &params, node)
 
 		// wait for thread pool
 		////if (node->n_tasks > 1) {
@@ -2043,18 +2078,18 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			////}
 
 			// launch thread pool
-			for j := uint32(0); j < threads-1; j++ {
-				workers[j].params = &ComputeParams{
-					Type: TASK_FINALIZE,
-					ith:  j + 1,
-					nth:  node.TasksCount,
-					////.wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
-					////.wdata = cgraph->work ? cgraph->work->data : NULL,
-					////wsize: wsize,
-					////wdata: wdata,
-				}
-				workers[j].node = node
-			}
+			////for j := uint32(0); j < threads-1; j++ {
+			////	workers[j].params = &ComputeParams{
+			////		Type: TASK_FINALIZE,
+			////		ith:  j + 1,
+			////		nth:  node.TasksCount,
+			////.wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
+			////.wdata = cgraph->work ? cgraph->work->data : NULL,
+			////wsize: wsize,
+			////wdata: wdata,
+			////	}
+			////	workers[j].node = node
+			////}
 
 			////atomic_fetch_sub(&state_shared.n_ready, 1);
 
@@ -2068,7 +2103,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 		//fmt.Printf("\n[COMPUTE] ComputeForward | TASK_FINALIZE | ...")
 		params.Type = TASK_FINALIZE
-		ComputeForward(&params, node)
+		ComputeForward(graph, &params, node)
 
 		// wait for thread pool
 		////if node.TasksCount > 1 {
@@ -2134,7 +2169,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 /////////////////////////////////
 
-func ComputeForward(params *ComputeParams, tensor *Tensor) {
+func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 
 	//fmt.Printf("\n[COMPUTE] ComputeForward...")
 	////ASSERT(params);
@@ -2225,24 +2260,41 @@ func ComputeForward(params *ComputeParams, tensor *Tensor) {
 	case OP_MUL_MAT:
 		////ComputeForwardMulMatFP32(params, tensor.src0, tensor.src1, tensor)
 		// DEBUG MULTI-THREAD
-		threads := 2
-		fmt.Printf("\nOP_MUL_MAT [%d] starting...", threads)
-		var wg sync.WaitGroup
+		threads := 8 // FIXME graph tasks count
+		//fmt.Printf("\nOP_MUL_MAT [%d] starting...", threads)
+
+		wg := new(sync.WaitGroup)
 		wg.Add(threads)
+
+		//for i := 0; i < threads; i++ {
+		//	go ComputeForwardMulMatFP32(
+		//		&ComputeParams{
+		//			Type: TASK_COMPUTE,
+		//			ith:  uint32(i),
+		//			nth:  uint32(threads),
+		//			wg:   wg,
+		//		},
+		//		tensor.src0,
+		//		tensor.src1,
+		//		tensor)
+		//}
+
 		for i := 0; i < threads; i++ {
-			go ComputeForwardMulMatFP32(
-				&ComputeParams{
-					Type: TASK_COMPUTE,
-					ith:  uint32(i),
-					nth:  uint32(threads),
-					wg:   wg,
-				},
-				tensor.src0,
-				tensor.src1,
-				tensor)
+			graph.Jobs <- &ComputeParams{
+				Type: TASK_COMPUTE,
+				ith:  uint32(i),
+				nth:  uint32(threads),
+				src0: tensor.src0,
+				src1: tensor.src1,
+				dst:  tensor,
+				wg:   wg,
+			}
 		}
+
+		//fmt.Printf("\nCOMPUTE WAIT...")
 		wg.Wait()
-		fmt.Printf("\nOP_MUL_MAT finished!")
+		//fmt.Printf("\nCOMPUTE WAIT SUCCESS...")
+		//fmt.Printf("\nOP_MUL_MAT finished!")
 	case OP_SCALE:
 		////ggml_compute_forward_scale(params, tensor->src0, tensor->src1, tensor);
 		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_scale")
@@ -2681,7 +2733,6 @@ func VecAccFP32(n uint32, y, x []float32) {
 // ggml_compute_forward_mul_mat_f32
 func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	//fmt.Printf(" [ ComputeForwardMulMatFP32 ] ")
 	////int64_t t0 = ggml_perf_time_us();
 	////UNUSED(t0);
 
@@ -2689,10 +2740,15 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		return
 	}
 
+	//fmt.Printf("\n>>> ComputeForwardMulMatFP32 <<<")
+
 	// DEBUG MULTI_THREAD
-	if params.nth > 1 {
-		defer params.wg.Done()
-	}
+	//if params.nth > 1 {
+	//	defer params.wg.Done()
+	//defer fmt.Printf("\nTHREAD #%d ... defer Done()", params.ith)
+	//}
+
+	//return // DEBUG
 
 	ith := params.ith
 	nth := params.nth
@@ -2816,7 +2872,7 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 	////void * wdata = params->wdata;
 
-	fmt.Printf("\nTHREAD #%d | MATMUL | TOTAL ROWS = %d | FROM %d TO %d | ELEMENTS = %d", ith, nr, ir0, ir1, ne00) // DEBUG
+	//fmt.Printf("\nTHREAD #%d | MATMUL | TOTAL ROWS = %d | FROM %d TO %d | ELEMENTS = %d", ith, nr, ir0, ir1, ne00) // DEBUG
 
 	for ir := uint32(ir0); ir < ir1; ir++ {
 
@@ -2912,27 +2968,23 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 	ne02 := src0.NE[2]
 	ne03 := src0.NE[3]
 
-	nb00 := src0.NB[0]
-	nb01 := src0.NB[1]
-	nb02 := src0.NB[2]
-	nb03 := src0.NB[3]
+	nb00 := src0.NB[0] / 4
+	nb01 := src0.NB[1] / 4
+	nb02 := src0.NB[2] / 4
+	nb03 := src0.NB[3] / 4
 
 	////if (ggml_is_contiguous(src0) && src0->type == dst->type) {
 	if src0.IsContiguous() && src0.Type == dst.Type {
 		////memcpy(dst->data, src0->data, ggml_nelements(dst) * GGML_TYPE_SIZE[src0->type]);
 		////return;
-		////copy(dst.Data, src0.Data)
-		n := dst.Nelements()
-		for i := uint32(0); i < n; i++ {
-			if i == 28672 && (len(dst.Data) <= 28672 || len(src0.Data) <= 28672) {
-				fmt.Printf("THATS-IT")
-				return
-			}
 
-			dst.Data[i] = src0.Data[i]
-		}
+		copy(dst.Data, src0.Data) // FIXME Double Check
 
-		//fmt.Printf("\nCONTIGIOUS")
+		////n := dst.Nelements()
+		////for i := uint32(0); i < n; i++ {
+		////	dst.Data[i] = src0.Data[i]
+		////}
+
 		return
 	}
 
@@ -2951,20 +3003,28 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 
 			id := uint32(0) // Row number ??
 			//// rs := ne00 * nb00
-			rs := ne00 * nb00 / 4 // FIXME Row size in 4-bytes elements
+			//rs := ne00 * nb00 / 4 // FIXME Row size in 4-bytes elements
+			rs := ne00 * nb00 // FIXME Row size in 4-bytes elements
 
 			for i03 := uint32(0); i03 < ne03; i03++ {
 				for i02 := uint32(0); i02 < ne02; i02++ {
 					for i01 := uint32(0); i01 < ne01; i01++ {
+
 						////const char * src0_ptr = (char *) src0->data + i01*nb01 + i02*nb02 + i03*nb03;
-						src0Ptr := src0.Data[i01*nb01/4+i02*nb02/4+i03*nb03/4:]
+						//src0Ptr := src0.Data[i01*nb01/4+i02*nb02/4+i03*nb03/4:]
+						//src0Ptr := src0.Data[i01*nb01+i02*nb02+i03*nb03:]
+						src0Ptr := src0.Data[i01*nb01+i02*nb02+i03*nb03 : i01*nb01+i02*nb02+i03*nb03+rs]
+
 						////char * dst_ptr = (char *) dst->data + id*rs;
-						dstPtr := dst.Data[id*rs:]
+						//dstPtr := dst.Data[id*rs:]
+						dstPtr := dst.Data[id*rs : id*rs+rs]
 
 						////memcpy(dst_ptr, src0_ptr, rs);
-						for i := uint32(0); i < rs; i++ {
-							dstPtr[i] = src0Ptr[i] // FIXME ASAP / Double Check
-						}
+						//for i := uint32(0); i < rs; i++ {
+						//	dstPtr[i] = src0Ptr[i] // FIXME ASAP / Double Check
+						//}
+
+						copy(dstPtr, src0Ptr) // FIXME Double Check
 
 						id++
 					}
@@ -3004,10 +3064,13 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 				for i02 := uint32(0); i02 < ne02; i02++ {
 					for i01 := uint32(0); i01 < ne01; i01++ {
 						for i00 := uint32(0); i00 < ne00; i00++ {
+
 							//src0Ptr := src0.Data[i00*nb00/4 + i01*nb01/4 + i02*nb02/4 + i03*nb03/4:]
 							//dstPtr[id] = *src0_ptr;
 							// FIXME DoubleCheck
-							dst.Data[id] = src0.Data[i00*nb00/4+i01*nb01/4+i02*nb02/4+i03*nb03/4]
+							//dst.Data[id] = src0.Data[i00*nb00/4+i01*nb01/4+i02*nb02/4+i03*nb03/4]
+							dst.Data[id] = src0.Data[i00*nb00+i01*nb01+i02*nb02+i03*nb03]
+
 							id++
 						}
 					}
@@ -3037,8 +3100,7 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 	}
 
 	if DEBUG {
-		fmt.Printf("\n\n>>> COPY <<< >>> ComputeForwardDupFP32 OUT <<<\n")
-		fmt.Printf("\nNOT CONTIGIOUS")
+		fmt.Printf("\n\n>>> ComputeForwardDupFP32 OUT <<<\n")
 	}
 }
 
@@ -3777,6 +3839,7 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 
 }
 
+// TODO Remove older version
 // FIXME Would it work with UTF-8? Rewrite for runes
 // SentencePiece implementation after https://guillaume-be.github.io/2020-05-30/sentence_piece
 // std::vector<gpt_vocab::id> llamaTokenize(const gpt_vocab & vocab, const std::string & text, bool bos) {
@@ -3858,6 +3921,7 @@ func TokenizeOld(vocab *Vocab, text string, bos bool) []uint32 {
 	return reversed
 }
 
+// TODO Do we need this?
 func Init(params InitParams) *Context {
 	// make this function thread safe
 	////ggml_critical_section_start();
@@ -3893,17 +3957,17 @@ func Init(params InitParams) *Context {
 	////PRINT_DEBUG("%s: GELU, SILU and EXP tables initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
 	////}
 
-	// initialize g_state
+	// --- initialize g_state
 	{
 		////const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
 
-		gState = State{
-			Contexts: [MAX_CONTEXTS]ContextContainer{},
-		}
+		////gState = State{
+		////	Contexts: [MAX_CONTEXTS]ContextContainer{},
+		////}
 
-		for i := uint32(0); i < MAX_CONTEXTS; i++ {
-			gState.Contexts[i].Used = false
-		}
+		////for i := uint32(0); i < MAX_CONTEXTS; i++ {
+		////	gState.Contexts[i].Used = false
+		////}
 
 		////const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
 		//var end uint64 = ggml_time_us(); UNUSED(t_end)
@@ -3915,23 +3979,23 @@ func Init(params InitParams) *Context {
 	////}
 
 	// find non-used context in g_state
-	var ctx *Context
+	////var ctx *Context
 
-	for i := uint32(0); i < MAX_CONTEXTS; i++ {
-		if !gState.Contexts[i].Used {
-			gState.Contexts[i].Used = true
-			ctx = &gState.Contexts[i].Ctx
+	////for i := uint32(0); i < MAX_CONTEXTS; i++ {
+	////	if !gState.Contexts[i].Used {
+	////		gState.Contexts[i].Used = true
+	////		ctx = &gState.Contexts[i].Ctx
 
-			////PRINT_DEBUG("%s: found unused context %d\n", __func__, i)
-			break
-		}
-	}
+	////PRINT_DEBUG("%s: found unused context %d\n", __func__, i)
+	////		break
+	////	}
+	////}
 
-	if ctx == nil {
-		////PRINT_DEBUG("%s: no unused context found\n", __func__);
-		////ggml_critical_section_end();
-		return nil
-	}
+	////if ctx == nil {
+	////PRINT_DEBUG("%s: no unused context found\n", __func__);
+	////ggml_critical_section_end();
+	////	return nil
+	////}
 
 	//var buf []byte
 	//if params.MemBuffer == nil {
@@ -3940,7 +4004,7 @@ func Init(params InitParams) *Context {
 	//	buf = params.MemBuffer
 	//}
 
-	ctx = &Context{
+	ctx := &Context{
 		//MemSize:        params.MemSize,
 		//MemBuffer:      buf,
 		//MemBufferOwned: params.MemBuffer != nil,

@@ -12,3 +12,6 @@ int4:
 
 fp16:
 	make -j && ./main -m ./models/7B/ggml-model-f16.bin -p "How to create conversational AI:" -n 512
+
+pprof:
+	go tool pprof -pdf cpu.pprof > cpu.pdf	
