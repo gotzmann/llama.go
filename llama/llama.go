@@ -372,7 +372,7 @@ func Eval(
 	tokens []uint32,
 	tokensCount uint32,
 	pastCount uint32,
-	threadsCount uint32) error {
+	threadsCount int) error {
 
 	N := tokensCount
 	model := lctx.Model
@@ -403,7 +403,7 @@ func Eval(
 	// otherwise, the threads are spin-lock waiting for the BLAS calls and are degrading the performance
 	////ggml_cgraph gf = {};
 	////gf.n_threads = N > 255 && ggml_cpu_has_blas() ? 1 : n_threads;
-	gf := ml.Graph{ThreadsCount: threadsCount}
+	graph := ml.Graph{ThreadsCount: threadsCount}
 
 	embd := ml.NewTensor1D(ctx0, ml.TYPE_F32 /*ml.TYPE_I32*/, N) // FIXME Will be created as FP32 anyway
 	////memcpy(embd->data, tokens, N*ggml_element_size(embd));
@@ -443,8 +443,8 @@ func Eval(
 				////struct ggml_tensor * k = ggml_view_1d(ctx0, kv_self.k, N*n_embd, (ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past));
 				////struct ggml_tensor * v = ggml_view_1d(ctx0, kv_self.v, N*n_embd, (ggml_element_size(kv_self.v)*n_embd)*(il*n_ctx + n_past));
 
-				////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
-				////ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Vcur, v));
+				////ggml_build_forward_expand(&graph, ggml_cpy(ctx0, Kcur, k));
+				////ggml_build_forward_expand(&graph, ggml_cpy(ctx0, Vcur, v));
 
 				//if embdSize*(il+pastCount) > 0 {
 				//fmt.Printf(" [GOTCHA] ")
@@ -455,8 +455,8 @@ func Eval(
 				k := ml.View1D(ctx0, kvSelf.K, N*embdSize, embdSize*(il*ctxSize+pastCount))
 				v := ml.View1D(ctx0, kvSelf.V, N*embdSize, embdSize*(il*ctxSize+pastCount))
 
-				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Kcur, k))
-				ml.BuildForwardExpand(&gf, ml.Copy(ctx0, Vcur, v))
+				ml.BuildForwardExpand(&graph, ml.Copy(ctx0, Kcur, k))
+				ml.BuildForwardExpand(&graph, ml.Copy(ctx0, Vcur, v))
 			}
 
 			// Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)
@@ -587,13 +587,13 @@ func Eval(
 	// COMMentED inpL = ggml_soft_max(ctx0, inpL);
 
 	// run the computation
-	ml.BuildForwardExpand(&gf, inpL)
+	ml.BuildForwardExpand(&graph, inpL)
 
-	ml.GraphCompute(ctx0, &gf)
+	ml.GraphCompute(ctx0, &graph)
 
 	// COMMenteD  if (n_past%100 == 0) {
-	// COMMenteD    ggml_graph_print   (&gf);
-	// COMMenteD    ggml_graph_dump_dot(&gf, NULL, "gpt-2.dot");
+	// COMMenteD    ggml_graph_print   (&graph);
+	// COMMenteD    ggml_graph_dump_dot(&graph, NULL, "gpt-2.dot");
 	// COMMenteD }
 
 	// COMMenteD embd_w.resize(n_vocab*N);

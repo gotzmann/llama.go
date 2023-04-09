@@ -27,9 +27,9 @@ import (
 // CLI argument parsing
 //
 
-type gptParams struct {
+type ModelParams struct {
 	seed         int    // -1 // RNG seed
-	threadsCount uint32 // min(4, std::thread::hardware_concurrency())
+	threadsCount int    // min(4, std::thread::hardware_concurrency())
 	predictCount uint32 // 128 // new tokens to predict
 	repeatLastN  uint32 // 64 // last n tokens to penalize
 	partsCount   int    // -1 // amount of model parts (-1 = determine from model dimensions)
@@ -228,7 +228,9 @@ var isInteracting bool = false
 
 func main() {
 
-	runtime.GOMAXPROCS(8)
+	// TODO Use CLI settings
+	maxThreads := 8 // runtime.NumCPU() // TODO Optimize default settings for CPUs with P and E cores
+	runtime.GOMAXPROCS(maxThreads)
 
 	defer profile.Start(profile.ProfilePath(".")).Stop()
 
@@ -242,6 +244,7 @@ func main() {
 			time.Sleep(40 * time.Millisecond)
 		}*/
 
+	// FIXME Remove debug progress bar
 	// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
 	bar := progressbar.NewOptions(1000,
 		progressbar.OptionFullWidth(),
@@ -271,13 +274,13 @@ func main() {
 	////ggml_time_init();
 
 	////gpt_params params;
-	params := gptParams{
+	params := ModelParams{
 
 		model: "./models/7B/ggml-model-f32.bin",
 
 		ctxSize:      512,
 		seed:         -1,
-		threadsCount: 1,  // FIXME
+		threadsCount: maxThreads,
 		predictCount: 64, // 128, // FIXME
 		repeatLastN:  64,
 		partsCount:   -1,
@@ -806,6 +809,9 @@ func showLogo() {
 		} else if char == '8' {
 			color = colors[line]
 			char = '▒'
+			//} else if char == ' ' {
+			//	color = "[black]"
+			//	char = '▒'
 		}
 		if color == prevColor {
 			logoColored += string(char)
@@ -817,7 +823,7 @@ func showLogo() {
 	colorstring.Printf(logoColored)
 	fmt.Printf("\n\n")
 
-	colorstring.Printf("   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v0.1 ] [light_blue][ Pure Go implementation of Meta's LLaMA GPT model ] [magenta]▒▒▒▒")
+	colorstring.Printf("   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v0.8 ] [light_blue][ Pure Go implementation of Meta's LLaMA GPT model ] [magenta]▒▒▒▒")
 	fmt.Printf("\n\n")
 
 }

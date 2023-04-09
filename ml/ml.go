@@ -138,7 +138,7 @@ type Tensor struct {
 	src1 *Tensor
 	opt  [MAX_OPT]*Tensor // FIXME Do we need this?
 
-	TasksCount uint32
+	TasksCount int
 
 	// performance
 	//perfRuns   uint32
@@ -718,7 +718,7 @@ func CopyInplace(ctx *Context, a, b *Tensor) *Tensor {
 type Graph struct {
 	NodesCount   uint32 // FIXME Do not need, having len() ??
 	LeafsCount   uint32 // FIXME Do not need, having len() ??
-	ThreadsCount uint32
+	ThreadsCount int
 
 	////WorkSize uint32
 	////Work     *Tensor
@@ -749,8 +749,8 @@ type Graph struct {
 
 type InitParams struct {
 	// memory pool
-	MemSize   uint64 // bytes
-	MemBuffer []byte // if NULL, memory will be allocated internally
+	////MemSize   uint64 // bytes
+	////MemBuffer []byte // if NULL, memory will be allocated internally
 }
 
 // scratch buffer
@@ -1354,8 +1354,9 @@ func BuildForwardExpand(graph *Graph, tensor *Tensor) {
 func BuildForward(tensor *Tensor) *Graph {
 
 	result := Graph{
-		NodesCount: 0,
-		LeafsCount: 0,
+		//NodesCount: 0,
+		//LeafsCount: 0,
+
 		// .threads    = 0,
 		// .work_size    = 0,
 		// *.work         = NULL,
@@ -1616,9 +1617,10 @@ type ComputeParams struct {
 	ith uint32
 	nth uint32
 
-	src0 *Tensor
-	src1 *Tensor
-	dst  *Tensor
+	tensor *Tensor
+	//src0 *Tensor
+	//src1 *Tensor
+	//dst  *Tensor
 
 	wg *sync.WaitGroup
 
@@ -1672,9 +1674,9 @@ func Job(listen <-chan *ComputeParams) {
 		//fmt.Printf("\n...JOB SIGNAL")
 		ComputeForwardMulMatFP32(
 			params,
-			params.src0,
-			params.src1,
-			params.dst)
+			params.tensor.src0,
+			params.tensor.src1,
+			params.tensor)
 
 		// DEBUG MULTI_THREAD
 		//if params.nth > 1 {
@@ -1692,14 +1694,14 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 	//fmt.Printf("\n\n === GraphCompute : %d nodes ===\n\n", graph.NodesCount) // DEBUG
 
-	threads := uint32(8) // graph.ThreadsCount
+	maxThreads := graph.ThreadsCount
 
 	// --- init N job goroutines and channel to send tasks for them
 
-	graph.Jobs = make(chan *ComputeParams) // TODO Right place to init?
+	graph.Jobs = make(chan *ComputeParams, maxThreads) // TODO Right place to init?
 	defer close(graph.Jobs)
 
-	for i := uint32(0); i < threads; i++ {
+	for i := 0; i < maxThreads; i++ {
 		go Job(graph.Jobs)
 	}
 
@@ -1712,41 +1714,41 @@ func GraphCompute(ctx *Context, graph *Graph) {
 	////};
 
 	////var workers []ComputeState
-	if threads > 1 {
-		//////workers = alloca(sizeof(struct ggml_compute_state)*(threads - 1))
-		////fmt.Printf("\n[HALT] Parallelism is not allowed!")
-		////os.Exit(1)
-		////workers = make([]ComputeState, graph.ThreadsCount)
-	}
+	////if threads > 1 {
+	//////workers = alloca(sizeof(struct ggml_compute_state)*(threads - 1))
+	////fmt.Printf("\n[HALT] Parallelism is not allowed!")
+	////os.Exit(1)
+	////workers = make([]ComputeState, graph.ThreadsCount)
+	////}
 
 	// create thread pool
-	if threads > 1 {
-		////ggml_lock_init(&state_shared.spin);
+	////if threads > 1 {
+	////ggml_lock_init(&state_shared.spin);
 
-		////atomic_store(&state_shared.has_work, true);
+	////atomic_store(&state_shared.has_work, true);
 
-		////for (int j = 0; j < threads - 1; j++) {
-		////    workers[j] = (struct ggml_compute_state) {
-		////        .thrd   = 0,
-		////        .params = {
-		////           .type  = TASK_COMPUTE,
-		////           .ith   = j + 1,
-		////           .nth   = threads,
-		////           .wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
-		////           .wdata = cgraph->work ? cgraph->work->data : NULL,
-		////       },
-		////       .node   = NULL,
-		////       .shared = &state_shared,
-		////   };
+	////for (int j = 0; j < threads - 1; j++) {
+	////    workers[j] = (struct ggml_compute_state) {
+	////        .thrd   = 0,
+	////        .params = {
+	////           .type  = TASK_COMPUTE,
+	////           .ith   = j + 1,
+	////           .nth   = threads,
+	////           .wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
+	////           .wdata = cgraph->work ? cgraph->work->data : NULL,
+	////       },
+	////       .node   = NULL,
+	////       .shared = &state_shared,
+	////   };
 
-		////   int rc = ggml_thread_create(&workers[j].thrd, NULL, ggml_graph_compute_thread, &workers[j]);
-		////   ASSERT(rc == 0);
-		////   UNUSED(rc);
-		////}
-	}
+	////   int rc = ggml_thread_create(&workers[j].thrd, NULL, ggml_graph_compute_thread, &workers[j]);
+	////   ASSERT(rc == 0);
+	////   UNUSED(rc);
+	////}
+	////}
 
 	//fmt.Printf("\n\n === GraphCompute INIT : %d nodes ===\n\n", graph.NodesCount) // DEBUG
-	// initialize tasks + work buffer
+	// --- initialize tasks + work buffer
 	{
 		////workSize := 0
 
@@ -1766,7 +1768,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			case OP_DUP:
 				node.TasksCount = 1
 			case OP_ADD:
-				node.TasksCount = threads
+				node.TasksCount = 1 // TODO threads
 			case OP_SUB:
 			case OP_MUL:
 			case OP_DIV:
@@ -1782,14 +1784,14 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			case OP_RELU:
 				node.TasksCount = 1
 			case OP_GELU:
-				node.TasksCount = threads
+				node.TasksCount = 1 // TODO threads
 			case OP_SILU:
-				node.TasksCount = threads
+				node.TasksCount = 1 // TODO threads
 			case OP_NORM:
 			case OP_RMS_NORM:
-				node.TasksCount = threads
+				node.TasksCount = 1 // TODO threads
 			case OP_MUL_MAT:
-				node.TasksCount = threads
+				node.TasksCount = maxThreads
 				// TODO: use different scheduling for different matrix sizes
 				//const int nr0 = ggml_nrows(node->src0);
 				//const int nr1 = ggml_nrows(node->src1);
@@ -1847,7 +1849,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 				////}
 				////workSize = max(workSize, cur)
 			case OP_SCALE:
-				node.TasksCount = threads
+				node.TasksCount = 1 // TODO threads
 			case OP_CPY:
 			case OP_RESHAPE:
 			case OP_VIEW:
@@ -1857,12 +1859,12 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			case OP_DIAG_MASK_INF:
 				node.TasksCount = 1
 			case OP_SOFT_MAX:
-				node.TasksCount = threads
+				node.TasksCount = 1 // TODO threads
 			case OP_ROPE:
 				////node.TasksCount = 1
 			case OP_CONV_1D_1S:
 			case OP_CONV_1D_2S:
-				node.TasksCount = threads
+				node.TasksCount = 1 // TODO threads
 				////ASSERT(node->src0->ne[3] == 1);
 				////ASSERT(node->src1->ne[2] == 1);
 				////ASSERT(node->src1->ne[3] == 1);
@@ -1887,7 +1889,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 				////}
 				////workSize = max(workSize, cur)
 			case OP_FLASH_ATTN:
-				node.TasksCount = threads
+				node.TasksCount = 1 // TODO threads
 				////cur := 0
 				////ne11 := Up(node.src1.NE[1], SOFT_MAX_UNROLL)
 				////const SOFT_MAX_UNROLL = uint32(4)
@@ -1906,7 +1908,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 				////}
 				////workSize = max(workSize, cur)
 			case OP_FLASH_FF:
-				node.TasksCount = threads
+				node.TasksCount = 1 // TODO threads
 				////cur := 0
 				////if node.src1.Type == TYPE_F32 {
 				////cur  = sizeof(float)*node->src1->ne[1]*node->n_tasks; // TODO: this can become (n_tasks-1)
@@ -1976,7 +1978,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		params := ComputeParams{
 			Type: TASK_INIT,
 			ith:  0,
-			nth:  node.TasksCount,
+			nth:  uint32(node.TasksCount),
 			////wsize: graph.work ? ggml_nbytes(cgraph->work) : 0,
 			////wdata: graph.work ? cgraph->work->data : NULL,
 			////wsize: wsize,
@@ -2263,13 +2265,16 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 		if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 			return
 		}
-		////ComputeForwardMulMatFP32(params, tensor.src0, tensor.src1, tensor)
+
+		//ComputeForwardMulMatFP32(params, tensor.src0, tensor.src1, tensor)
+		//return
+
 		// DEBUG MULTI-THREAD
-		threads := 8 // FIXME graph tasks count
+		maxThreads := graph.ThreadsCount // uint32(8) // FIXME graph tasks count
 		//fmt.Printf("\nOP_MUL_MAT [%d] starting...", threads)
 
 		wg := new(sync.WaitGroup)
-		wg.Add(threads)
+		wg.Add(int(maxThreads))
 
 		//for i := 0; i < threads; i++ {
 		//	go ComputeForwardMulMatFP32(
@@ -2284,15 +2289,13 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 		//		tensor)
 		//}
 
-		for i := 0; i < threads; i++ {
+		for i := 0; i < maxThreads; i++ {
 			graph.Jobs <- &ComputeParams{
-				Type: TASK_COMPUTE,
-				ith:  uint32(i),
-				nth:  uint32(threads),
-				src0: tensor.src0,
-				src1: tensor.src1,
-				dst:  tensor,
-				wg:   wg,
+				Type:   TASK_COMPUTE,
+				ith:    uint32(i),
+				nth:    uint32(maxThreads),
+				tensor: tensor,
+				wg:     wg,
 			}
 		}
 
@@ -2745,8 +2748,6 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		return
 	}
 
-	//fmt.Printf("\n>>> ComputeForwardMulMatFP32 <<<")
-
 	// DEBUG MULTI_THREAD
 	//if params.nth > 1 {
 	//	defer params.wg.Done()
@@ -2775,19 +2776,19 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	//ne := ne0 * ne1 * ne2 * ne3
 
 	//nb00 := src0.NB[0]
-	nb01 := src0.NB[1]
-	nb02 := src0.NB[2]
-	nb03 := src0.NB[3]
+	nb01 := src0.NB[1] / 4
+	nb02 := src0.NB[2] / 4
+	nb03 := src0.NB[3] / 4
 
 	//nb10 := src1.NB[0]
-	nb11 := src1.NB[1]
-	nb12 := src1.NB[2]
-	nb13 := src1.NB[3]
+	nb11 := src1.NB[1] / 4
+	nb12 := src1.NB[2] / 4
+	nb13 := src1.NB[3] / 4
 
-	nb0 := dst.NB[0]
-	nb1 := dst.NB[1]
-	nb2 := dst.NB[2]
-	nb3 := dst.NB[3]
+	nb0 := dst.NB[0] / 4
+	nb1 := dst.NB[1] / 4
+	nb2 := dst.NB[2] / 4
+	nb3 := dst.NB[3] / 4
 
 	////assert(ne02 == ne12);
 	////assert(ne03 == ne13);
@@ -2899,9 +2900,6 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 		for ic := uint32(0); ic < ne11; ic++ {
 
-			i11 := ic
-			i1 := i11
-
 			////ggml_vec_dot_f32(ne00,
 			////	(float *) ((char *)  dst->data + (i0*nb0 + i1*nb1 + i2*nb2 + i3*nb3)),
 			////	(float *) ((char *) src0->data + (i01*nb01 + i02*nb02 + i03*nb03)),
@@ -2912,10 +2910,22 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 			////		(*src0.Data)[i01*nb01+i02*nb02+i03*nb03:],
 			////		(*src1.Data)[i11*nb11+i12*nb12+i13*nb13:])
 
-			dst.Data[i0*nb0/4+i1*nb1/4+i2*nb2/4+i3*nb3/4] =
+			//dst.Data[i0*nb0/4+i1*nb1/4+i2*nb2/4+i3*nb3/4] =
+			//	VecDotFP32(ne00,
+			//		src0.Data[i01*nb01/4+i02*nb02/4+i03*nb03/4:],
+			//		src1.Data[i11*nb11/4+i12*nb12/4+i13*nb13/4:])
+
+			//i11 := ic
+			//i1 := i11
+			//dst.Data[i0*nb0+i1*nb1+i2*nb2+i3*nb3] =
+			//	VecDotFP32(ne00,
+			//		src0.Data[i01*nb01+i02*nb02+i03*nb03:],
+			//		src1.Data[i11*nb11+i12*nb12+i13*nb13:])
+
+			dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3] =
 				VecDotFP32(ne00,
-					src0.Data[i01*nb01/4+i02*nb02/4+i03*nb03/4:],
-					src1.Data[i11*nb11/4+i12*nb12/4+i13*nb13/4:])
+					src0.Data[i01*nb01+i02*nb02+i03*nb03:],
+					src1.Data[ic*nb11+i12*nb12+i13*nb13:])
 
 			//fmt.Printf(" # %f = %f * %f # ",
 			//	(*dst.Data)[i0*nb0+i1*nb1+i2*nb2+i3*nb3],
