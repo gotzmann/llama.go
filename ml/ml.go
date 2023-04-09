@@ -1666,7 +1666,7 @@ func max(a, b int) int { // FIXME Not needed ?
 // The main purpose of the Job is to perform some part
 // of time consuming matrix multiplications
 func Job(listen <-chan *ComputeParams) {
-	fmt.Printf("\nJOB STARTED...")
+	//fmt.Printf("\nJOB STARTED...")
 	for params := range listen {
 
 		//fmt.Printf("\n...JOB SIGNAL")
@@ -1685,7 +1685,7 @@ func Job(listen <-chan *ComputeParams) {
 		//fmt.Printf("\n...JOB DONE")
 		params.wg.Done()
 	}
-	fmt.Printf("\nJOB FINISHED...")
+	//fmt.Printf("\nJOB FINISHED...")
 }
 
 func GraphCompute(ctx *Context, graph *Graph) {
@@ -1695,6 +1695,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 	threads := uint32(8) // graph.ThreadsCount
 
 	// --- init N job goroutines and channel to send tasks for them
+
 	graph.Jobs = make(chan *ComputeParams) // TODO Right place to init?
 	defer close(graph.Jobs)
 
@@ -2258,6 +2259,10 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 		//os.Exit(1)
 		ComputeForwardRMSNormFP32(params, tensor.src0, tensor)
 	case OP_MUL_MAT:
+		// TODO Optimize this
+		if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
+			return
+		}
 		////ComputeForwardMulMatFP32(params, tensor.src0, tensor.src1, tensor)
 		// DEBUG MULTI-THREAD
 		threads := 8 // FIXME graph tasks count
