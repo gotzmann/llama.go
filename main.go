@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 
 	// "golang.org/x/exp/slices"
 	// "github.com/x448/float16"
@@ -12,8 +13,6 @@ import (
 	// github.com/pkg/profile
 
 	"github.com/mitchellh/colorstring"
-	"github.com/pkg/profile"
-	"github.com/schollz/progressbar/v3"
 
 	"github.com/gotzmann/llama.go/llama"
 	"github.com/gotzmann/llama.go/ml"
@@ -232,43 +231,36 @@ func main() {
 	maxThreads := 8 // runtime.NumCPU() // TODO Optimize default settings for CPUs with P and E cores
 	runtime.GOMAXPROCS(maxThreads)
 
-	defer profile.Start(profile.ProfilePath(".")).Stop()
+	//defer profile.Start(profile.ProfilePath(".")).Stop()
 
 	showLogo()
-
 	final := ""
+
 	/*
-		bar := progressbar.Default(100)
-		for i := 0; i < 100; i++ {
+		// FIXME Remove debug progress bar
+		// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
+		bar := progressbar.NewOptions(1000,
+			progressbar.OptionFullWidth(),
+			//progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
+			progressbar.OptionEnableColorCodes(true),
+			progressbar.OptionSetPredictTime(false),
+			progressbar.OptionSetElapsedTime(false),
+			//progressbar.OptionShowBytes(true),
+			//progressbar.OptionSetWidth(40),
+			progressbar.OptionSetDescription("[cyan][1/3][reset] Writing moshable file..."),
+			progressbar.OptionSetTheme(progressbar.Theme{
+				//Saucer:        "[green]▒[reset]",
+				Saucer:        "[light_magenta]▒[reset]",
+				SaucerHead:    "[white]▒[reset]", // "[green]>[reset]", ▒ » × ║ │ ≡
+				SaucerPadding: "[dark_gray]▒[reset]",
+				BarStart:      "[dark_gray]║[reset]",
+				BarEnd:        "[dark_gray]║[reset]",
+			}))
+		for i := 0; i < 1000; i++ {
 			bar.Add(1)
-			time.Sleep(40 * time.Millisecond)
-		}*/
-
-	// FIXME Remove debug progress bar
-	// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
-	bar := progressbar.NewOptions(1000,
-		progressbar.OptionFullWidth(),
-		//progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionSetPredictTime(false),
-		progressbar.OptionSetElapsedTime(false),
-		//progressbar.OptionShowBytes(true),
-		//progressbar.OptionSetWidth(40),
-		progressbar.OptionSetDescription("[cyan][1/3][reset] Writing moshable file..."),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			//Saucer:        "[green]▒[reset]",
-			Saucer:        "[light_magenta]▒[reset]",
-			SaucerHead:    "[white]▒[reset]", // "[green]>[reset]", ▒ » × ║ │ ≡
-			SaucerPadding: "[dark_gray]▒[reset]",
-			BarStart:      "[dark_gray]║[reset]",
-			BarEnd:        "[dark_gray]║[reset]",
-		}))
-	for i := 0; i < 1000; i++ {
-		bar.Add(1)
-		//time.Sleep(5 * time.Millisecond)
-	}
-
-	//os.Exit(0)
+			//time.Sleep(5 * time.Millisecond)
+		}
+	*/
 
 	// has to be called once at the start of the program to init ggml stuff
 	////ggml_time_init();
@@ -421,16 +413,13 @@ func main() {
 
 	//logits := make([]float32, 0)
 
-	// Add a space in front of the first character to match OG llama tokenizer behavior
-	////params.prompt.insert(0, 1, ' ');
-
 	// tokenize the prompt
-	prompt := "Why Golang is so popular?" // [  1  1128  304  1653  9678  1288  319  29902  29901  ]
+	prompt := "Why Golang is so popular?"
+
 	// Add a space in front of the first character to match OG llama tokenizer behavior
 	prompt = " " + prompt
-	////std::vector<gpt_vocab::id> embd_inp = ::llama_tokenize(vocab, params.prompt, true);
 	embdInp := ml.Tokenize(lctx.Vocab, prompt, true)
-	fmt.Printf("\n\n=== TOKENIZER ===\n\n%+v", embdInp)
+	tokenNewline := ml.Tokenize(lctx.Vocab, "\n", false)[0]
 
 	// tokenize the prompt
 	////auto embd_inp = ::llama_tokenize(ctx, params.prompt, true);
@@ -461,17 +450,11 @@ func main() {
 	////params.interactive = true;
 	////}
 
-	// determine newline token
-	tokenNewline := ml.Tokenize(lctx.Vocab, "\n", false)[0]
-	//fmt.Printf("\n NEWLINE = %+v", tokenNewline) // DEBUG
-
-	fmt.Printf("\nPROMPT = '%s'\n", prompt)
-	//fmt.Printf("\n#TOKENS = %d\n", len(embdInp)) // DEBUG
-
-	for i := 0; i < len(embdInp); i++ {
-		////////////////////////////////////fmt.Printf("\n%d => '%s'", embdInp[i], vocab.ID2Token[embdInp[i]])
-		////llama_token_to_str(ctx, embd_inp[i]));
-		fmt.Printf("%d:'%s'  ", embdInp[i], ml.Token2Str(lctx.Vocab, embdInp[i]))
+	if ml.DEBUG {
+		fmt.Printf("\n\n=== TOKENIZER ===\n\n%+v", embdInp)
+		for i := 0; i < len(embdInp); i++ {
+			fmt.Printf("%d:'%s'  ", embdInp[i], ml.Token2Str(lctx.Vocab, embdInp[i]))
+		}
 	}
 
 	////if (params.interactive) {
@@ -666,13 +649,38 @@ func main() {
 			////for (auto id : embd) {
 			for _, id := range embd { // FIXME Ordered / Unordered ??
 				////fmt.Printf("%s", vocab.ID2Token[id])
-				fmt.Printf("%s", ml.Token2Str(lctx.Vocab, id))
-				final += ml.Token2Str(lctx.Vocab, id)
-				fmt.Printf("\nFINAL = %s", final)
-			}
-			////fflush(stdout);
+				//fmt.Printf("%s", ml.Token2Str(lctx.Vocab, id))
+				token := ml.Token2Str(lctx.Vocab, id)
+				final += token
 
-			//os.Exit(0)
+				if len(strings.TrimSpace(final)) < len(strings.TrimSpace(prompt)) {
+					continue
+				}
+
+				out := strings.Split(final, prompt)
+
+				if len(out) == 2 && token == "\n" {
+					continue
+				}
+
+				if len(strings.TrimSpace(final)) == len(strings.TrimSpace(prompt)) && (token != "\n") && (len(out) == 2) {
+					colorstring.Printf("\n\n[magenta]▒▒▒ [light_yellow]" + strings.TrimSpace(prompt) + "\n[light_blue]▒▒▒ ")
+					continue
+				}
+
+				colorstring.Printf("[white]" + token)
+
+				//out := strings.Split(final, prompt)
+				//if len(out) == 2 {
+				//	prompt = strings.TrimSpace(prompt)
+				//	out[0] = strings.TrimSpace(out[0])
+				//	out[1] = strings.TrimSpace(out[1])
+				//	colorstring.Printf("\n[magenta]▒▒▒ [light_yellow]" + prompt + "\n[light_blue]▒▒▒ " + out[1])
+				//} else {
+				//	colorstring.Printf("\n[light_yellow]▒▒▒ " + final)
+				//}
+			}
+
 		}
 
 		// reset color to default if we there is no pending user input

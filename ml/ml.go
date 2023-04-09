@@ -2922,10 +2922,22 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 			//		src0.Data[i01*nb01+i02*nb02+i03*nb03:],
 			//		src1.Data[i11*nb11+i12*nb12+i13*nb13:])
 
-			dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3] =
-				VecDotFP32(ne00,
-					src0.Data[i01*nb01+i02*nb02+i03*nb03:],
-					src1.Data[ic*nb11+i12*nb12+i13*nb13:])
+			//dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3] =
+			//	VecDotFP32(ne00,
+			//		src0.Data[i01*nb01+i02*nb02+i03*nb03:],
+			//		src1.Data[ic*nb11+i12*nb12+i13*nb13:])
+
+			// --- inline VecDotFP32
+
+			src0Ptr := src0.Data[i01*nb01+i02*nb02+i03*nb03:]
+			src1Ptr := src1.Data[ic*nb11+i12*nb12+i13*nb13:]
+
+			sum := float32(0.0)
+			for i := uint32(0); i < ne00; i++ {
+				sum += src0Ptr[i] * src1Ptr[i]
+			}
+
+			dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3] = sum
 
 			//fmt.Printf(" # %f = %f * %f # ",
 			//	(*dst.Data)[i0*nb0+i1*nb1+i2*nb2+i3*nb3],

@@ -1146,7 +1146,7 @@ func LoadModel(
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionSetPredictTime(false),
 		progressbar.OptionSetElapsedTime(false),
-		progressbar.OptionSetDescription("[light_magenta][ INIT ][light_blue] Loading model vocab..."),
+		progressbar.OptionSetDescription("[light_magenta][ INIT ][light_blue] Loading model vocab...  [light_cyan]"),
 		progressbar.OptionSetTheme(progressbar.Theme{
 			Saucer:        "[light_magenta]▒[reset]",
 			SaucerHead:    "[white]▒[reset]",
@@ -1343,9 +1343,11 @@ func LoadModel(
 				dims := readInt(file)
 
 				// FIXME Check for EOF
+				//_, err := file.Seek(0, io.SeekCurrent)
+				//if err == io.EOF {
 				//if err != nil || dims > 2 {
 				if dims == 0 || dims > 2 {
-					fmt.Printf("\n[STOP] Model was read...")
+					//fmt.Printf("\n[STOP] Model was read...")
 					break
 				}
 
