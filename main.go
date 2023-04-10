@@ -376,27 +376,21 @@ func main() {
 
 	// --- load the model
 
-	////autolparams = llama_context_default_params();
+	//lparams := llama.ContextParams{
+	//	CtxSize:    params.ctxSize,
+	//	PartsCount: params.partsCount,
+	//	Seed:       params.seed,
+	//	LogitsAll:  params.perplexity,
+	//	UseLock:    params.use_mlock,
+	//	Embedding:  params.embedding,
+	//}
 
-	lparams := llama.ContextParams{
-		CtxSize:    params.ctxSize,
-		PartsCount: params.partsCount,
-		Seed:       params.seed,
-		LogitsAll:  params.perplexity,
-		UseLock:    params.use_mlock,
-		Embedding:  params.embedding,
-	}
-
-	lctx, err := llama.InitFromFile(params.model, &lparams)
+	//lctx, err := llama.InitFromFile(params.model, &lparams)
+	lctx, err := llama.LoadModel(params.model, opts.Silent) // FIXME parts count
 	if err != nil {
 		fmt.Printf("\n[ERROR] error: failed to load model '%s'", params.model)
 		os.Exit(1)
 	}
-
-	////if (ctx == NULL) {
-	////fprintf(stderr, "%s: error: failed to load model '%s'\n", __func__, params.model.c_str());
-	////return 1;
-	////}
 
 	//vocab := lctx.Vocab
 	//model := lctx.Model

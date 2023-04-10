@@ -106,39 +106,7 @@ func NewContextParams() ContextParams {
 	}
 }*/
 
-// kv_cache_init
-// CPP 67,108,864 -VS- GOLANG 131,072 => NO CTX of 512 bytes size
-func KVCacheInit(hparams *HParams, cache *KVCache, dt ml.DType /*, int n_ctx*/) error {
-	////const int n_embd  = hparams.n_embd;
-	////const int n_layer = hparams.n_layer;
-
-	////const int n_mem      = n_layer*n_ctx;
-	////const int n_elements = n_embd*n_mem;
-
-	////cache.buf.resize(2u*n_elements*ggml_type_size(wtype) + 2u*MB);
-
-	////struct ggml_init_params params;
-	////params.mem_size   = cache.buf.size();
-	////params.mem_buffer = cache.buf.data();
-
-	////cache.ctx = ggml_init(params);
-
-	////if (!cache.ctx) {
-	////	fprintf(stderr, "%s: failed to allocate memory for kv cache\n", __func__);
-	////	return false;
-	////}
-
-	////cache.k = ggml_new_tensor_1d(cache.ctx, wtype, n_elements);
-	////cache.v = ggml_new_tensor_1d(cache.ctx, wtype, n_elements);
-
-	size := hparams.embdSize * hparams.layersCount * hparams.ctxSize
-	cache.K = ml.NewTensor1D(nil, dt, size)
-	cache.V = ml.NewTensor1D(nil, dt, size)
-	// FIXME Should we alter cache.N ??
-
-	return nil
-}
-
+/*
 // //struct llama_context * llama_init_from_file(
 func InitFromFile(fileName string, params *ContextParams) (*Context, error) {
 	////ggml_time_init();
@@ -146,18 +114,13 @@ func InitFromFile(fileName string, params *ContextParams) (*Context, error) {
 	// FIXME Calculate model parts number from defaults ??
 	ctx := NewContext()
 
-	////if (params.seed <= 0) {
-	////params.seed = time(NULL);
-	////}
-
 	////ctx->rng = std::mt19937(params.seed);
 	ctx.LogitsAll = params.LogitsAll
 
 	////ggml_type memory_type = params.f16_kv ? GGML_TYPE_F16 : GGML_TYPE_F32;
 
-	err := LoadModel(fileName, ctx /*params.n_ctx,*/, params.PartsCount, /*memory_type,*/
-		params.VocabOnly, /*params.progress_callback,
-		params.progress_callback_user_data*/)
+	err := LoadModel(fileName, ctx params.PartsCount,
+		params.VocabOnly, )
 
 	if err != nil {
 		fmt.Printf("\n[ERROR] Failed to load LLaMMA model!")
@@ -165,27 +128,10 @@ func InitFromFile(fileName string, params *ContextParams) (*Context, error) {
 		return nil, err
 	}
 
-	////if (params.use_mlock) {
-	////char *err;
-	////if (!ggml_mlock(ctx->model.ctx, &err)) {
-	////fprintf(stderr, "%s\n", err);
-	////free(err);
-	////llama_free(ctx);
-	////return nullptr;
-	////}
-	////}
-
 	// --- reserve memory for context buffers
 
-	////{
-	////if (!kv_cache_init(ctx->model.hparams, ctx->model.kv_self, memory_type, ctx->model.hparams.n_ctx)) {
-	////fprintf(stderr, "%s: kv_cache_init() failed for self-attention cache\n", __func__);
-	////llama_free(ctx);
-	////return nullptr;
-	////}
-
 	// kv_cache_init
-	KVCacheInit(&ctx.Model.hparams, &ctx.Model.kvSelf, ml.TYPE_F32 /*, ctx.Model.hparams.n_ctx*/)
+	KVCacheInit(&ctx.Model.hparams, &ctx.Model.kvSelf, ml.TYPE_F32 / *, ctx.Model.hparams.n_ctx* /)
 
 	////{
 	////const size_t memory_size = ggml_nbytes(ctx->model.kv_self.k) + ggml_nbytes(ctx->model.kv_self.v);
@@ -200,18 +146,9 @@ func InitFromFile(fileName string, params *ContextParams) (*Context, error) {
 		//ctx.Logits = make([]float32, ctx.Model.hparams.ctxSize) // .reserve(hparams.n_ctx);
 	}
 
-	////if (params.embedding){
-	///ctx->embedding.reserve(hparams.n_embd);
-	////}
-
-	////ctx->buf_compute.resize(MEM_REQ_EVAL.at(ctx->model.type));
-
-	////ctx->buf_scratch[0].resize(MEM_REQ_SCRATCH0.at(ctx->model.type));
-	////ctx->buf_scratch[1].resize(MEM_REQ_SCRATCH1.at(ctx->model.type));
-	////}
-
 	return ctx, nil
 }
+*/
 
 type Layer struct {
 
@@ -1022,23 +959,18 @@ func SampleTopPTopK(
 // see convert-pth-to-ggml.py for details on format
 
 func LoadModel(
-	fileName string, //const std::string & fname,
-	lctx *Context,
-	////n_ctx uint32,
-	partsCount int,
-	////ggml_type memory_type,
-	vocabOnly bool,
-	////llama_progress_callback progress_callback,
-	////void *progress_callback_user_data
+	fileName string,
+	//partsCount int,
 	silent bool,
-) error {
+) (*Context, error) {
+
+	lctx := NewContext()
 
 	file, err := os.Open(fileName)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer file.Close()
-	//reader := bufio.NewReader(data)
 
 	// --- check header magic and format version
 
@@ -1046,19 +978,19 @@ func LoadModel(
 
 	if magic == LLAMA_FILE_MAGIC_UNVERSIONED || magic == LLAMA_FILE_MAGIC_OLD {
 		fmt.Printf("\n[ERROR] Invalid model file '%s'! Too old, regenerate!", fileName)
-		return fmt.Errorf("invalid model file")
+		return nil, fmt.Errorf("invalid model file")
 	}
 
 	if magic != LLAMA_FILE_MAGIC {
 		fmt.Printf("\n[ERROR] Invalid model file '%s'! Wrong MAGIC in header", fileName)
-		return fmt.Errorf("invalid model file")
+		return nil, fmt.Errorf("invalid model file")
 	}
 
 	version := readInt(file)
 
 	if version != LLAMA_FILE_VERSION {
 		fmt.Printf("\n[ERROR] Invalid model file '%s'! Unsupported version", fileName)
-		return fmt.Errorf("invalid model file")
+		return nil, fmt.Errorf("invalid model file")
 	}
 
 	// --- load hparams
@@ -1081,9 +1013,24 @@ func LoadModel(
 	model.hparams.rotCount = rotCount
 	model.hparams.f16 = f16
 
+	// --- init cache
+	//KVCacheInit(&lctx.Model.hparams, &lctx.Model.kvSelf, ml.TYPE_F32)
+	dt := ml.TYPE_F32
+	size := embdSize * layersCount * 512 /*ctxSize*/ // FIXME ctxSize
+	lctx.Model.kvSelf.K = ml.NewTensor1D(nil, dt, size)
+	lctx.Model.kvSelf.V = ml.NewTensor1D(nil, dt, size)
+
 	// NB! Do not try to resize / relocate secondary pointers
 	lctx.Vocab = ml.NewVocab(vocabSize)
 	vocab := lctx.Vocab
+
+	//ctx.LogitsAll = params.LogitsAll
+	//if params.LogitsAll {
+	//ctx.Logits = make([]float32, ctx.Model.hparams.ctxSize*ctx.Model.hparams.vocabSize) // .reserve(hparams.n_ctx*hparams.n_vocab);
+	//} else {
+	// FIXME 32K -> 512 ?? Already reserved, skip
+	//ctx.Logits = make([]float32, ctx.Model.hparams.ctxSize) // .reserve(hparams.n_ctx);
+	//}
 
 	// FIXME Reserve extra space for tokensCount (N) = 8 (as with LogitsAll == true)
 	//lctx.Logits = make([]float32, vocabSize*8, vocabSize*8) // NewFloatSlice(vocabSize, vocabSize) // FIXME ASAP
@@ -1094,9 +1041,9 @@ func LoadModel(
 	//n_ff = ((2*(4*hparams.n_embd)/3 + hparams.n_mult - 1)/hparams.n_mult)*hparams.n_mult;
 	//n_ff := ((2*(4*hparamsEmbd)/3 + hparamsMult - 1) / hparamsMult) * hparamsMult
 
-	if partsCount < 1 {
-		partsCount = int(LLAMA_N_PARTS[embdSize])
-	}
+	//if partsCount < 1 {
+	partsCount := int(LLAMA_N_PARTS[embdSize]) // FIXME ASAP
+	//}
 
 	// temp warning to tell the user to use "--n_parts"
 	////if (hparams.f16 == 4 && n_parts != 1) {
@@ -1170,8 +1117,10 @@ func LoadModel(
 		vocab.ID2Token[i] = ml.TokenScore{Token: token, Score: score}
 	}
 
-	vocabBar.Finish()
-	fmt.Printf("\n")
+	if !silent {
+		vocabBar.Finish()
+		fmt.Printf("\n")
+	}
 
 	// for the big tensors, we have the option to store the data in 16-bit floats or quantized
 	// in order to save memory and also to speed up the computation
@@ -1627,7 +1576,7 @@ func LoadModel(
 	////progress_callback(1.0, progress_callback_user_data);
 	////}
 
-	return nil
+	return lctx, nil
 }
 
 func max(a, b float32) float32 {
