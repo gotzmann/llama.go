@@ -67,53 +67,6 @@ type ModelParams struct {
 	verbosePrompt bool
 }
 
-/* Keep track of current color of output, and emit ANSI code if it changes. */
-////enum console_state {
-////CONSOLE_STATE_DEFAULT=0,
-////CONSOLE_STATE_PROMPT,
-////CONSOLE_STATE_USER_INPUT
-////};
-
-////static console_state con_st = CONSOLE_STATE_DEFAULT;
-////static bool con_use_color = false;
-
-////void set_console_state(console_state new_st)
-////{
-////if (!con_use_color) return;
-// only emit color code if state changed
-////if (new_st != con_st) {
-////con_st = new_st;
-////switch(con_st) {
-////case CONSOLE_STATE_DEFAULT:
-////printf(ANSI_COLOR_RESET);
-////return;
-////case CONSOLE_STATE_PROMPT:
-////printf(ANSI_COLOR_YELLOW);
-////return;
-////case CONSOLE_STATE_USER_INPUT:
-////printf(ANSI_BOLD ANSI_COLOR_GREEN);
-////return;
-////}
-////}
-////}
-
-/*
-std::vector<double> softmax(const std::vector<float>& logits) {
-    std::vector<double> probs(logits.size());
-    float max_logit = logits[0];
-    for (float v : logits) max_logit = std::max(max_logit, v);
-    double sum_exp = 0.0;
-    for (size_t i = 0; i < logits.size(); i++) {
-        // Subtract the maximum logit value from the current logit value for numerical stability
-        float logit = logits[i] - max_logit;
-        double exp_logit = std::exp(logit);
-        sum_exp += exp_logit;
-        probs[i] = exp_logit;
-    }
-    for (size_t i = 0; i < probs.size(); i++) probs[i] /= sum_exp;
-    return probs;
-}*/
-
 /*
 void perplexity(llama_context * ctx, const gpt_params & params) {
     // Download: https://s3.amazonaws.com/research.metamind.io/wikitext/wikitext-2-raw-v1.zip?ref=salesforce-research
@@ -173,59 +126,6 @@ void perplexity(llama_context * ctx, const gpt_params & params) {
 }*/
 
 var isInteracting bool = false
-
-////#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__)) || defined (_WIN32)
-////void sigint_handler(int signo) {
-////set_console_state(CONSOLE_STATE_DEFAULT);
-////printf("\n"); // this also force flush stdout.
-////if (signo == SIGINT) {
-////if (!is_interacting) {
-////is_interacting=true;
-////} else {
-////_exit(130);
-////}
-////}
-////}
-////#endif
-
-/*
-+#if defined (_WIN32)
-+void win32_console_init(void) {
-+    unsigned long dwMode = 0;
-+    void* hConOut = GetStdHandle((unsigned long)-11); // STD_OUTPUT_HANDLE (-11)
-+    if (!hConOut || hConOut == (void*)-1 || !GetConsoleMode(hConOut, &dwMode)) {
-+        hConOut = GetStdHandle((unsigned long)-12); // STD_ERROR_HANDLE (-12)
-+        if (hConOut && (hConOut == (void*)-1 || !GetConsoleMode(hConOut, &dwMode))) {
-+            hConOut = 0;
-+        }
-+    }
-+    if (hConOut) {
-+        // Enable ANSI colors on Windows 10+
-+        if (con_use_color && !(dwMode & 0x4)) {
-+            SetConsoleMode(hConOut, dwMode | 0x4); // ENABLE_VIRTUAL_TERMINAL_PROCESSING (0x4)
-+        }
-+        // Set console output codepage to UTF8
-+        SetConsoleOutputCP(65001); // CP_UTF8
-+    }
-+    void* hConIn = GetStdHandle((unsigned long)-10); // STD_INPUT_HANDLE (-10)
-+    if (hConIn && hConIn != (void*)-1 && GetConsoleMode(hConIn, &dwMode)) {
-+        // Set console input codepage to UTF8
-+        SetConsoleCP(65001); // CP_UTF8
-+    }
-+}
-+#endif
-*/
-/*
-+
-+    // save choice to use color for later
-+    // (note for later: this is a slightly awkward choice)
-+    con_use_color = params.use_color;
-+
-+#if defined (_WIN32)
-+    win32_console_init();
-+#endif
-+
-*/
 
 func main() {
 
@@ -357,33 +257,6 @@ func main() {
 		}
 	}
 
-	////if (params.interactive) {
-
-	////#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
-	////        struct sigaction sigint_action;
-	////        sigint_action.sa_handler = sigint_handler;
-	////        sigemptyset (&sigint_action.sa_mask);
-	////        sigint_action.sa_flags = 0;
-	////        sigaction(SIGINT, &sigint_action, NULL);
-	////#elif defined (_WIN32)
-	////       signal(SIGINT, sigint_handler);
-	////#endif
-
-	////fmt.Printf("%s: interactive mode on.\n", __func__);
-
-	////if(params.antiprompt.size()) {
-	////for (auto antiprompt : params.antiprompt) {
-	////fprintf(stderr, "Reverse prompt: '%s'\n", antiprompt.c_str());
-	////}
-	////}
-
-	////////if (!params.input_prefix.empty()) {
-	////fprintf(stderr, "Input prefix: '%s'\n", params.input_prefix.c_str());
-	////}
-	////}
-
-	////fmt.Printf("\n\nsampling parameters: temp = %f, top_k = %d, top_p = %f, repeat_last_n = %i, repeat_penalty = %f", params.temp, params.top_k, params.top_p, params.repeat_last_n, params.repeat_penalty)
-
 	var embd []uint32
 
 	// FIXME Read from context params
@@ -408,32 +281,6 @@ func main() {
 	pastCount := uint32(0)
 	remainCount := params.predictCount
 	consumedCount := uint32(0)
-
-	// prompt user immediately after the starting prompt has been loaded
-	////if (params.interactive_start) {
-	////    is_interacting = true;
-	////}
-
-	// the first thing we will do is to output the prompt, so set color accordingly
-	////set_console_state(CONSOLE_STATE_PROMPT);
-
-	////if params.embedding {
-	////	embd = embdInp
-	////	if len(embd) > 0 {
-	////////////////////////////////////////fmt.Printf("\nllamaEval #1")
-	////		if err := llama.Eval(lctx, embd, uint32(len(embd)), n_past, params.threadsCount); err != nil {
-	////			fmt.Printf("[HALT] Failed to eval")
-	////			return
-	////		}
-	/////////////////////////////////////fmt.Printf("\nllamaEval #1 returned")
-	////	}
-	/////////////////////////////////////////////////embeddings := llama.GetEmbeddings(ctx)
-	// TODO: print / use the embeddings
-	////	if params.useColor {
-	////printf(ANSI_COLOR_RESET);
-	////	}
-	////	return
-	////}
 
 	for remainCount != 0 || params.interactive {
 
@@ -553,38 +400,9 @@ func main() {
 
 				colorstring.Printf("[white]" + token)
 
-				//out := strings.Split(final, prompt)
-				//if len(out) == 2 {
-				//	prompt = strings.TrimSpace(prompt)
-				//	out[0] = strings.TrimSpace(out[0])
-				//	out[1] = strings.TrimSpace(out[1])
-				//	colorstring.Printf("\n[magenta]▒▒▒ [light_yellow]" + prompt + "\n[light_blue]▒▒▒ " + out[1])
-				//} else {
-				//	colorstring.Printf("\n[light_yellow]▒▒▒ " + final)
-				//}
 			}
 
 		}
-
-		// in interactive mode, and not currently processing queued inputs;
-		// check if we should prompt the user for more
-		////if (params.interactive && embd_inp.size() <= input_consumed) {
-		// check for reverse prompt
-
-		////std::string last_output;
-		////for (auto id : last_n_tokens) {
-		////    last_output += llama_token_to_str(ctx, id);
-		////}
-
-		// Check if each of the reverse prompts appears at the end of the output.
-		////for (std::string & antiprompt : params.antiprompt) {
-		////if (last_output.find(antiprompt.c_str(), last_output.length() - antiprompt.length(), antiprompt.length()) != std::string::npos) {
-		////is_interacting = true;
-		////set_console_state(CONSOLE_STATE_USER_INPUT);
-		////fflush(stdout);
-		////break;
-		////}
-		////}
 
 		////if (n_past > 0 && is_interacting) {
 		// potentially set color to indicate we are taking user input

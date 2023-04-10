@@ -6,7 +6,6 @@ import (
 	"os"
 	"sync"
 
-	//"github.com/x448/float16"
 	"github.com/x448/float16"
 )
 
@@ -1492,22 +1491,6 @@ type ComputeParams struct {
 	////wdata []float32 // byte // FIXME *void
 }
 
-type ComputeStateShared struct {
-	////threads uint32
-	////ggml_lock_t spin;
-	// synchronization primitives
-	////atomic_int  n_ready;
-	////atomic_bool has_work;
-	////atomic_bool stop; // stop all threads
-}
-
-type ComputeState struct {
-	threads uint32
-	params  *ComputeParams
-	node    *Tensor
-	shared  *ComputeStateShared
-}
-
 // Golang doesn’t have unary Bitwise NOT(~) like other programming languages
 // Here, you have to use Bitwise XOR(^) operator as Bitwise NOT
 func up32(n uint32) uint32 { // FIXME Not needed ?
@@ -1611,61 +1594,6 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			case OP_MUL_MAT:
 				node.TasksCount = maxThreads
 				// TODO: use different scheduling for different matrix sizes
-				//const int nr0 = ggml_nrows(node->src0);
-				//const int nr1 = ggml_nrows(node->src1);
-				//node->n_tasks = MIN(threads, MAX(1, nr0/128));
-				//printf("nr0 = %8d, nr1 = %8d, nr0*nr1 = %8d, n_tasks = %d\n", nr0, nr1, nr0*nr1, node->n_tasks);
-				////cur := 0
-				////if node.src0.Type == TYPE_F16 && node.src1.Type == TYPE_F32 {
-				////	fmt.Printf("\n[HALT] GraphCompute : data types are not supprted!")
-				////	os.Exit(1)
-				////#if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS)
-				////				if (ggml_compute_forward_mul_mat_use_blas(node->src0, node->src1, node)) {
-				////					node->n_tasks = 1; // TODO: this actually is doing nothing
-				////									   //       the threads are still spinning
-				////					cur = GGML_TYPE_SIZE[GGML_TYPE_F32]*(node->src0->ne[0]*node->src0->ne[1]);
-				////					//printf("src0: ne0 = %d, ne1 = %d, ne = %d\n", node->src0->ne[0], node->src0->ne[1], node->src0->ne[0]*node->src0->ne[1]);
-				////					//printf("src1: ne0 = %d, ne1 = %d, ne = %d\n", node->src1->ne[0], node->src1->ne[1], node->src1->ne[0]*node->src1->ne[1]);
-				////					//printf("cur = %zu\n", cur);
-				////				} else {
-				////					cur = GGML_TYPE_SIZE[GGML_TYPE_F16]*ggml_nelements(node->src1);
-				////				}
-				////#else
-				////cur = TYPE_SIZE[TYPE_F16] * node.src1.Nelements()
-				////#endif
-				////} else if node.src0.Type == TYPE_F32 && node.src1.Type == TYPE_F32 {
-				////	cur = 0 // FIXME WHY ??
-				////} else if node.src0.Type == TYPE_Q4_0 && node.src1.Type == TYPE_F32 {
-				////	fmt.Printf("\n[HALT] GraphCompute : data types are not supprted!")
-				////	os.Exit(1)
-				////#if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS)
-				////				if (ggml_compute_forward_mul_mat_use_blas(node->src0, node->src1, node)) {
-				////					node->n_tasks = 1;
-				////					cur = GGML_TYPE_SIZE[GGML_TYPE_F32]*(node->src0->ne[0]*node->src0->ne[1]);
-				////				} else {
-				////					cur = (GGML_TYPE_SIZE[GGML_TYPE_Q4_0]*ggml_nelements(node->src1))/GGML_BLCK_SIZE[GGML_TYPE_Q4_0];
-				////				}
-				////#else
-				////cur = TYPE_SIZE[TYPE_Q4_0] * node.src1.Nelements() / BLCK_SIZE[TYPE_Q4_0]
-				////#endif
-				////} else if node.src0.Type == TYPE_Q4_1 && node.src1.Type == TYPE_F32 {
-				////	fmt.Printf("\n[HALT] GraphCompute : data types are not supprted!")
-				////	os.Exit(1)
-				////#if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS)
-				////				if (ggml_compute_forward_mul_mat_use_blas(node->src0, node->src1, node)) {
-				////					node->n_tasks = 1;
-				////					cur = GGML_TYPE_SIZE[GGML_TYPE_F32]*(node->src0->ne[0]*node->src0->ne[1]);
-				////				} else {
-				////					cur = (GGML_TYPE_SIZE[GGML_TYPE_Q4_1]*ggml_nelements(node->src1))/GGML_BLCK_SIZE[GGML_TYPE_Q4_1];
-				////				}
-				////#else
-				////cur = TYPE_SIZE[TYPE_Q4_1] * node.src1.Nelements() / BLCK_SIZE[TYPE_Q4_1]
-				////#endif
-				////} else {
-				////	fmt.Printf("\n[HALT] GraphCompute : data types are not supprted!")
-				////	os.Exit(1)
-				////}
-				////workSize = max(workSize, cur)
 			case OP_SCALE:
 				node.TasksCount = 1 // TODO threads
 			case OP_CPY:
@@ -1686,61 +1614,10 @@ func GraphCompute(ctx *Context, graph *Graph) {
 				////ASSERT(node->src0->ne[3] == 1);
 				////ASSERT(node->src1->ne[2] == 1);
 				////ASSERT(node->src1->ne[3] == 1);
-				////cur := 0
-				////nk := node.src0.NE[0]
-				////if node.src0.Type == TYPE_F16 && node.src1.Type == TYPE_F32 {
-				////cur = sizeof(ggml_fp16_t)*(
-				////    nk*ggml_up32(node->src0->ne[1])*node->src0->ne[2] +
-				////( 2*(nk/2) + node->src1->ne[0])*node->src1->ne[1]
-				////);
-				////fmt.Printf("\n[HALT] Mismatch of data within compute graph!")
-				////os.Exit(1)
-				////} else if node.src0.Type == TYPE_F32 && node.src1.Type == TYPE_F32 {
-				////if node.src0.Type == TYPE_F32 && node.src1.Type == TYPE_F32 {
-				// FIXME Check up32() vs ggml_up32
-				////cur = sizeof(float)*(nk*ggml_up32(node->src0->ne[1])*node->src0->ne[2] +( 2*(nk/2) + node->src1->ne[0])*node->src1->ne[1]);
-				////	cur = int(4 * (nk*up32(node.src0.NE[1])*node.src0.NE[2] + (2*(nk/2)+node.src1.NE[0])*node.src1.NE[1]))
-				////} else {
-				////ASSERT(false);
-				////	fmt.Printf("\n[HALT] Mismatch of data within compute graph!")
-				////	os.Exit(1)
-				////}
-				////workSize = max(workSize, cur)
 			case OP_FLASH_ATTN:
 				node.TasksCount = 1 // TODO threads
-				////cur := 0
-				////ne11 := Up(node.src1.NE[1], SOFT_MAX_UNROLL)
-				////const SOFT_MAX_UNROLL = uint32(4)
-				////ne11 := up(node.src1.NE[1], SOFT_MAX_UNROLL)
-				////if node.src1.Type == TYPE_F32 {
-				////cur  = sizeof(float)*ne11*node->n_tasks; // TODO: this can become (n_tasks-1)
-				////cur += sizeof(float)*ne11*node->n_tasks; // this is overestimated by x2
-				////	cur = 4 * int(ne11) * int(node.TasksCount)
-				////	cur += 4 * int(ne11) * int(node.TasksCount) // this is overestimated by x2
-				////}
-				////if node.src1.Type == TYPE_F16 {
-				////cur  = sizeof(float)*ne11*node->n_tasks; // TODO: this can become (n_tasks-1)
-				////cur += sizeof(float)*ne11*node->n_tasks; // this is overestimated by x2
-				////	fmt.Printf("\n[HALT] Mismatch of data within compute graph!")
-				////	os.Exit(1)
-				////}
-				////workSize = max(workSize, cur)
 			case OP_FLASH_FF:
 				node.TasksCount = 1 // TODO threads
-				////cur := 0
-				////if node.src1.Type == TYPE_F32 {
-				////cur  = sizeof(float)*node->src1->ne[1]*node->n_tasks; // TODO: this can become (n_tasks-1)
-				////cur += sizeof(float)*node->src1->ne[1]*node->n_tasks; // this is overestimated by x2
-				////	cur = int(4 * node.src1.NE[1] * node.TasksCount)  // TODO: this can become (n_tasks-1)
-				////	cur += int(4 * node.src1.NE[1] * node.TasksCount) // this is overestimated by x2
-				////}
-				////if node.src1.Type == TYPE_F16 {
-				////cur  = sizeof(float)*node->src1->ne[1]*node->n_tasks; // TODO: this can become (n_tasks-1)
-				////cur += sizeof(float)*node->src1->ne[1]*node->n_tasks; // this is overestimated by x2
-				////	fmt.Printf("\n[HALT] Mismatch of data within compute graph!")
-				////	os.Exit(1)
-				////}
-				////workSize = max(workSize, cur)
 			case OP_NONE:
 				node.TasksCount = 1
 			case OP_COUNT:
@@ -1748,12 +1625,6 @@ func GraphCompute(ctx *Context, graph *Graph) {
 				os.Exit(1)
 			}
 		}
-
-		////if graph.Work != nil && workSize > int(graph.WorkSize) {
-		////ASSERT(false); // TODO: better handling
-		////	fmt.Printf("\n[HALT] Something wrong with work size of compute graph!")
-		////	os.Exit(1)
-		////}
 
 		////const CACHE_LINE_SIZE = uint32(64)
 		////if workSize > 0 && graph.Work == nil {
@@ -1767,8 +1638,6 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 	////const int64_t perf_start_cycles  = ggml_perf_cycles();
 	////const int64_t perf_start_time_us = ggml_perf_time_us();
-
-	// fmt.Printf("\n\n === GraphCompute START : %d nodes ===\n\n", graph.NodesCount) // DEBUG
 
 	for i := uint32(0); i < graph.NodesCount; i++ {
 
@@ -1823,7 +1692,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 }
 
-/////////////////////////////////
+// =======================================================================
 
 func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 
@@ -1837,18 +1706,12 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_dup")
 		os.Exit(1)
 	case OP_ADD:
-		////ggml_compute_forward_add(params, tensor->src0, tensor->src1, tensor);
-		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_add")
-		////os.Exit(1)
 		ComputeForwardAddFP32(params, tensor.src0, tensor.src1, tensor)
 	case OP_SUB:
 		////ggml_compute_forward_sub(params, tensor->src0, tensor->src1, tensor);
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_sub")
 		os.Exit(1)
 	case OP_MUL:
-		////ggml_compute_forward_mul(params, tensor->src0, tensor->src1, tensor);
-		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_mul")
-		////os.Exit(1)
 		ComputeForwardMulFP32(params, tensor.src0, tensor.src1, tensor)
 	case OP_DIV:
 		////ggml_compute_forward_div(params, tensor->src0, tensor->src1, tensor);
@@ -1871,9 +1734,6 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_mean")
 		os.Exit(1)
 	case OP_REPEAT:
-		////ggml_compute_forward_repeat(params, tensor->src0, tensor);
-		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_repeat")
-		////os.Exit(1)
 		ComputeForwardRepeatFP32(params, tensor.src0, tensor)
 	case OP_ABS:
 		////ggml_compute_forward_abs(params, tensor->src0, tensor);
@@ -1900,18 +1760,12 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_gelu")
 		os.Exit(1)
 	case OP_SILU:
-		////ggml_compute_forward_silu(params, tensor->src0, tensor);
-		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_silu")
-		////os.Exit(1)
 		ComputeForwardSiluFP32(params, tensor.src0, tensor)
 	case OP_NORM:
 		////ggml_compute_forward_norm(params, tensor->src0, tensor);
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_norm")
 		os.Exit(1)
 	case OP_RMS_NORM:
-		////ggml_compute_forward_rms_norm(params, tensor->src0, tensor);
-		//fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_rms_norm")
-		//os.Exit(1)
 		ComputeForwardRMSNormFP32(params, tensor.src0, tensor)
 	case OP_MUL_MAT:
 		// TODO Optimize this
@@ -1957,53 +1811,26 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 		//fmt.Printf("\nCOMPUTE WAIT SUCCESS...")
 		//fmt.Printf("\nOP_MUL_MAT finished!")
 	case OP_SCALE:
-		////ggml_compute_forward_scale(params, tensor->src0, tensor->src1, tensor);
-		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_scale")
-		////os.Exit(1)
 		ComputeForwardScaleFP32(params, tensor.src0, tensor.src1, tensor)
 	case OP_CPY:
-		////ggml_compute_forward_cpy(params, tensor->src0, tensor);
-		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_cpy")
-		////os.Exit(1)
 		ComputeForwardDupFP32(params, tensor.src0, tensor) // FIXME Double Check
 	case OP_RESHAPE:
-		////ggml_compute_forward_reshape(params, tensor->src0, tensor);
-		///fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_reshape")
-		////os.Exit(1)
 		ComputeForwardReshape(params, tensor.src0, tensor) // NOP
 	case OP_VIEW:
-		////ggml_compute_forward_view(params, tensor->src0);
-		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_view")
-		////os.Exit(1)
 		ComputeForwardView(params, tensor.src0) // NOP
 	case OP_PERMUTE:
-		////ggml_compute_forward_permute(params, tensor->src0);
-		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_permute")
-		////os.Exit(1)
 		ComputeForwardPermute(params, tensor.src0) // NOP
 	case OP_TRANSPOSE:
 		////ggml_compute_forward_transpose(params, tensor->src0);
 		fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_transpose")
 		os.Exit(1)
 	case OP_GET_ROWS:
-		////ggml_compute_forward_get_rows(params, tensor->src0, tensor->src1, tensor);
-		//fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_rows")
-		//os.Exit(1)
 		ComputeForwardGetRows(params, tensor.src0, tensor.src1, tensor)
 	case OP_DIAG_MASK_INF:
-		////ggml_compute_forward_diag_mask_inf(params, tensor->src0, tensor->src1, tensor);
-		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_diag_mask_inf")
-		////os.Exit(1)
 		ComputeForwardDiagMaskInfFP32(params, tensor.src0, tensor.src1, tensor)
 	case OP_SOFT_MAX:
-		////ggml_compute_forward_soft_max(params, tensor->src0, tensor);
-		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_soft_max")
-		////os.Exit(1)
 		ComputeForwardSoftMaxFP32(params, tensor.src0, tensor)
 	case OP_ROPE:
-		////ggml_compute_forward_rope(params, tensor->src0, tensor->src1, tensor);
-		////fmt.Printf("\n[HALT] Please implement : ggml_compute_forward_rope")
-		////os.Exit(1)
 		ComputeForwardRopeFP32(params, tensor.src0, tensor.src1, tensor)
 	case OP_CONV_1D_1S:
 		////ggml_compute_forward_conv_1d_1s(params, tensor->src0, tensor->src1, tensor);
@@ -2032,10 +1859,6 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 		os.Exit(1)
 	}
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-// ---
 
 // FIXME ASAP Play with it!
 func VecCopyFP32(n uint32, y, x []float32) {
@@ -2787,16 +2610,11 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 // ggml_compute_forward_reshape
 func ComputeForwardReshape(params *ComputeParams, src0, dst *Tensor) {
 	// NOP
-	////UNUSED(params);
-	////UNUSED(src0);
-	////UNUSED(dst);
 }
 
 // ggml_compute_forward_permute
 func ComputeForwardPermute(params *ComputeParams, src0 *Tensor) {
 	// NOP
-	////UNUSED(params);
-	////UNUSED(src0);
 }
 
 // ggml_compute_forward_rope
@@ -3319,13 +3137,6 @@ type Symbol struct {
 
 // struct llama_sp_bigram {
 type Bigram struct {
-	////struct comparator {
-	////bool operator()(llama_sp_bigram & l, llama_sp_bigram & r) {
-	////return (l.score < r.score) || (l.score == r.score && l.left > r.left);
-	////}
-	////};
-	////using queue_storage = std::vector<llama_sp_bigram>;
-	////using queue = std::priority_queue<llama_sp_bigram, queue_storage, comparator>;
 
 	// NB! Allow -1
 	Left  int // llama_sp_symbol::index left;
@@ -3340,18 +3151,6 @@ func utf8Len(src byte) uint32 {
 	highbits := uint8(src) >> 4 // static_cast<uint8_t>(src) >> 4;
 	return lookup[highbits]
 }
-
-//type Tokenizer struct {
-//vocab *Vocab
-//symbols []Symbol // std::vector<llama_sp_symbol> symbols_;
-//work_queue []Bigram // llama_sp_bigram::queue work_queue_; // std::priority_queue<llama_sp_bigram, queue_storage, comparator>;
-//}
-
-//func NewTokenizer() *Tokenizer {
-//  return &{
-
-//}
-//}
 
 func Token2Str(vocab *Vocab, token uint32) string {
 	if int(token) >= len(vocab.ID2Token) {
@@ -3380,12 +3179,6 @@ func PopMax(queue *[]Bigram) Bigram {
 
 	return pop
 }
-
-////struct comparator {
-////bool operator()(llama_sp_bigram & l, llama_sp_bigram & r) {
-////return (l.score < r.score) || (l.score == r.score && l.left > r.left);
-////}
-////};
 
 func TryAddBigram(vocab *Vocab, symbols []Symbol, workQueue *[]Bigram, left, right int) {
 
@@ -3602,17 +3395,10 @@ func TokenizeOld(vocab *Vocab, text string, bos bool) []uint32 {
 }
 
 // TODO Do we need this?
-func Init(params InitParams) *Context {
-	// make this function thread safe
-	////ggml_critical_section_start();
-
-	////isFirstCall := true // FIXME static ??
-
-	// FIXME Init only once !!
-	////if isFirstCall {
+func Init(params InitParams) {
 
 	// ---- initialize GELU, SILU and EXP F32 tables
-	////{
+
 	////const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
 
 	/////////////////////////////////////////var ii uint16
@@ -3634,73 +3420,4 @@ func Init(params InitParams) *Context {
 
 	////const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
 
-	////PRINT_DEBUG("%s: GELU, SILU and EXP tables initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
-	////}
-
-	// --- initialize g_state
-	{
-		////const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
-
-		////gState = State{
-		////	Contexts: [MAX_CONTEXTS]ContextContainer{},
-		////}
-
-		////for i := uint32(0); i < MAX_CONTEXTS; i++ {
-		////	gState.Contexts[i].Used = false
-		////}
-
-		////const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
-		//var end uint64 = ggml_time_us(); UNUSED(t_end)
-
-		////PRINT_DEBUG("%s: g_state initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
-	}
-
-	////isFirstCall = false
-	////}
-
-	// find non-used context in g_state
-	////var ctx *Context
-
-	////for i := uint32(0); i < MAX_CONTEXTS; i++ {
-	////	if !gState.Contexts[i].Used {
-	////		gState.Contexts[i].Used = true
-	////		ctx = &gState.Contexts[i].Ctx
-
-	////PRINT_DEBUG("%s: found unused context %d\n", __func__, i)
-	////		break
-	////	}
-	////}
-
-	////if ctx == nil {
-	////PRINT_DEBUG("%s: no unused context found\n", __func__);
-	////ggml_critical_section_end();
-	////	return nil
-	////}
-
-	//var buf []byte
-	//if params.MemBuffer == nil {
-	//	buf = make([]byte, params.MemSize)
-	//} else {
-	//	buf = params.MemBuffer
-	//}
-
-	ctx := &Context{
-		//MemSize:        params.MemSize,
-		//MemBuffer:      buf,
-		//MemBufferOwned: params.MemBuffer != nil,
-		//Objects:        0,
-		//Objects:      make([]Object, 0),
-		//ObjectsBegin: nil,
-		//ObjectsEnd:   nil,
-		//Scratch:      Scratch{0, 0, nil},
-		//ScratchSave:  Scratch{0, 0, nil},
-	}
-
-	////ggml_assert_aligned(ctx.mem_buffer);
-
-	////PRINT_DEBUG("%s: context initialized\n", __func__);
-
-	////ggml_critical_section_end();
-
-	return ctx
 }

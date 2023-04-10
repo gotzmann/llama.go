@@ -315,26 +315,14 @@ func Eval(
 	model := lctx.Model
 	kvSelf := model.kvSelf
 
-	//fmt.Printf("\n=== N = %d", N)
-	//// LLAMA_ASSERT(!!kv_self.ctx);
-
 	embdSize := model.hparams.embdSize
-	layersCount := model.hparams.layersCount // uint32(1) // model.hparams.layersCount
+	layersCount := model.hparams.layersCount
 	ctxSize := model.hparams.ctxSize
 	headsCount := model.hparams.headsCount
 	vocabSize := model.hparams.vocabSize
 	rotCount := model.hparams.embdSize / model.hparams.headsCount
 
-	////auto & mem_per_token = lctx.mem_per_token;
-	////auto & buf_compute   = lctx.buf_compute;
-
-	////struct ggml_init_params params = {
-	////    /*.mem_size   =*/ buf_compute.size(),
-	////    /*.mem_buffer =*/ buf_compute.data(),
-	////};
-
-	////struct ggml_context * ctx0 = ggml_init(params);
-	ctx0 := ml.Init(ml.InitParams{})
+	ctx0 := &ml.Context{} //ctx0 := ml.Init(ml.InitParams{})
 
 	// for big prompts, if BLAS is enabled, it is better to use only one thread
 	// otherwise, the threads are spin-lock waiting for the BLAS calls and are degrading the performance
@@ -383,11 +371,6 @@ func Eval(
 				////ggml_build_forward_expand(&graph, ggml_cpy(ctx0, Kcur, k));
 				////ggml_build_forward_expand(&graph, ggml_cpy(ctx0, Vcur, v));
 
-				//if embdSize*(il+pastCount) > 0 {
-				//fmt.Printf(" [GOTCHA] ")
-				//os.Exit(1)
-				//}
-
 				// NB! ggml_element_size(kv_self.k) = 2 for FP16
 				k := ml.View1D(ctx0, kvSelf.K, N*embdSize, embdSize*(il*ctxSize+pastCount))
 				v := ml.View1D(ctx0, kvSelf.V, N*embdSize, embdSize*(il*ctxSize+pastCount))
@@ -429,8 +412,8 @@ func Eval(
 					ml.NewFP32(ctx0, float32(1.0/math.Sqrt(float64(embdSize)/float64(headsCount)))),
 				)
 
-				// KQ_masked = mask_past(KQ_scaled)
-				////struct ggml_tensor * KQ_masked = ggml_diag_mask_inf(ctx0, KQ_scaled, n_past);
+			// KQ_masked = mask_past(KQ_scaled)
+			////struct ggml_tensor * KQ_masked = ggml_diag_mask_inf(ctx0, KQ_scaled, n_past);
 			KQMasked := ml.DiagMaskInf(ctx0, KQScaled, pastCount)
 
 			// KQ = soft_max(KQ_masked)
@@ -527,14 +510,6 @@ func Eval(
 	ml.BuildForwardExpand(&graph, inpL)
 
 	ml.GraphCompute(ctx0, &graph)
-
-	// COMMenteD  if (n_past%100 == 0) {
-	// COMMenteD    ggml_graph_print   (&graph);
-	// COMMenteD    ggml_graph_dump_dot(&graph, NULL, "gpt-2.dot");
-	// COMMenteD }
-
-	// COMMenteD embd_w.resize(n_vocab*N);
-	// COMMenteD  memcpy(embd_w.data(), ggml_get_data(inpL), sizeof(float)*n_vocab*N);
 
 	// --- extract logits
 
@@ -1144,15 +1119,6 @@ func LoadModel(
 
 	// --- prepare memory for the weights
 	{
-		//const auto & hparams = model.hparams;
-
-		////embd := EmbdSize
-		////layers := hparamsLayers
-		//ctxSize := hparamsCtx
-		////vocabSize := hparamsVocabSize
-
-		////model.layers.resize(layers) // FIXME ASAP
-
 		model.tokEmbeddings = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize)
 
 		model.norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize)
@@ -1199,43 +1165,6 @@ func LoadModel(
 		}
 	}
 
-	////if (progress_callback) {
-	////progress_callback(0.0, progress_callback_user_data);
-	////}
-
-	/* REMOVED FROM v2 ?
-
-	// key + value memory
-	{
-		//const auto & hparams = model.hparams;
-
-		////embd := hparamsEmbd
-		////layers := hparamsLayers
-		//ctxSize := hparamsCtx
-		//mem := layers * ctxSize
-		//elements := embd * mem
-		elements := embdSize * layersCount // FIXME
-
-		model.memoryK = ml.NewTensor1D(ctx, ml.TYPE_F32, elements)
-		model.memoryV = ml.NewTensor1D(ctx, ml.TYPE_F32, elements)
-
-		////memorySize = ggml_nbytes(model.memory_k) + ggml_nbytes(model.memory_v);
-
-		////fmt.Printf("\nmemory_size = %8.2f MB, n_mem = %d\n", memorySize/1024.0/1024.0, mem);
-	}
-	*/
-	////const size_t file_offset = fin.tellg();
-
-	////fin.close();
-
-	//std::vector<uint8_t> tmp;
-
-	////tmp := []byte{}
-
-	////if (progress_callback) {
-	////progress_callback(0.0, progress_callback_user_data);
-	////}
-
 	//fmt.Printf("\n[LoadModel] Loading model from '%s' - please wait ...\n", fileName)
 
 	// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
@@ -1280,16 +1209,7 @@ func LoadModel(
 		{
 			tensorsCount := uint32(0)
 
-			////total_size := uint64(0)
-
-			//fmt.Printf("%s: ", __func__);
-
 			for {
-				//var n_dims, length, ftype uint32
-				//fin.read(reinterpret_cast<char *>(&n_dims), sizeof(n_dims));
-				//fin.read(reinterpret_cast<char *>(&length), sizeof(length));
-				//fin.read(reinterpret_cast<char *>(&ftype),  sizeof(ftype));
-
 				dims := readInt(file)
 
 				// FIXME Check for EOF
@@ -1303,15 +1223,6 @@ func LoadModel(
 
 				length := readInt(file)
 				ftype := readInt(file)
-
-				//fmt.Printf("\ndims = %d", dims)
-				//fmt.Printf("\nlength = %d", length)
-				//fmt.Printf("\nftype = %d", ftype)
-
-				////if (fin.eof()) {
-				////break;
-				////}
-
 				nelements := uint32(1)
 				//int32_t ne[2] = { 1, 1 };
 				ne := [2]uint32{1, 1} // FIXME Why only 2 ??
@@ -1541,40 +1452,12 @@ func LoadModel(
 					bar.Add(1)
 				}
 
-				// progress
-				////if (progress_callback) {
-				////double current_file_progress = double(size_t(fin.tellg()) - file_offset) / double(file_size - file_offset);
-				////double current_progress = (double(i) + current_file_progress) / double(n_parts);
-				////progress_callback(current_progress, progress_callback_user_data);
-				////}
-
-				////if n_tensors%8 == 0 {
-				////fmt.Printf(".")
-				////fflush(stderr);
-				////}
-
 			}
 
-			////fmt.Printf("\ndone")
-
-			////fprintf(stderr, "%s: model size = %8.2f MB / num tensors = %d\n", __func__, total_size/1024.0/1024.0, model.n_loaded);
-			////if (model.n_loaded == 0) {
-			////fprintf(stderr, "%s: WARN no tensors loaded from model file - assuming empty model for testing\n", __func__);
-			////} else if (model.n_loaded != (int) model.tensors.size()) {
-			////fprintf(stderr, "%s: ERROR not all tensors loaded from model file - expected %zu, got %d\n", __func__, model.tensors.size(), model.n_loaded);
-			////return false;
-			////}
 		}
 
-		////fin.close();
 		bar.Finish()
 	}
-
-	////lctx.t_load_us = ggml_time_us() - t_start_us;
-
-	////if (progress_callback) {
-	////progress_callback(1.0, progress_callback_user_data);
-	////}
 
 	return lctx, nil
 }
@@ -1594,17 +1477,6 @@ func readInt(file *os.File) uint32 {
 	}
 	return uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0])
 }
-
-/*
-func readFloat(reader *bufio.Reader) (float32, error) {
-	buf := make([]byte, 4)
-	if count, err := io.ReadFull(reader, buf); err != nil || count != 4 {
-		fmt.Print("\n[ERROR] Failed to read data from model")
-		//os.Exit(1)
-		return 0, err
-	}
-	return // uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0]), nil
-} */
 
 func readString(file *os.File, len uint32) string {
 	buf := make([]byte, len)
