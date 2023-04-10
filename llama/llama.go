@@ -43,21 +43,18 @@ type pair struct {
 }
 
 type Context struct {
-	////std::mt19937 rng;
 
+	////std::mt19937 rng;
 	////int64_t t_load_us = 0;
 	////int64_t t_start_us = 0;
-
 	////int64_t t_sample_us = 0;
 	////int64_t t_eval_us   = 0;
-
-	n_sample uint32 // number of tokens sampled
-	n_eval   uint32 // number of eval calls
+	////n_sample uint32 // number of tokens sampled
+	////n_eval   uint32 // number of eval calls
+	////size_t mem_per_token = 0;
 
 	Model *Model
 	Vocab *ml.Vocab
-
-	////size_t mem_per_token = 0;
 
 	// decode output (2-dimensional array: [n_tokens][n_vocab])
 	Logits    []float32
@@ -66,11 +63,6 @@ type Context struct {
 	// input embedding (1-dimensional array: [n_embd])
 	Embedding []float32
 }
-
-//func NewFloatSlice(len, cap uint32) *[]float32 {
-//	slice := make([]float32, len, cap)
-//	return &slice
-//}
 
 func NewContext() *Context {
 	return &Context{
@@ -99,83 +91,24 @@ type ContextParams struct {
 	////void * progress_callback_user_data;
 }
 
-/*
-func NewContextParams() ContextParams {
-	return ContextParams{
-		partsCount: -1,
-	}
-}*/
-
-/*
-// //struct llama_context * llama_init_from_file(
-func InitFromFile(fileName string, params *ContextParams) (*Context, error) {
-	////ggml_time_init();
-
-	// FIXME Calculate model parts number from defaults ??
-	ctx := NewContext()
-
-	////ctx->rng = std::mt19937(params.seed);
-	ctx.LogitsAll = params.LogitsAll
-
-	////ggml_type memory_type = params.f16_kv ? GGML_TYPE_F16 : GGML_TYPE_F32;
-
-	err := LoadModel(fileName, ctx params.PartsCount,
-		params.VocabOnly, )
-
-	if err != nil {
-		fmt.Printf("\n[ERROR] Failed to load LLaMMA model!")
-		////llama_free(ctx);
-		return nil, err
-	}
-
-	// --- reserve memory for context buffers
-
-	// kv_cache_init
-	KVCacheInit(&ctx.Model.hparams, &ctx.Model.kvSelf, ml.TYPE_F32 / *, ctx.Model.hparams.n_ctx* /)
-
-	////{
-	////const size_t memory_size = ggml_nbytes(ctx->model.kv_self.k) + ggml_nbytes(ctx->model.kv_self.v);
-	////fprintf(stderr, "%s: kv self size  = %7.2f MB\n", __func__, memory_size / 1024.0 / 1024.0);
-	////}
-
-	////const auto & hparams = ctx->model.hparams;
-	if params.LogitsAll {
-		//ctx.Logits = make([]float32, ctx.Model.hparams.ctxSize*ctx.Model.hparams.vocabSize) // .reserve(hparams.n_ctx*hparams.n_vocab);
-	} else {
-		// FIXME 32K -> 512 ?? Already reserved, skip
-		//ctx.Logits = make([]float32, ctx.Model.hparams.ctxSize) // .reserve(hparams.n_ctx);
-	}
-
-	return ctx, nil
-}
-*/
-
 type Layer struct {
 
 	// normalization
-	////struct ggml_tensor * attention_norm;
 	attentionNorm *ml.Tensor
 
 	// attention
-	///struct ggml_tensor * wq;
 	wq *ml.Tensor
-	////struct ggml_tensor * wk;
 	wk *ml.Tensor
-	////struct ggml_tensor * wv;
 	wv *ml.Tensor
-	////struct ggml_tensor * wo;
 	wo *ml.Tensor
 
 	// normalization
-	////struct ggml_tensor * ffn_norm;
 	ffn_norm *ml.Tensor
 
 	// ff
 	w1 *ml.Tensor
 	w2 *ml.Tensor
 	w3 *ml.Tensor
-	////struct ggml_tensor * w2;
-	////struct ggml_tensor * w3;
 }
 
 // default hparams (LLaMA 7B)
