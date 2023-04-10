@@ -386,7 +386,7 @@ func main() {
 	//}
 
 	//lctx, err := llama.InitFromFile(params.model, &lparams)
-	lctx, err := llama.LoadModel(params.model, opts.Silent) // FIXME parts count
+	ctx, err := llama.LoadModel(params.model, opts.Silent) // FIXME parts count
 	if err != nil {
 		fmt.Printf("\n[ERROR] error: failed to load model '%s'", params.model)
 		os.Exit(1)
@@ -432,8 +432,8 @@ func main() {
 
 	// Add a space in front of the first character to match OG llama tokenizer behavior
 	prompt = " " + prompt
-	embdInp := ml.Tokenize(lctx.Vocab, prompt, true)
-	tokenNewline := ml.Tokenize(lctx.Vocab, "\n", false)[0]
+	embdInp := ml.Tokenize(ctx.Vocab, prompt, true)
+	tokenNewline := ml.Tokenize(ctx.Vocab, "\n", false)[0]
 
 	// tokenize the prompt
 	////auto embd_inp = ::llama_tokenize(ctx, params.prompt, true);
@@ -467,7 +467,7 @@ func main() {
 	if ml.DEBUG {
 		fmt.Printf("\n\n=== TOKENIZER ===\n\n%+v", embdInp)
 		for i := 0; i < len(embdInp); i++ {
-			fmt.Printf("%d:'%s'  ", embdInp[i], ml.Token2Str(lctx.Vocab, embdInp[i]))
+			fmt.Printf("%d:'%s'  ", embdInp[i], ml.Token2Str(ctx.Vocab, embdInp[i]))
 		}
 	}
 
@@ -579,7 +579,7 @@ func main() {
 			////////////////////////////////////////////////fmt.Printf("\nllamaEval #2")
 			////if (llama_eval(ctx, embd.data(), embd.size(), n_past, params.n_threads)) {
 			////fprintf(stderr, "%s : failed to eval\n", __func__);
-			if err := llama.Eval(lctx, embd, uint32(len(embd)), pastCount, params.threadsCount); err != nil {
+			if err := llama.Eval(ctx, embd, uint32(len(embd)), pastCount, params.threadsCount); err != nil {
 				fmt.Printf("\n[ERROR] Failed to eval")
 				os.Exit(1)
 			}
@@ -607,12 +607,12 @@ func main() {
 			//logits := lctx.Logits
 
 			if params.ignoreEOS {
-				lctx.Logits[ml.TOKEN_EOS] = 0
+				ctx.Logits[ml.TOKEN_EOS] = 0
 			}
 
 			////id = llama_sample_top_p_top_k(vocab, logits.data() + (logits.size() - n_vocab), last_n_tokens, repeat_penalty, top_k, top_p, temp, rng);
 			/////////////////////////////////id := llama.SampleTopPTopK(vocab, logits[len(logits)-int(vocabSize):], lastNTokens, repeatPenalty, topK, topP, temp /*, rng*/)
-			id := llama.SampleTopPTopK(lctx,
+			id := llama.SampleTopPTopK(ctx,
 				lastNTokens[params.ctxSize-params.repeatLastN:], params.repeatLastN,
 				topK, topP, temp, repeatPenalty)
 
@@ -664,7 +664,7 @@ func main() {
 			for _, id := range embd { // FIXME Ordered / Unordered ??
 				////fmt.Printf("%s", vocab.ID2Token[id])
 				//fmt.Printf("%s", ml.Token2Str(lctx.Vocab, id))
-				token := ml.Token2Str(lctx.Vocab, id)
+				token := ml.Token2Str(ctx.Vocab, id)
 				final += token
 
 				if len(strings.TrimSpace(final)) < len(strings.TrimSpace(prompt)) {
