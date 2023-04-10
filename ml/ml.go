@@ -1701,6 +1701,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 	graph.Jobs = make(chan *ComputeParams, maxThreads) // TODO Right place to init?
 	defer close(graph.Jobs)
 
+	// TODO Investigate https://pkg.go.dev/runtime#LockOSThread
 	for i := 0; i < maxThreads; i++ {
 		go Job(graph.Jobs)
 	}

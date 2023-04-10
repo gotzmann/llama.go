@@ -11,7 +11,9 @@ import (
 	// github.com/schollz/progressbar/v3
 	// https://github.com/mitchellh/colorstring
 	// github.com/pkg/profile
+	// https://github.com/jessevdk/go-flags
 
+	flags "github.com/jessevdk/go-flags"
 	"github.com/mitchellh/colorstring"
 
 	"github.com/gotzmann/llama.go/llama"
@@ -227,13 +229,31 @@ var isInteracting bool = false
 
 func main() {
 
-	// TODO Use CLI settings
-	maxThreads := 8 // runtime.NumCPU() // TODO Optimize default settings for CPUs with P and E cores
+	var opts struct {
+		Model   string `long:"model" description:"Path and file name of converted .bin LLaMA model"`
+		Threads int    `long:"threads" description:"Adjust to the number of CPU cores you want to use [ all cores by default ]"`
+		Predict int    `long:"predict" description:"Number of tokens to predict [ 128 by default ]"`
+		Context int    `long:"context" description:"Context size in tokens [ 512 by default ]"`
+		Silent  bool   `long:"silent" description:"Hide welcome logo and other terminal output [ shown by default ]"`
+	}
+
+	flags.Parse(&opts)
+
+	// TODO Optimize default settings for CPUs with P and E cores
+	maxThreads := runtime.NumCPU()
 	runtime.GOMAXPROCS(maxThreads)
+	if opts.Threads > 0 {
+		maxThreads = opts.Threads
+	}
+
+	fmt.Printf("\n THREADS %d\n", maxThreads)
 
 	//defer profile.Start(profile.ProfilePath(".")).Stop()
 
-	showLogo()
+	if !opts.Silent {
+		showLogo()
+	}
+
 	final := ""
 
 	/*
@@ -268,7 +288,7 @@ func main() {
 	////gpt_params params;
 	params := ModelParams{
 
-		model: "./models/7B/ggml-model-f32.bin",
+		model: opts.Model,
 
 		ctxSize:      512,
 		seed:         -1,

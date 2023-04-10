@@ -1030,6 +1030,7 @@ func LoadModel(
 	vocabOnly bool,
 	////llama_progress_callback progress_callback,
 	////void *progress_callback_user_data
+	silent bool,
 ) error {
 
 	file, err := os.Open(fileName)
@@ -1157,7 +1158,7 @@ func LoadModel(
 
 	for i := uint32(0); i < vocabSize; i++ {
 
-		if i%100 == 0 {
+		if !silent && i%100 == 0 {
 			vocabBar.Set(int(i))
 		}
 
@@ -1587,7 +1588,9 @@ func LoadModel(
 
 				tensorsCount++
 				model.loadedCount++
-				bar.Add(1)
+				if !silent {
+					bar.Add(1)
+				}
 
 				// progress
 				////if (progress_callback) {
