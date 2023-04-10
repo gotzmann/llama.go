@@ -246,8 +246,6 @@ func main() {
 		maxThreads = opts.Threads
 	}
 
-	fmt.Printf("\n THREADS %d\n", maxThreads)
-
 	//defer profile.Start(profile.ProfilePath(".")).Stop()
 
 	if !opts.Silent {
@@ -256,36 +254,6 @@ func main() {
 
 	final := ""
 
-	/*
-		// FIXME Remove debug progress bar
-		// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
-		bar := progressbar.NewOptions(1000,
-			progressbar.OptionFullWidth(),
-			//progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
-			progressbar.OptionEnableColorCodes(true),
-			progressbar.OptionSetPredictTime(false),
-			progressbar.OptionSetElapsedTime(false),
-			//progressbar.OptionShowBytes(true),
-			//progressbar.OptionSetWidth(40),
-			progressbar.OptionSetDescription("[cyan][1/3][reset] Writing moshable file..."),
-			progressbar.OptionSetTheme(progressbar.Theme{
-				//Saucer:        "[green]▒[reset]",
-				Saucer:        "[light_magenta]▒[reset]",
-				SaucerHead:    "[white]▒[reset]", // "[green]>[reset]", ▒ » × ║ │ ≡
-				SaucerPadding: "[dark_gray]▒[reset]",
-				BarStart:      "[dark_gray]║[reset]",
-				BarEnd:        "[dark_gray]║[reset]",
-			}))
-		for i := 0; i < 1000; i++ {
-			bar.Add(1)
-			//time.Sleep(5 * time.Millisecond)
-		}
-	*/
-
-	// has to be called once at the start of the program to init ggml stuff
-	////ggml_time_init();
-
-	////gpt_params params;
 	params := ModelParams{
 
 		model: opts.Model,
@@ -305,18 +273,6 @@ func main() {
 
 		memoryFP16: true,
 	}
-
-	////if (gpt_params_parse(argc, argv, params) == false) {
-	////    return 1;
-	////}
-
-	// save choice to use color for later
-	// (note for later: this is a slightly awkward choice)
-	////con_use_color = params.use_color;
-
-	////#if defined (_WIN32)
-	////    win32_console_init();
-	////#endif
 
 	////if (params.perplexity) {
 	////	printf("\n************\n");
@@ -339,41 +295,6 @@ func main() {
 	////    "expect poor results\n", __func__, params.n_ctx);
 	////}
 
-	////if (params.seed <= 0) {
-	////params.seed = time(NULL);
-	////}
-
-	//fmt.Printf("\n[main] seed = %d", params.seed)
-
-	////std::mt19937 rng(params.seed);
-	////if (params.random_prompt) {
-	////params.prompt = gpt_random_prompt(rng);
-	////}
-
-	//    params.prompt = R"(// this function checks if the number n is prime
-	//bool is_prime(int n) {)";
-
-	////int64_t t_load_us = 0;
-
-	/* MY
-
-	////gpt_vocab vocab;
-
-	//modelName := "./LLaMA/7B/ggml-model-f16.bin"
-	modelName := "./models/7B/ggml-model-fp32.bin"
-	model := llama.NewModel()
-	vocab := ml.NewVocab()
-
-	// load the model
-	if err := llama.LoadModel(modelName, &model, vocab); err != nil {
-		fmt.Printf("\n[main] Failed to load model from '%s'", modelName)
-		return
-	}
-	*/
-
-	//modelName := "./models/7B/ggml-model-fp32.bin"
-	////ctx := llama.NewContext()
-
 	// --- load the model
 
 	//lparams := llama.ContextParams{
@@ -392,40 +313,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	//vocab := lctx.Vocab
-	//model := lctx.Model
-
 	// print system information
 	////{
 	//fmt.Printf("\nsystem_info: n_threads = %d / %d | %s\n",
 	//    params.n_threads, std::thread::hardware_concurrency(), llama_print_system_info());
 	////}
-
-	// determine the maximum memory usage needed to do inference for the given n_batch and n_predict parameters
-	// uncomment the "used_mem" line in llama.cpp to see the results
-	////if (params.mem_test) {
-	////{
-	////const std::vector<llama_token> tmp(params.n_batch, 0);
-	////llama_eval(ctx, tmp.data(), tmp.size(), 0, params.n_threads);
-	////}
-
-	////{
-	////const std::vector<llama_token> tmp = { 0, };
-	////llama_eval(ctx, tmp.data(), tmp.size(), params.n_predict - 1, params.n_threads);
-	////}
-
-	////llama_print_timings(ctx);
-	////llama_free(ctx);
-
-	////return 0;
-	////}
-
-	////if (params.perplexity) {
-	////perplexity(ctx, params);
-	////exit(0);
-	////}
-
-	//logits := make([]float32, 0)
 
 	// tokenize the prompt
 	prompt := "Why Golang is so popular?"
@@ -434,12 +326,6 @@ func main() {
 	prompt = " " + prompt
 	embdInp := ml.Tokenize(ctx.Vocab, prompt, true)
 	tokenNewline := ml.Tokenize(ctx.Vocab, "\n", false)[0]
-
-	// tokenize the prompt
-	////auto embd_inp = ::llama_tokenize(ctx, params.prompt, true);
-
-	////const int n_ctx = llama_n_ctx(ctx);
-	//ctxSize := 512
 
 	////params.n_keep    = std::min(params.n_keep,    (int) embd_inp.size());
 
@@ -528,15 +414,6 @@ func main() {
 	////    is_interacting = true;
 	////}
 
-	////#if defined (_WIN32)
-	////    // Enable ANSI colors on Windows 10+
-	////    unsigned long dwMode = 0;
-	////    void* hConOut = GetStdHandle((unsigned long)-11); // STD_OUTPUT_HANDLE (-11)
-	////    if (hConOut && hConOut != (void*)-1 && GetConsoleMode(hConOut, &dwMode) && !(dwMode & 0x4)) {
-	////        SetConsoleMode(hConOut, dwMode | 0x4); // ENABLE_VIRTUAL_TERMINAL_PROCESSING (0x4)
-	////}
-	////#endif
-
 	// the first thing we will do is to output the prompt, so set color accordingly
 	////set_console_state(CONSOLE_STATE_PROMPT);
 
@@ -600,18 +477,10 @@ func main() {
 			temp := params.temp                   /// (0.80)          // FIXME utils.h // temp  = 0.80f;
 			repeatPenalty := params.repeatPenalty // float32(1.30) // utils.h // repeat_penalty  = 1.30f;
 
-			///////////////////////////////////////////////////////////////vocabSize := 32000 // hparamsVocabSize
-
-			//id := 0
-
-			//logits := lctx.Logits
-
 			if params.ignoreEOS {
 				ctx.Logits[ml.TOKEN_EOS] = 0
 			}
 
-			////id = llama_sample_top_p_top_k(vocab, logits.data() + (logits.size() - n_vocab), last_n_tokens, repeat_penalty, top_k, top_p, temp, rng);
-			/////////////////////////////////id := llama.SampleTopPTopK(vocab, logits[len(logits)-int(vocabSize):], lastNTokens, repeatPenalty, topK, topP, temp /*, rng*/)
 			id := llama.SampleTopPTopK(ctx,
 				lastNTokens[params.ctxSize-params.repeatLastN:], params.repeatLastN,
 				topK, topP, temp, repeatPenalty)
@@ -696,11 +565,6 @@ func main() {
 			}
 
 		}
-
-		// reset color to default if we there is no pending user input
-		////if (!input_noecho && (int)embd_inp.size() == input_consumed) {
-		////    set_console_state(CONSOLE_STATE_DEFAULT);
-		////}
 
 		// in interactive mode, and not currently processing queued inputs;
 		// check if we should prompt the user for more
@@ -790,18 +654,7 @@ func main() {
 		////remaining_tokens = params.n_predict;
 		////is_interacting = true;
 		////}
-
-		//os.Exit(0)
 	}
-
-	////#if defined (_WIN32)
-	////    signal(SIGINT, SIG_DFL);
-	////#endif
-
-	////llama_print_timings(ctx);
-	////llama_free(ctx);
-
-	////set_console_state(CONSOLE_STATE_DEFAULT);
 }
 
 // TODO Show actual version
