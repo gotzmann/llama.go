@@ -734,54 +734,15 @@ type Graph struct {
 	////int64_t perf_time_us;
 }
 
-////type State struct {
-////	Contexts [MAX_CONTEXTS]ContextContainer
-////}
-
-////type ContextContainer struct {
-////	Used bool
-////	Ctx  Context
-////}
-
-// global state
-////var gState State
-////var gStateBarrier int // FIXME atomic_int
-
 type InitParams struct {
 	// memory pool
 	////MemSize   uint64 // bytes
 	////MemBuffer []byte // if NULL, memory will be allocated internally
 }
 
-// scratch buffer
-////type Scratch struct {
-////	Offs uint64
-////	Size uint64
-////	Data []byte
-////}
-
-////type Object struct {
-////	Offs uint64
-////	Size uint64
-////	Next *Object
-////Padding [8]byte
-////}
-
 // ml/ggml.c:2248
 // TODO Do we need this?
 type Context struct {
-	//MemSize        uint64
-	//MemBuffer      []byte
-	//MemBufferOwned bool
-
-	//Objects uint64
-	//Objects []Object // FIXME Speedup with *Object?
-
-	//ObjectsBegin *Object
-	//ObjectsEnd   *Object
-
-	// Scratch     Scratch
-	// ScratchSave Scratch
 }
 
 // ggml_new_tensor_1d
@@ -809,85 +770,6 @@ func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 		fmt.Printf("\n[ERROR] NewTensorImpl got not supported type : %d", dt)
 		os.Exit(1)
 	}
-
-	// always insert objects at the end of the context's memory pool
-	////struct ggml_object * obj_cur = ctx.objects_end;
-
-	////const size_t cur_offs = obj_cur == NULL ? 0 : obj_cur.offs;
-	////const size_t cur_size = obj_cur == NULL ? 0 : obj_cur.size;
-	////const size_t cur_end  = cur_offs + cur_size;
-
-	//sizeNeeded := uint64(0)
-
-	//if data == nil {
-	////size_needed += TYPE_SIZE[type]*(ne[0]/BLCK_SIZE[type]);
-	////for (int i = 1; i < n_dims; i++) {
-	////    size_needed *= ne[i];
-	////}
-	// align to MEM_ALIGN
-	////size_needed = ((size_needed + MEM_ALIGN - 1)/MEM_ALIGN)*MEM_ALIGN;
-	//}
-
-	////char * const mem_buffer = ctx.mem_buffer;
-	////struct ggml_object * const obj_new = (struct ggml_object *)(mem_buffer + cur_end);
-
-	//if ctx.Scratch.Data == nil || data != nil {
-	////size_needed += sizeof(struct ggml_tensor);
-
-	////if (cur_end + size_needed + OBJECT_SIZE > ctx.mem_size) {
-	////PRINT("%s: not enough space in the context's memory pool (needed %zu, available %zu)\n",
-	////    __func__, cur_end + size_needed + OBJECT_SIZE, ctx.mem_size);
-	////assert(false);
-	////return NULL;
-	////}
-
-	////objNew := &Object{
-	//Offs: cur_end + OBJECT_SIZE,
-	////Size: 0, // FIXME size_needed,
-	////Next: nil,
-	////}
-
-	//} else {
-
-	//	if ctx.Scratch.Offs+sizeNeeded > ctx.Scratch.Size {
-	//PRINT("%s: not enough space in the scratch memory\n", __func__);
-	//assert(false);
-	//		return nil
-	//	}
-	//}
-
-	////if (cur_end + sizeof(struct ggml_tensor) + OBJECT_SIZE > ctx.mem_size) {
-	////PRINT("%s: not enough space in the context's memory pool (needed %zu, available %zu)\n",
-	////    __func__, cur_end + sizeof(struct ggml_tensor) + OBJECT_SIZE, ctx.mem_size);
-	////assert(false);
-	////return NULL;
-	////}
-
-	////data = (char * const) ctx.scratch.data + ctx.scratch.offs;
-
-	////*obj_new = (struct ggml_object) {
-	////.offs = cur_end + OBJECT_SIZE,
-	////.size = sizeof(struct ggml_tensor),
-	////.next = NULL,
-	////};
-
-	//printf("scratch offs = %zu, size_needed = %zu\n", ctx.scratch.offs, size_needed);
-
-	////ctx.scratch.offs += size_needed;
-	////}
-
-	//if objCur != nil {
-	//	objCur.Next = objNew
-	//} else {
-	// this is the first object in this context
-	//	ctx.ObjectsBegin = objNew
-	//}
-
-	//ctx.ObjectsEnd = objNew
-
-	//printf("%s: inserted new object at %zu, size = %zu\n", __func__, cur_end, obj_new.size);
-
-	////struct ggml_tensor * const result = (struct ggml_tensor *)(mem_buffer + obj_new.offs);
 
 	////ggml_assert_aligned(result);
 
@@ -1352,32 +1234,13 @@ func BuildForwardExpand(graph *Graph, tensor *Tensor) {
 }*/
 
 func BuildForward(tensor *Tensor) *Graph {
-
-	result := Graph{
-		//NodesCount: 0,
-		//LeafsCount: 0,
-
-		// .threads    = 0,
-		// .work_size    = 0,
-		// *.work         = NULL,
-
-		// FIXME Do use [4096] or [] with append?
-		//Nodes: make([4096]*Tensor, 0),
-		//Grads: nil,
-		//Leafs: nil,
-
-		//.perf_runs    = 0,
-		//.perf_cycles  = 0,
-		//.perf_time_us = 0,
-	}
-
+	result := Graph{}
 	BuildForwardImpl(&result, tensor, false)
-
 	return &result
 }
 
 func BuildBackward(ctx *Context, gf *Graph, keep bool) Graph {
-	////result = *gf
+
 	result := *gf
 
 	////ASSERT(gf.n_nodes > 0);
@@ -1692,8 +1555,6 @@ func Job(listen <-chan *ComputeParams) {
 
 func GraphCompute(ctx *Context, graph *Graph) {
 
-	//fmt.Printf("\n\n === GraphCompute : %d nodes ===\n\n", graph.NodesCount) // DEBUG
-
 	maxThreads := graph.ThreadsCount
 
 	// --- init N job goroutines and channel to send tasks for them
@@ -1706,53 +1567,9 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		go Job(graph.Jobs)
 	}
 
-	////struct ggml_compute_state_shared state_shared = {
-	////    spin      = LOCK_INITIALIZER,
-	////    threads = threads,
-	////    n_ready   = 0,
-	////    has_work  = false,
-	////    stop      = false,
-	////};
+	// --- initialize tasks
 
-	////var workers []ComputeState
-	////if threads > 1 {
-	//////workers = alloca(sizeof(struct ggml_compute_state)*(threads - 1))
-	////fmt.Printf("\n[HALT] Parallelism is not allowed!")
-	////os.Exit(1)
-	////workers = make([]ComputeState, graph.ThreadsCount)
-	////}
-
-	// create thread pool
-	////if threads > 1 {
-	////ggml_lock_init(&state_shared.spin);
-
-	////atomic_store(&state_shared.has_work, true);
-
-	////for (int j = 0; j < threads - 1; j++) {
-	////    workers[j] = (struct ggml_compute_state) {
-	////        .thrd   = 0,
-	////        .params = {
-	////           .type  = TASK_COMPUTE,
-	////           .ith   = j + 1,
-	////           .nth   = threads,
-	////           .wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
-	////           .wdata = cgraph->work ? cgraph->work->data : NULL,
-	////       },
-	////       .node   = NULL,
-	////       .shared = &state_shared,
-	////   };
-
-	////   int rc = ggml_thread_create(&workers[j].thrd, NULL, ggml_graph_compute_thread, &workers[j]);
-	////   ASSERT(rc == 0);
-	////   UNUSED(rc);
-	////}
-	////}
-
-	//fmt.Printf("\n\n === GraphCompute INIT : %d nodes ===\n\n", graph.NodesCount) // DEBUG
-	// --- initialize tasks + work buffer
 	{
-		////workSize := 0
-
 		// thread scheduling for the different operations
 		// TasksCount might be 0, 1, or ThreadsCount
 		for i := uint32(0); i < graph.NodesCount; i++ {
@@ -1954,7 +1771,6 @@ func GraphCompute(ctx *Context, graph *Graph) {
 	// fmt.Printf("\n\n === GraphCompute START : %d nodes ===\n\n", graph.NodesCount) // DEBUG
 
 	for i := uint32(0); i < graph.NodesCount; i++ {
-		////PRINT_DEBUG_5("%s: %d/%d\n", __func__, i, cgraph->n_nodes);
 
 		node := graph.Nodes[i]
 
@@ -1969,69 +1785,16 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		////const int64_t perf_node_start_cycles  = ggml_perf_cycles();
 		////const int64_t perf_node_start_time_us = ggml_perf_time_us();
 
-		////var wsize uint32
-		////var wdata []float32
-		////if graph.Work != nil {
-		////	wsize = graph.Work.Nbytes()
-		////	wdata = graph.Work.Data
-		////}
-
 		params := ComputeParams{
 			Type: TASK_INIT,
 			ith:  0,
 			nth:  uint32(node.TasksCount),
-			////wsize: graph.work ? ggml_nbytes(cgraph->work) : 0,
-			////wdata: graph.work ? cgraph->work->data : NULL,
-			////wsize: wsize,
-			////wdata: wdata,
 		}
 
 		//fmt.Printf("\n[COMPUTE] ComputeForward | TASK_INIT | ...")
 		ComputeForward(graph, &params, node) // TASK_INIT
 
 		// --- COMPUTE
-
-		if node.TasksCount > 1 {
-
-			////if (atomic_fetch_add(&state_shared.n_ready, 1) == threads - 1) {
-			////atomic_store(&state_shared.has_work, false);
-			////}
-
-			////while (atomic_load(&state_shared.has_work)) {
-			////ggml_lock_lock  (&state_shared.spin);
-			////ggml_lock_unlock(&state_shared.spin);
-			////}
-
-			////var wsize uint32
-			////var wdata []float32
-			////if graph.Work != nil {
-			////	wsize = graph.Work.Nbytes()
-			////	wdata = graph.Work.Data
-			////}
-
-			// launch thread pool
-			////for j := uint32(0); j < threads-1; j++ {
-			////	workers[j].params = &ComputeParams{
-			////		Type: TASK_COMPUTE,
-			////		ith:  j + 1,
-			////		nth:  node.TasksCount,
-			////.wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
-			////.wdata = cgraph->work ? cgraph->work->data : NULL,
-			////wsize: wsize,
-			////wdata: wdata,
-			////	}
-			////	workers[j].node = node
-			////}
-
-			////atomic_fetch_sub(&state_shared.n_ready, 1);
-
-			////while (atomic_load(&state_shared.n_ready) > 0) {
-			////ggml_lock_lock  (&state_shared.spin);
-			////ggml_lock_unlock(&state_shared.spin);
-			////}
-
-			////atomic_store(&state_shared.has_work, true);
-		}
 
 		// BREAKPOINT DEBUG
 		//if i > 1300 {
@@ -2043,115 +1806,11 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		params.Type = TASK_COMPUTE
 		ComputeForward(graph, &params, node)
 
-		// wait for thread pool
-		////if (node->n_tasks > 1) {
-		////if (atomic_fetch_add(&state_shared.n_ready, 1) == threads - 1) {
-		////atomic_store(&state_shared.has_work, false);
-		////}
-
-		////while (atomic_load(&state_shared.has_work)) {
-		////ggml_lock_lock  (&state_shared.spin);
-		////ggml_lock_unlock(&state_shared.spin);
-		////}
-
-		////atomic_fetch_sub(&state_shared.n_ready, 1);
-
-		////while (atomic_load(&state_shared.n_ready) != 0) {
-		////ggml_lock_lock  (&state_shared.spin);
-		////ggml_lock_unlock(&state_shared.spin);
-		////}
-		////}
-
 		// --- FINALIZE
 
-		if node.TasksCount > 1 {
-			////if (atomic_fetch_add(&state_shared.n_ready, 1) == threads - 1) {
-			////atomic_store(&state_shared.has_work, false);
-			////}
-
-			////while (atomic_load(&state_shared.has_work)) {
-			////ggml_lock_lock  (&state_shared.spin);
-			////ggml_lock_unlock(&state_shared.spin);
-			////}
-
-			////var wsize uint32
-			////var wdata []float32
-			////if graph.Work != nil {
-			////	wsize = graph.Work.Nbytes()
-			////	wdata = graph.Work.Data
-			////}
-
-			// launch thread pool
-			////for j := uint32(0); j < threads-1; j++ {
-			////	workers[j].params = &ComputeParams{
-			////		Type: TASK_FINALIZE,
-			////		ith:  j + 1,
-			////		nth:  node.TasksCount,
-			////.wsize = cgraph->work ? ggml_nbytes(cgraph->work) : 0,
-			////.wdata = cgraph->work ? cgraph->work->data : NULL,
-			////wsize: wsize,
-			////wdata: wdata,
-			////	}
-			////	workers[j].node = node
-			////}
-
-			////atomic_fetch_sub(&state_shared.n_ready, 1);
-
-			////while (atomic_load(&state_shared.n_ready) > 0) {
-			////ggml_lock_lock  (&state_shared.spin);
-			////ggml_lock_unlock(&state_shared.spin);
-			////}
-
-			////atomic_store(&state_shared.has_work, true);
-		}
-
-		//fmt.Printf("\n[COMPUTE] ComputeForward | TASK_FINALIZE | ...")
 		params.Type = TASK_FINALIZE
 		ComputeForward(graph, &params, node)
-
-		// wait for thread pool
-		////if node.TasksCount > 1 {
-		////if (atomic_fetch_add(&state_shared.n_ready, 1) == threads - 1) {
-		////atomic_store(&state_shared.has_work, false);
-		////}
-
-		////while (atomic_load(&state_shared.has_work)) {
-		////ggml_lock_lock  (&state_shared.spin);
-		////ggml_lock_unlock(&state_shared.spin);
-		////}
-
-		////atomic_fetch_sub(&state_shared.n_ready, 1);
-
-		////while (atomic_load(&state_shared.n_ready) != 0) {
-		////ggml_lock_lock  (&state_shared.spin);
-		////ggml_lock_unlock(&state_shared.spin);
-		////}
-		////}
-
-		// performance stats (node)
-		////{
-		////int64_t perf_cycles_cur  = ggml_perf_cycles()  - perf_node_start_cycles;
-		////int64_t perf_time_us_cur = ggml_perf_time_us() - perf_node_start_time_us;
-
-		////node->perf_runs++;
-		////node->perf_cycles  += perf_cycles_cur;
-		////node->perf_time_us += perf_time_us_cur;
-		////}
 	}
-
-	// join thread pool
-	//if (threads > 1) {
-	////atomic_store(&state_shared.stop, true);
-	////atomic_store(&state_shared.has_work, true);
-
-	////for (int j = 0; j < threads - 1; j++) {
-	////int rc = ggml_thread_join(workers[j].thrd, NULL);
-	////ASSERT(rc == 0);
-	////UNUSED(rc);
-	////}
-
-	////ggml_lock_destroy(&state_shared.spin);
-	////}
 
 	// performance stats (graph)
 	////{
@@ -2162,13 +1821,6 @@ func GraphCompute(ctx *Context, graph *Graph) {
 	////cgraph->perf_cycles  += perf_cycles_cur;
 	////cgraph->perf_time_us += perf_time_us_cur;
 
-	////PRINT_DEBUG("%s: perf (%d) - cpu = %.3f / %.3f ms, wall = %.3f / %.3f ms\n",
-	////        __func__, cgraph->perf_runs,
-	////        (double) perf_cycles_cur      / (double) ggml_cycles_per_ms(),
-	////        (double) cgraph->perf_cycles  / (double) ggml_cycles_per_ms() / (double) cgraph->perf_runs,
-	////        (double) perf_time_us_cur     / 1000.0,
-	////        (double) cgraph->perf_time_us / 1000.0 / cgraph->perf_runs);
-	////}
 }
 
 /////////////////////////////////
