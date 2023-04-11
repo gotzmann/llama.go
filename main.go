@@ -6,27 +6,12 @@ import (
 	"runtime"
 	"strings"
 
-	// "golang.org/x/exp/slices"
-	// "github.com/x448/float16"
-	// github.com/schollz/progressbar/v3
-	// https://github.com/mitchellh/colorstring
-	// github.com/pkg/profile
-	// https://github.com/jessevdk/go-flags
-
 	flags "github.com/jessevdk/go-flags"
 	"github.com/mitchellh/colorstring"
 
 	"github.com/gotzmann/llama.go/llama"
 	"github.com/gotzmann/llama.go/ml"
 )
-
-// TODO ggml_compute_forward_mul_mat_f32 was changed
-// -                const float * x = (float *) (src0->data);
-// +                const float * x = (float *) ((char *) src0->data + i02*nb02 + i03*nb03);
-
-//
-// CLI argument parsing
-//
 
 type ModelParams struct {
 	seed         int    // -1 // RNG seed
@@ -59,82 +44,28 @@ type ModelParams struct {
 	embedding        bool // false // get only sentence embedding
 	interactiveStart bool // false // wait for user input immediately
 
-	instruct      bool // false // instruction mode (used for Alpaca models)
-	ignoreEOS     bool // false // do not stop generating after eos
-	perplexity    bool // false // compute perplexity over the prompt
-	use_mlock     bool // false // use mlock to keep model in memory
-	memTest       bool // false // compute maximum memory usage
+	instruct   bool // false // instruction mode (used for Alpaca models)
+	ignoreEOS  bool // false // do not stop generating after eos
+	perplexity bool // false // compute perplexity over the prompt
+	use_mlock  bool // false // use mlock to keep model in memory
+	memTest    bool // false // compute maximum memory usage
+
 	verbosePrompt bool
 }
 
-/*
-void perplexity(llama_context * ctx, const gpt_params & params) {
-    // Download: https://s3.amazonaws.com/research.metamind.io/wikitext/wikitext-2-raw-v1.zip?ref=salesforce-research
-    // Run `./main --perplexity -m models/7B/ggml-model-q4_0.bin -f wiki.test.raw`
-    // Output: `perplexity: 13.5106 [114/114]`
-    auto tokens = ::llama_tokenize(ctx, params.prompt, true);
-
-    int count = 0;
-    double nll = 0.0;
-    int seq_count = tokens.size() / params.n_ctx;
-
-    fprintf(stderr, "%s : calculating perplexity over %d chunks\n", __func__, seq_count);
-
-    for (int i = 0; i < seq_count; ++i) {
-        int start = i * params.n_ctx;
-        int end = start + params.n_ctx - 1;
-        std::vector<llama_token> embd(tokens.begin() + start, tokens.begin() + end);
-        auto start_t = std::chrono::high_resolution_clock::now();
-        if (llama_eval(ctx, embd.data(), embd.size(), 0, params.n_threads)) {
-            fprintf(stderr, "%s : failed to eval\n", __func__);
-            return;
-        }
-        auto end_t = std::chrono::high_resolution_clock::now();
-        if (i == 0) {
-            double seconds = std::chrono::duration<double>(end_t - start_t).count();
-            printf("%.2f seconds per pass - ETA %.2f hours\n", seconds, (seconds * seq_count) / (60.0*60.0));
-        }
-        // We get the logits for all the tokens in the context window (params.n_ctx)
-        // from llama_eval above.  Now, based on https://huggingface.co/docs/transformers/perplexity,
-        // calculate the perplexity over the last half the window (so the model always has
-        // some context to predict the token).
-        //
-        // We rely on the fact that attention in the forward pass only looks at previous
-        // tokens here, so the logits returned for each token are an accurate representation
-        // of what the model would have predicted at that point.
-        //
-        // Example, we have a context window of 512, we will compute perplexity for each of the
-        // last 256 tokens.  Then, we split the input up into context window size chunks to
-        // process the entire prompt.
-
-        auto logits = llama_get_logits(ctx);
-        for (int j = params.n_ctx / 2; j < params.n_ctx - 1; ++j) {
-            // Calculate probability of next token, given the previous ones.
-            int n_vocab = llama_n_vocab(ctx);
-            std::vector<float> tok_logits(
-                logits + j * n_vocab,
-                logits + (j + 1) * n_vocab);
-            double prob = softmax(tok_logits)[tokens[start + j + 1]];
-            nll += -std::log(prob);
-            ++count;
-        }
-        // perplexity is e^(average negative log-likelihood)
-        printf("[%d]%.4lf,", i + 1, std::exp(nll / count));
-        fflush(stdout);
-    }
-    printf("\n");
-}*/
-
-var isInteracting bool = false
-
 func main() {
 
+	//defer profile.Start(profile.ProfilePath(".")).Stop()
+
+	// --- Parse command line args and set default parameters
+
 	var opts struct {
-		Model   string `long:"model" description:"Path and file name of converted .bin LLaMA model"`
-		Threads int    `long:"threads" description:"Adjust to the number of CPU cores you want to use [ all cores by default ]"`
-		Predict int    `long:"predict" description:"Number of tokens to predict [ 128 by default ]"`
-		Context int    `long:"context" description:"Context size in tokens [ 512 by default ]"`
-		Silent  bool   `long:"silent" description:"Hide welcome logo and other terminal output [ shown by default ]"`
+		Model   string  `long:"model" description:"Path and file name of converted .bin LLaMA model"`
+		Threads int     `long:"threads" description:"Adjust to the number of CPU cores you want to use [ all cores by default ]"`
+		Predict int     `long:"predict" description:"Number of tokens to predict [ 128 by default ]"`
+		Context int     `long:"context" description:"Context size in tokens [ 512 by default ]"`
+		Temp    float32 `long:"temp" description:"Model temperature hyper parameter [ 0.8 by default ]"`
+		Silent  bool    `long:"silent" description:"Hide welcome logo and other terminal output [ shown by default ]"`
 	}
 
 	flags.Parse(&opts)
@@ -146,7 +77,25 @@ func main() {
 		maxThreads = opts.Threads
 	}
 
-	//defer profile.Start(profile.ProfilePath(".")).Stop()
+	defaultCtxSize := 512
+	if opts.Context > 0 {
+		defaultCtxSize = opts.Context
+	}
+
+	defaultPredictCount := 128
+	if opts.Predict > 0 {
+		defaultPredictCount = opts.Predict
+	}
+
+	defaultTemp := float32(0.8)
+	if opts.Temp > 0 {
+		defaultTemp = opts.Temp
+	}
+
+	fmt.Printf("\ntemp = %f", defaultTemp)
+	fmt.Printf("\nctx = %d", defaultCtxSize)
+	fmt.Printf("\npredict = %d", defaultPredictCount)
+	//os.Exit(0)
 
 	if !opts.Silent {
 		showLogo()
@@ -158,42 +107,21 @@ func main() {
 
 		model: opts.Model,
 
-		ctxSize:      512,
+		ctxSize:      uint32(defaultCtxSize),
 		seed:         -1,
 		threadsCount: maxThreads,
-		predictCount: 64, // 128, // FIXME
+		predictCount: uint32(defaultPredictCount),
 		repeatLastN:  64,
 		partsCount:   -1,
 		batchSize:    8,
 
 		topK:          40,
 		topP:          0.95,
-		temp:          0.80,
+		temp:          defaultTemp,
 		repeatPenalty: 1.10,
 
 		memoryFP16: true,
 	}
-
-	////if (params.perplexity) {
-	////	printf("\n************\n");
-	////	printf("%s: please use the 'perplexity' tool for perplexity calculations\n", __func__);
-	////	printf("************\n\n");
-
-	////	return 0;
-	////}
-
-	////if (params.embedding) {
-	////	printf("\n************\n");
-	////	printf("%s: please use the 'embedding' tool for embedding calculations\n", __func__);
-	////	printf("************\n\n");
-
-	////	return 0;
-	////}
-
-	////if (params.n_ctx > 2048) {
-	////fmt.Printf("%s: warning: model does not support context sizes greater than 2048 tokens (%d specified);"
-	////    "expect poor results\n", __func__, params.n_ctx);
-	////}
 
 	// --- load the model
 
@@ -213,12 +141,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// print system information
-	////{
-	//fmt.Printf("\nsystem_info: n_threads = %d / %d | %s\n",
-	//    params.n_threads, std::thread::hardware_concurrency(), llama_print_system_info());
-	////}
-
 	// tokenize the prompt
 	prompt := "Why Golang is so popular?"
 
@@ -228,7 +150,6 @@ func main() {
 	tokenNewline := ml.Tokenize(ctx.Vocab, "\n", false)[0]
 
 	////params.n_keep    = std::min(params.n_keep,    (int) embd_inp.size());
-
 	////params.n_predict = std::min(params.n_predict, n_ctx - (int) embd_inp.size());
 
 	// prefix & suffix for instruct mode
@@ -241,15 +162,6 @@ func main() {
 	////params.antiprompt.push_back("### Instruction:\n\n");
 	////}
 
-	// enable interactive mode if reverse prompt is specified
-	////if params.antiprompt.size() != 0) {
-	////params.interactive = true;
-	////}
-
-	////if (params.interactive_start) {
-	////params.interactive = true;
-	////}
-
 	if ml.DEBUG {
 		fmt.Printf("\n\n=== TOKENIZER ===\n\n%+v", embdInp)
 		for i := 0; i < len(embdInp); i++ {
@@ -258,11 +170,6 @@ func main() {
 	}
 
 	var embd []uint32
-
-	// FIXME Read from context params
-	////lastNSize := 64 // utils.h // repeat_last_n = 64 // params.repeat_last_n;
-	////std::vector<gpt_vocab::id> last_n_tokens(last_n_size);
-	///std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
 
 	// TODO: replace with ring-buffer
 	lastNTokens := make([]uint32, params.ctxSize, params.ctxSize) // FIXME LEN vs CAP
@@ -284,8 +191,10 @@ func main() {
 
 	for remainCount != 0 || params.interactive {
 
-		// predict
+		// --- predict
+
 		if len(embd) > 0 {
+
 			// infinite text generation via context swapping
 			// if we run out of context:
 			// - take the n_keep first tokens from the original prompt (via n_past)
@@ -297,32 +206,19 @@ func main() {
 
 				// insert n_left/2 tokens at the start of embd from last_n_tokens
 				////embd.insert(embd.begin(), last_n_tokens.begin() + n_ctx - n_left/2 - embd.size(), last_n_tokens.end() - embd.size());
-				embd = append(lastNTokens[:leftCount/2], embd...) // FIXME ASAP
+				embd = append(lastNTokens[:leftCount/2], embd...)
 			}
 
-			////////////////////////////////////////////////fmt.Printf("\nllamaEval #2")
-			////if (llama_eval(ctx, embd.data(), embd.size(), n_past, params.n_threads)) {
-			////fprintf(stderr, "%s : failed to eval\n", __func__);
 			if err := llama.Eval(ctx, embd, uint32(len(embd)), pastCount, params.threadsCount); err != nil {
 				fmt.Printf("\n[ERROR] Failed to eval")
 				os.Exit(1)
 			}
-			///////////////////////////////////////fmt.Printf("\nllamaEval #2 returned")
-
-			////t_predict_us += ggml_time_us() - t_start_us;
 		}
 
 		pastCount += uint32(len(embd))
-		embd = []uint32{} ////embd.clear();
+		embd = []uint32{}
 
-		if len(embdInp) <= int(consumedCount) && !isInteracting {
-
-			// FIXME Get all settings from context params
-			// out of user input, sample next token
-			topK := params.topK                   // uint32(40)             // FIXME utils.h // top_k = 40;
-			topP := params.topP                   // float32(0.95)          // FIXME utils.h // top_p = 0.95f;
-			temp := params.temp                   /// (0.80)          // FIXME utils.h // temp  = 0.80f;
-			repeatPenalty := params.repeatPenalty // float32(1.30) // utils.h // repeat_penalty  = 1.30f;
+		if len(embdInp) <= int(consumedCount) { // && !isInteracting {
 
 			if params.ignoreEOS {
 				ctx.Logits[ml.TOKEN_EOS] = 0
@@ -330,7 +226,7 @@ func main() {
 
 			id := llama.SampleTopPTopK(ctx,
 				lastNTokens[params.ctxSize-params.repeatLastN:], params.repeatLastN,
-				topK, topP, temp, repeatPenalty)
+				params.topK, params.topP, params.temp, params.repeatPenalty)
 
 			lastNTokens = lastNTokens[1:] ////last_n_tokens.erase(last_n_tokens.begin());
 			lastNTokens = append(lastNTokens, id)
@@ -373,13 +269,11 @@ func main() {
 
 		}
 
-		// display text
+		// --- display text
+
 		if !inputNoEcho {
-			//for (auto id : embd) {
-			////for (auto id : embd) {
-			for _, id := range embd { // FIXME Ordered / Unordered ??
-				////fmt.Printf("%s", vocab.ID2Token[id])
-				//fmt.Printf("%s", ml.Token2Str(lctx.Vocab, id))
+			for _, id := range embd {
+
 				token := ml.Token2Str(ctx.Vocab, id)
 				final += token
 
@@ -520,3 +414,61 @@ func showLogo() {
 	fmt.Printf("\n\n")
 
 }
+
+/*
+void perplexity(llama_context * ctx, const gpt_params & params) {
+    // Download: https://s3.amazonaws.com/research.metamind.io/wikitext/wikitext-2-raw-v1.zip?ref=salesforce-research
+    // Run `./main --perplexity -m models/7B/ggml-model-q4_0.bin -f wiki.test.raw`
+    // Output: `perplexity: 13.5106 [114/114]`
+    auto tokens = ::llama_tokenize(ctx, params.prompt, true);
+
+    int count = 0;
+    double nll = 0.0;
+    int seq_count = tokens.size() / params.n_ctx;
+
+    fprintf(stderr, "%s : calculating perplexity over %d chunks\n", __func__, seq_count);
+
+    for (int i = 0; i < seq_count; ++i) {
+        int start = i * params.n_ctx;
+        int end = start + params.n_ctx - 1;
+        std::vector<llama_token> embd(tokens.begin() + start, tokens.begin() + end);
+        auto start_t = std::chrono::high_resolution_clock::now();
+        if (llama_eval(ctx, embd.data(), embd.size(), 0, params.n_threads)) {
+            fprintf(stderr, "%s : failed to eval\n", __func__);
+            return;
+        }
+        auto end_t = std::chrono::high_resolution_clock::now();
+        if (i == 0) {
+            double seconds = std::chrono::duration<double>(end_t - start_t).count();
+            printf("%.2f seconds per pass - ETA %.2f hours\n", seconds, (seconds * seq_count) / (60.0*60.0));
+        }
+        // We get the logits for all the tokens in the context window (params.n_ctx)
+        // from llama_eval above.  Now, based on https://huggingface.co/docs/transformers/perplexity,
+        // calculate the perplexity over the last half the window (so the model always has
+        // some context to predict the token).
+        //
+        // We rely on the fact that attention in the forward pass only looks at previous
+        // tokens here, so the logits returned for each token are an accurate representation
+        // of what the model would have predicted at that point.
+        //
+        // Example, we have a context window of 512, we will compute perplexity for each of the
+        // last 256 tokens.  Then, we split the input up into context window size chunks to
+        // process the entire prompt.
+
+        auto logits = llama_get_logits(ctx);
+        for (int j = params.n_ctx / 2; j < params.n_ctx - 1; ++j) {
+            // Calculate probability of next token, given the previous ones.
+            int n_vocab = llama_n_vocab(ctx);
+            std::vector<float> tok_logits(
+                logits + j * n_vocab,
+                logits + (j + 1) * n_vocab);
+            double prob = softmax(tok_logits)[tokens[start + j + 1]];
+            nll += -std::log(prob);
+            ++count;
+        }
+        // perplexity is e^(average negative log-likelihood)
+        printf("[%d]%.4lf,", i + 1, std::exp(nll / count));
+        fflush(stdout);
+    }
+    printf("\n");
+}*/

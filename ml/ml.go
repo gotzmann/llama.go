@@ -1995,37 +1995,13 @@ func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
 	}
 }
 
-// inline static void ggml_vec_scale_f32(const int n, float * y, const float   v) {
+// ggml_vec_scale_f32
 func VecScaleFP32(n uint32, y []float32, v float32) {
-	////#if defined(GGML_SIMD)
-	////const int np = (n & ~(GGML_F32_STEP - 1));
-
-	////GGML_F32_VEC vx = GGML_F32_VEC_SET1(v);
-
-	////GGML_F32_VEC ay[GGML_F32_ARR];
-
-	////for (int i = 0; i < np; i += GGML_F32_STEP) {
-	////for (int j = 0; j < GGML_F32_ARR; j++) {
-	////ay[j] = GGML_F32_VEC_LOAD(y + i + j*GGML_F32_EPR);
-	////ay[j] = GGML_F32_VEC_MUL(ay[j], vx);
-
-	////GGML_F32_VEC_STORE(y + i + j*GGML_F32_EPR, ay[j]);
-	////}
-	////}
-
-	// leftovers
-	////for (int i = np; i < n; ++i) {
-	////y[i] *= v;
-	////}
-	////#else
-	// scalar
 	for i := uint32(0); i < n; i++ {
 		y[i] *= v
 	}
-	////#endif
 }
 
-// NB! FP32 Only
 // ggml_compute_forward_repeat
 func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 
@@ -2059,10 +2035,6 @@ func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 		for j := uint32(0); j < ncr; j++ {
 			for k := uint32(0); k < nr0; k++ {
 
-				////VecCopyFP32(nc0,
-				////	(*dst.Data)[i*nr0+k+j*nc0:],
-				////	(*src0.Data)[k:])
-
 				////ggml_vec_cpy_f32(nc0,
 				////(float *) ((char *)  dst->data + (i*nr0 + k)*( dst->nb[1]) + j*nc0*( dst->nb[0])),
 				////(float *) ((char *) src0->data + (        k)*(src0->nb[1])));
@@ -2087,11 +2059,9 @@ func VecMulFP32(n uint32, z, x, y []float32) {
 	}
 }
 
-// NB! FP32 Only
 // ggml_compute_forward_mul
 func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	//fmt.Printf(" [ ComputeForwardMulFP32 ] ")
 	////assert(params->ith == 0);
 	////assert(ggml_are_same_shape(src0, src1) && ggml_are_same_shape(src0, dst));
 
@@ -2113,14 +2083,13 @@ func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 	for i := uint32(0); i < n; i++ {
 
-		// !!! BUG !!!
-		//VecMulFP32(nc, dst.Data[i:], src0.Data[i:], src1.Data[i:])
-		VecMulFP32(nc, dst.Data[i*dst.NE[0]:], src0.Data[i*src0.NE[0]:], src1.Data[i*src1.NE[0]:])
-
 		////ggml_vec_mul_f32(nc,
 		////(float *) ((char *) dst->data  + i*( dst->nb[1])),
 		////(float *) ((char *) src0->data + i*(src0->nb[1])),
 		////(float *) ((char *) src1->data + i*(src1->nb[1])));
+
+		// FIXME NE vs NB
+		VecMulFP32(nc, dst.Data[i*dst.NE[0]:], src0.Data[i*src0.NE[0]:], src1.Data[i*src1.NE[0]:])
 	}
 
 	if DEBUG {
@@ -2130,107 +2099,35 @@ func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	}
 }
 
-// inline static void ggml_vec_dot_f32(const int n, float * restrict s, const float * restrict x, const float * restrict y) {
+// ggml_vec_dot_f32
 func VecDotFP32(n uint32, x, y []float32) float32 {
-
 	sumf := float32(0.0)
-
-	////#ifdef GGML_SIMD
-	////    const int np = (n & ~(GGML_F32_STEP - 1));
-
-	////    GGML_F32_VEC sum[GGML_F32_ARR] = { GGML_F32_VEC_ZERO };
-
-	////    GGML_F32_VEC ax[GGML_F32_ARR];
-	////    GGML_F32_VEC ay[GGML_F32_ARR];
-
-	////    for (int i = 0; i < np; i += GGML_F32_STEP) {
-	////        for (int j = 0; j < GGML_F32_ARR; j++) {
-	////            ax[j] = GGML_F32_VEC_LOAD(x + i + j*GGML_F32_EPR);
-	////            ay[j] = GGML_F32_VEC_LOAD(y + i + j*GGML_F32_EPR);
-
-	////            sum[j] = GGML_F32_VEC_FMA(sum[j], ax[j], ay[j]);
-	////        }
-	////    }
-
-	////    // reduce sum0..sum3 to sum0
-	////    GGML_F32_VEC_REDUCE(sumf, sum);
-
-	////    // leftovers
-	////    for (int i = np; i < n; ++i) {
-	////        sumf += x[i]*y[i];
-	////    }
-	////#else
-
-	// scalar
 	for i := uint32(0); i < n; i++ {
 		sumf += x[i] * y[i]
 	}
-
-	////#endif
-
-	////*s = sumf;
 	return sumf
 }
 
-// inline static void ggml_vec_mad_f32(const int n, float * restrict y, const float * restrict x, const float v) {
+// ggml_vec_mad_f32
 func VecMadFP32(n uint32, y, x []float32, v float32) {
-	////		#if defined(GGML_SIMD)
-	////		const int np = (n & ~(GGML_F32_STEP - 1));
-
-	////		GGML_F32_VEC vx = GGML_F32_VEC_SET1(v);
-
-	////		GGML_F32_VEC ax[GGML_F32_ARR];
-	////		GGML_F32_VEC ay[GGML_F32_ARR];
-
-	////		for (int i = 0; i < np; i += GGML_F32_STEP) {
-	////			for (int j = 0; j < GGML_F32_ARR; j++) {
-	////				ax[j] = GGML_F32_VEC_LOAD(x + i + j*GGML_F32_EPR);
-	////				ay[j] = GGML_F32_VEC_LOAD(y + i + j*GGML_F32_EPR);
-	////				ay[j] = GGML_F32_VEC_FMA(ay[j], ax[j], vx);
-
-	////				GGML_F32_VEC_STORE(y + i + j*GGML_F32_EPR, ay[j]);
-	////			}
-	////		}
-
-	////		// leftovers
-	////		for (int i = np; i < n; ++i) {
-	////			y[i] += x[i]*v;
-	////		}
-	////	#else
-
-	// scalar
 	for i := uint32(0); i < n; i++ {
 		y[i] += x[i] * v
 	}
-
-	////	#endif
 }
 
-// inline static void ggml_vec_acc_f32 (const int n, float * y, const float * x)                  { for (int i = 0; i < n; ++i) y[i] += x[i];        }
+// ggml_vec_acc_f32
 func VecAccFP32(n uint32, y, x []float32) {
 	for i := uint32(0); i < n; i++ {
 		y[i] += x[i]
 	}
 }
 
-// NB! FP32 Only
 // ggml_compute_forward_mul_mat_f32
 func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
-
-	////int64_t t0 = ggml_perf_time_us();
-	////UNUSED(t0);
 
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
 	}
-
-	// DEBUG MULTI_THREAD
-	//if params.nth > 1 {
-	//	defer params.wg.Done()
-	//defer fmt.Printf("\nTHREAD #%d ... defer Done()", params.ith)
-	//}
-
-	//return // DEBUG
 
 	ith := params.ith
 	nth := params.nth
@@ -2352,10 +2249,6 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	ir0 := dr * ith
 	ir1 := min32(ir0+dr, nr)
 
-	////void * wdata = params->wdata;
-
-	//fmt.Printf("\nTHREAD #%d | MATMUL | TOTAL ROWS = %d | FROM %d TO %d | ELEMENTS = %d", ith, nr, ir0, ir1, ne00) // DEBUG
-
 	for ir := uint32(ir0); ir < ir1; ir++ {
 
 		// src0 indices
@@ -2376,28 +2269,6 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 		for ic := uint32(0); ic < ne11; ic++ {
 
-			////ggml_vec_dot_f32(ne00,
-			////	(float *) ((char *)  dst->data + (i0*nb0 + i1*nb1 + i2*nb2 + i3*nb3)),
-			////	(float *) ((char *) src0->data + (i01*nb01 + i02*nb02 + i03*nb03)),
-			////	(float *) ((char *) src1->data + (i11*nb11 + i12*nb12 + i13*nb13)));
-
-			////(*dst.Data)[i0*nb0+i1*nb1+i2*nb2+i3*nb3] =
-			////	VecDotFP32(ne00,
-			////		(*src0.Data)[i01*nb01+i02*nb02+i03*nb03:],
-			////		(*src1.Data)[i11*nb11+i12*nb12+i13*nb13:])
-
-			//dst.Data[i0*nb0/4+i1*nb1/4+i2*nb2/4+i3*nb3/4] =
-			//	VecDotFP32(ne00,
-			//		src0.Data[i01*nb01/4+i02*nb02/4+i03*nb03/4:],
-			//		src1.Data[i11*nb11/4+i12*nb12/4+i13*nb13/4:])
-
-			//i11 := ic
-			//i1 := i11
-			//dst.Data[i0*nb0+i1*nb1+i2*nb2+i3*nb3] =
-			//	VecDotFP32(ne00,
-			//		src0.Data[i01*nb01+i02*nb02+i03*nb03:],
-			//		src1.Data[i11*nb11+i12*nb12+i13*nb13:])
-
 			//dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3] =
 			//	VecDotFP32(ne00,
 			//		src0.Data[i01*nb01+i02*nb02+i03*nb03:],
@@ -2414,11 +2285,6 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 			}
 
 			dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3] = sum
-
-			//fmt.Printf(" # %f = %f * %f # ",
-			//	(*dst.Data)[i0*nb0+i1*nb1+i2*nb2+i3*nb3],
-			//	(*src0.Data)[i01*nb01+i02*nb02+i03*nb03],
-			//	(*src1.Data)[i11*nb11+i12*nb12+i13*nb13])
 		}
 	}
 
@@ -2430,24 +2296,17 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 }
 
 // ggml_compute_forward_view
-
 func ComputeForwardView(params *ComputeParams, src0 *Tensor) {
 	// NOP
-	////UNUSED(params);
-	////UNUSED(src0);
 }
 
 func ComputeForwardCopy(params *ComputeParams, src0, dst *Tensor) {
-	////ggml_compute_forward_dup(params, src0, dst);
 	ComputeForwardDupFP32(params, src0, dst)
 }
 
-// FIXME ASAP
-// FIXME [dst] IS main tensor and [src0] IS inside
 // ggml_compute_forward_dup_f32
 func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 
-	//fmt.Printf(" [ ComputeForwardDupFP32 ] ")
 	////GGML_ASSERT(params->ith == 0);
 	////GGML_ASSERT(ggml_is_contiguous(dst));
 	////GGML_ASSERT(ggml_nelements(dst) == ggml_nelements(src0));
@@ -3024,7 +2883,6 @@ func VecSiluFP32(n uint32, y, x []float32) {
 	}
 }
 
-// FIXME ASAP
 // ggml_compute_forward_silu
 func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
 
@@ -3076,20 +2934,6 @@ func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
 
 // ---
 
-/*
-struct llama_vocab {
-    using id    = int32_t;
-    using token = std::string;
-
-    struct token_score {
-        token tok;
-        float score;
-    };
-
-    std::unordered_map<token, id> token_to_id;
-    std::vector<token_score> id_to_token;
-};*/
-
 type TokenScore struct {
 	Token string
 	Score float32
@@ -3131,16 +2975,16 @@ type Symbol struct {
 	Prev int
 	Next int
 
-	Text string //const char * text;
-	N    uint32 // size_t n;
+	Text string
+	N    uint32
 }
 
 // struct llama_sp_bigram {
 type Bigram struct {
 
 	// NB! Allow -1
-	Left  int // llama_sp_symbol::index left;
-	Right int // llama_sp_symbol::index
+	Left  int
+	Right int
 
 	Score float32
 	Size  uint32
@@ -3148,7 +2992,7 @@ type Bigram struct {
 
 func utf8Len(src byte) uint32 {
 	lookup := []uint32{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 4}
-	highbits := uint8(src) >> 4 // static_cast<uint8_t>(src) >> 4;
+	highbits := uint8(src) >> 4
 	return lookup[highbits]
 }
 
@@ -3182,35 +3026,20 @@ func PopMax(queue *[]Bigram) Bigram {
 
 func TryAddBigram(vocab *Vocab, symbols []Symbol, workQueue *[]Bigram, left, right int) {
 
-	//fmt.Printf("\n* left = %d | right = %d * ", left, right) // DEBUG
-
 	if left == -1 || right == -1 {
 		return
 	}
 
-	//fmt.Printf("\n** symbols[left].Text = %s | N = %d ** ", symbols[left].Text, symbols[left].N) // DEBUG
-	//fmt.Printf("\n** symbols[right].Text = %s | N = %d ** ", symbols[right].Text, symbols[right].N) // DEBUG
-
-	////const std::string text = std::string(symbols_[left].text, symbols_[left].n + symbols_[right].n);
 	token := symbols[left].Text[:symbols[left].N+symbols[right].N]
-	//fmt.Printf(" !! token = %s !! ", token) // DEBUG
 	id, ok := vocab.Token2ID[token]
-	////if token == vocab.Token2ID.end()) {
-	//if (static_cast<size_t>((*token).second) >= vocab_.id_to_token.size()) {
+
 	if !ok || int(id) >= len(vocab.ID2Token) {
 		return
 	}
 
 	tokenScore := vocab.ID2Token[id]
 
-	//fmt.Printf(" [ token = %s | token id = %d | score = %f | len = %d ] ", token, id, tokenScore.Score, len(token)) // DEBUG
-
 	bigram := Bigram{Left: left, Right: right, Score: tokenScore.Score, Size: uint32(len(token))}
-	////bigram.left = left
-	////bigram.right = right;
-	/////bigram.score = ;
-	////bigram.size = text.size();
-	////workQueue_.push(bigram);
 	*workQueue = append(*workQueue, bigram)
 }
 
@@ -3225,13 +3054,14 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 		output = append(output, 1) // TODO: replace with vocab.bos
 	}
 
-	// split string into utf8 chars
+	// --- split string into utf8 chars
+
 	index := 0
 	offs := 0
 	for offs < len(text) {
 		var sym Symbol
 		charLen := min(len(text)-offs, int(utf8Len(text[offs])))
-		sym.Text = text[offs:] // text.c_str() + offs // FIXME ASAP
+		sym.Text = text[offs:]
 		sym.N = uint32(charLen)
 		offs += charLen
 		sym.Prev = index - 1
@@ -3241,19 +3071,16 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 			sym.Next = index + 1
 		}
 		index++
-		symbols = append(symbols, sym) ////symbols_.emplace_back(std::move(sym));
+		symbols = append(symbols, sym)
 	}
 
 	// seed the work queue with all possible 2-character tokens
 	for i := 1; i < len(symbols); i++ {
-		//fmt.Printf(" [ sym[%d] = %s ] ", i, symbols[i].Text) // DEBUG
 		TryAddBigram(vocab, symbols, &workQueue, i-1, i)
 	}
 
 	// keep substituting the highest frequency pairs for as long as we can
 	for len(workQueue) > 0 {
-		////bigram := work_queue_.top();
-		////work_queue_.pop();
 		bigram := PopMax(&workQueue)
 
 		leftSym := &symbols[bigram.Left]
@@ -3268,8 +3095,6 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 		leftSym.N += rightSym.N
 		rightSym.N = 0
 
-		//printf("left = '%*s' size = %zu\n", (int) left_sym.n, left_sym.text, bigram.size);
-
 		// remove the right sym from the chain
 		leftSym.Next = rightSym.Next
 		if rightSym.Next >= 0 {
@@ -3277,9 +3102,7 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 		}
 
 		// find more substitutions
-		////try_add_bigram(left_sym.prev, bigram.left);
 		TryAddBigram(vocab, symbols, &workQueue, leftSym.Prev, bigram.Left)
-		////try_add_bigram(bigram.left, left_sym.next);
 		TryAddBigram(vocab, symbols, &workQueue, bigram.Left, leftSym.Next)
 	}
 
@@ -3287,26 +3110,17 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 		symbol := symbols[i]
 		id, ok := vocab.Token2ID[symbol.Text[:symbol.N]]
 
-		////if (token == vocab_.token_to_id.end()) {
 		if !ok {
 			// output any symbols that did not form tokens as bytes.
 			for j := uint32(0); j < symbol.N; j++ {
 				////llama_vocab::id token_id = static_cast<uint8_t>(symbol.text[j]) + 3;
 				tokenID := uint32(symbol.Text[j] + 3) // FIXME ASAP
-				////output.push_back(token_id);
 				output = append(output, tokenID)
 			}
 		} else {
-			////output.push_back((*token).second);
 			output = append(output, id)
 		}
 	}
-
-	////private:
-
-	////const llama_vocab & vocab_;
-	////std::vector<llama_sp_symbol> symbols_;
-	////llama_sp_bigram::queue work_queue_;
 
 	return output
 
@@ -3322,70 +3136,48 @@ func TokenizeOld(vocab *Vocab, text string, bos bool) []uint32 {
 	MAX_TOKEN_LEN := 18
 	length := len(text)
 
-	////std::vector<gpt_vocab::id> res;
 	res := make([]uint32, 0)
-	////std::vector<int> score;
-	//var score []uint32
-	////std::vector<gpt_vocab::id> prev;
-	//var prev []uint32
-	////int len = text.length();
-
-	////score.resize(len + 1);
 	score := make([]uint32, length+1)
-	////prev.resize(len + 1);
 	prev := make([]uint32, length+1)
 
-	// Forward pass
+	// --- Forward pass
 	for i := 0; i < length; i++ {
 		maxLen := min(length-i, MAX_TOKEN_LEN)
 		for subLen := 1; subLen <= maxLen; subLen++ {
-			////auto sub = text.substr(i, sub_len);
 			sub := text[i : i+subLen]
-			////auto token = vocab.token_to_id.find(sub);
 			token, ok := vocab.Token2ID[sub] // FIXME if not found?
-			//if token != vocab.token2id.end() {
 			if ok {
 				tokenScore := uint32(len(sub) * len(sub))
 				localScore := score[i] + tokenScore
 				next := i + subLen
 				if score[next] < localScore {
 					score[next] = localScore
-					////prev[next] = (*token).second
 					prev[next] = token
 				}
 			}
 		}
 	}
 
-	// Backward pass
+	// --- Backward pass
+
 	i := len(text)
 	for i > 0 {
-		////gpt_vocab::id token_id = prev[i];
 		tokenID := prev[i]
 		if tokenID == 0 {
 			// TODO: Return error or something more meaningful
 			fmt.Printf("\n[ERROR] Failed to tokenize string!")
 			break
 		}
-		////res.push_back(token_id);
 		res = append(res, tokenID)
-		////auto token = (*vocab.id_to_token.find(token_id)).second;
 		token := vocab.ID2Token[tokenID].Token
 		i -= len(token)
 	}
 
 	if bos {
-		////res.push_back(1); // TODO: replace with vocab.bos
 		res = append(res, 1) // TODO: replace with vocab.bos
 	}
 
 	// Pieces are in reverse order so correct that
-	////std::reverse(res.begin(), res.end());
-	//sort.Reverse(sort.IntSlice(res))
-
-	//fmt.Printf("\n\n=== PREV ===\n\n%+v", prev)
-	//fmt.Printf("\n\n=== RES ===\n\n%+v", res)
-
 	reversed := make([]uint32, 0, len(res))
 	for n := len(res); n > 0; n-- {
 		reversed = append(reversed, res[n-1])

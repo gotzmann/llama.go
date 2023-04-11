@@ -84,11 +84,6 @@ type ContextParams struct {
 	VocabOnly bool // only load the vocabulary, no weights
 	UseLock   bool // force system to keep model in RAM
 	Embedding bool // embedding mode only
-
-	// called with a progress value between 0 and 1, pass NULL to disable
-	////llama_progress_callback progress_callback;
-	// context pointer passed to the progress callback
-	////void * progress_callback_user_data;
 }
 
 type Layer struct {
@@ -138,9 +133,6 @@ type KVCache struct {
 	K *ml.Tensor
 	V *ml.Tensor
 
-	////ctx *ml.Context
-	////std::vector<uint8_t> buf;
-
 	N uint32 // number of tokens currently in the cache
 }
 
@@ -165,14 +157,6 @@ type Model struct {
 	// tensors
 	loadedCount uint32
 	tensors     map[string]*ml.Tensor // std::unordered_map<std::string, struct ggml_tensor *> tensors;
-
-	/*
-		// key + value memory
-		////struct ggml_tensor * memory_k;
-		memoryK *ml.Tensor
-		////struct ggml_tensor * memory_v;
-		memoryV *ml.Tensor
-	*/
 }
 
 func NewModel() *Model {
