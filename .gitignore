@@ -1,5 +1,6 @@
 .env
 .idea
+.vscode
 *.pprof
 *.pdf
 /models

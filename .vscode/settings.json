@@ -1,4 +1,0 @@
-{
-    "cmake.configureOnOpen": false,
-    "cmake.sourceDirectory": "${workspaceFolder}/ggml2/examples/main"
-}
