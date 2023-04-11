@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -976,7 +977,9 @@ func LoadModel(
 
 	// --- load vocab
 
-	//fmt.Printf("\n\n[LoadModel] Loading vocab...\n")
+	if !silent && runtime.GOOS == "windows" {
+		fmt.Printf("\n\n[LoadModel] Loading vocab...\n")
+	}
 
 	vocabBar := progressbar.NewOptions(
 		int(vocabSize),
@@ -996,7 +999,7 @@ func LoadModel(
 
 	for i := uint32(0); i < vocabSize; i++ {
 
-		if !silent && i%100 == 0 {
+		if !silent && runtime.GOOS != "windows" && i%100 == 0 {
 			vocabBar.Set(int(i))
 		}
 
@@ -1008,7 +1011,7 @@ func LoadModel(
 		vocab.ID2Token[i] = ml.TokenScore{Token: token, Score: score}
 	}
 
-	if !silent {
+	if !silent && runtime.GOOS != "windows" {
 		vocabBar.Finish()
 		fmt.Printf("\n")
 	}
@@ -1081,7 +1084,9 @@ func LoadModel(
 		}
 	}
 
-	//fmt.Printf("\n[LoadModel] Loading model from '%s' - please wait ...\n", fileName)
+	if !silent && runtime.GOOS == "windows" {
+		fmt.Printf("\n[LoadModel] Loading model from '%s' - please wait ...\n", fileName)
+	}
 
 	// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
 	bar := progressbar.NewOptions(int(layersCount*9),
@@ -1364,15 +1369,15 @@ func LoadModel(
 
 				tensorsCount++
 				model.loadedCount++
-				if !silent {
+				if !silent && runtime.GOOS != "windows" {
 					bar.Add(1)
 				}
-
 			}
-
 		}
 
-		bar.Finish()
+		if !silent && runtime.GOOS != "windows" {
+			bar.Finish()
+		}
 	}
 
 	return lctx, nil
