@@ -978,7 +978,7 @@ func LoadModel(
 	// --- load vocab
 
 	if !silent && runtime.GOOS == "windows" {
-		fmt.Printf("\n\n[LoadModel] Loading vocab...\n")
+		fmt.Printf("\n\n[ INIT ] Loading vocab...")
 	}
 
 	vocabBar := progressbar.NewOptions(
@@ -1085,7 +1085,7 @@ func LoadModel(
 	}
 
 	if !silent && runtime.GOOS == "windows" {
-		fmt.Printf("\n[LoadModel] Loading model from '%s' - please wait ...\n", fileName)
+		fmt.Printf("\n[ INIT ] Loading model - please wait ...\n")
 	}
 
 	// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
