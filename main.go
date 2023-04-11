@@ -6,7 +6,9 @@ import (
 	"runtime"
 	"strings"
 
+	// "github.com/mattn/go-colorable"
 	flags "github.com/jessevdk/go-flags"
+	colorable "github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
 
 	"github.com/gotzmann/llama.go/llama"
@@ -60,15 +62,19 @@ func main() {
 	// --- Parse command line args and set default parameters
 
 	var opts struct {
+		Prompt  string  `long:"prompt" description:"Text prompt from user to feed the model input"`
 		Model   string  `long:"model" description:"Path and file name of converted .bin LLaMA model"`
 		Threads int     `long:"threads" description:"Adjust to the number of CPU cores you want to use [ all cores by default ]"`
-		Predict int     `long:"predict" description:"Number of tokens to predict [ 128 by default ]"`
-		Context int     `long:"context" description:"Context size in tokens [ 512 by default ]"`
+		Predict uint32  `long:"predict" description:"Number of tokens to predict [ 128 by default ]"`
+		Context uint32  `long:"context" description:"Context size in tokens [ 512 by default ]"`
 		Temp    float32 `long:"temp" description:"Model temperature hyper parameter [ 0.8 by default ]"`
-		Silent  bool    `long:"silent" description:"Hide welcome logo and other terminal output [ shown by default ]"`
+		Silent  bool    `long:"silent" description:"Hide welcome logo and other output [ show by default ]"`
+		Chat    bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
 	}
 
 	flags.Parse(&opts)
+
+	prompt := opts.Prompt
 
 	// TODO Optimize default settings for CPUs with P and E cores
 	maxThreads := runtime.NumCPU()
@@ -77,47 +83,45 @@ func main() {
 		maxThreads = opts.Threads
 	}
 
-	defaultCtxSize := 512
+	сtxSize := uint32(512)
 	if opts.Context > 0 {
-		defaultCtxSize = opts.Context
+		сtxSize = opts.Context
 	}
 
-	defaultPredictCount := 128
+	predictCount := uint32(128)
 	if opts.Predict > 0 {
-		defaultPredictCount = opts.Predict
+		predictCount = opts.Predict
 	}
 
-	defaultTemp := float32(0.8)
+	temp := float32(0.8)
 	if opts.Temp > 0 {
-		defaultTemp = opts.Temp
+		temp = opts.Temp
 	}
-
-	fmt.Printf("\ntemp = %f", defaultTemp)
-	fmt.Printf("\nctx = %d", defaultCtxSize)
-	fmt.Printf("\npredict = %d", defaultPredictCount)
-	//os.Exit(0)
 
 	if !opts.Silent {
 		showLogo()
 	}
 
-	final := ""
+	if opts.Prompt == "" || opts.Model == "" {
+		Colorize("\n[magenta][ ERROR ][white] Please specify correct model path and prompt with [light_magenta]--model[white] and [light_magenta]--prompt[white] parameters\n\n")
+		os.Exit(0)
+	}
 
 	params := ModelParams{
+		model:       opts.Model,
+		interactive: opts.Chat,
 
-		model: opts.Model,
-
-		ctxSize:      uint32(defaultCtxSize),
+		ctxSize:      сtxSize,
 		seed:         -1,
 		threadsCount: maxThreads,
-		predictCount: uint32(defaultPredictCount),
+		predictCount: predictCount,
 		repeatLastN:  64,
 		partsCount:   -1,
 		batchSize:    8,
 
 		topK:          40,
 		topP:          0.95,
-		temp:          defaultTemp,
+		temp:          temp,
 		repeatPenalty: 1.10,
 
 		memoryFP16: true,
@@ -125,29 +129,19 @@ func main() {
 
 	// --- load the model
 
-	//lparams := llama.ContextParams{
-	//	CtxSize:    params.ctxSize,
-	//	PartsCount: params.partsCount,
-	//	Seed:       params.seed,
-	//	LogitsAll:  params.perplexity,
-	//	UseLock:    params.use_mlock,
-	//	Embedding:  params.embedding,
-	//}
-
-	//lctx, err := llama.InitFromFile(params.model, &lparams)
 	ctx, err := llama.LoadModel(params.model, opts.Silent) // FIXME parts count
 	if err != nil {
-		fmt.Printf("\n[ERROR] error: failed to load model '%s'", params.model)
-		os.Exit(1)
+		Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.model)
+		os.Exit(0)
 	}
-
-	// tokenize the prompt
-	prompt := "Why Golang is so popular?"
 
 	// Add a space in front of the first character to match OG llama tokenizer behavior
 	prompt = " " + prompt
+	// tokenize the prompt
 	embdInp := ml.Tokenize(ctx.Vocab, prompt, true)
 	tokenNewline := ml.Tokenize(ctx.Vocab, "\n", false)[0]
+
+	final := "" // model output
 
 	////params.n_keep    = std::min(params.n_keep,    (int) embd_inp.size());
 	////params.n_predict = std::min(params.n_predict, n_ctx - (int) embd_inp.size());
@@ -288,11 +282,11 @@ func main() {
 				}
 
 				if len(strings.TrimSpace(final)) == len(strings.TrimSpace(prompt)) && (token != "\n") && (len(out) == 2) {
-					colorstring.Printf("\n\n[magenta]▒▒▒ [light_yellow]" + strings.TrimSpace(prompt) + "\n[light_blue]▒▒▒ ")
+					Colorize("\n\n[magenta]▒▒▒ [light_yellow]" + strings.TrimSpace(prompt) + "\n[light_blue]▒▒▒ ")
 					continue
 				}
 
-				colorstring.Printf("[white]" + token)
+				Colorize("[white]" + token)
 
 			}
 
@@ -369,6 +363,13 @@ func main() {
 	}
 }
 
+// Join colorstring and go-colorable to allow colors both on Mac and Windows
+// TODO Implement as a small library
+func Colorize(format string, opts ...interface{}) (n int, err error) {
+	var DefaultOutput = colorable.NewColorableStdout()
+	return fmt.Fprintf(DefaultOutput, colorstring.Color(format), opts...)
+}
+
 // TODO Show actual version
 func showLogo() {
 
@@ -396,9 +397,6 @@ func showLogo() {
 		} else if char == '8' {
 			color = colors[line]
 			char = '▒'
-			//} else if char == ' ' {
-			//	color = "[black]"
-			//	char = '▒'
 		}
 		if color == prevColor {
 			logoColored += string(char)
@@ -407,12 +405,8 @@ func showLogo() {
 		}
 	}
 
-	colorstring.Printf(logoColored)
-	fmt.Printf("\n\n")
-
-	colorstring.Printf("   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v0.8 ] [light_blue][ Pure Go implementation of Meta's LLaMA GPT model ] [magenta]▒▒▒▒")
-	fmt.Printf("\n\n")
-
+	Colorize(logoColored) //colorstring.Printf(logoColored)
+	Colorize("\n\n   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v0.8 ] [light_blue][ Pure Go implementation of Meta's LLaMA GPT model ] [magenta]▒▒▒▒\n\n")
 }
 
 /*

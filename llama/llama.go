@@ -3,7 +3,6 @@ package llama
 import (
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"math/rand"
 	"os"
@@ -860,7 +859,7 @@ func LoadModel(
 
 	file, err := os.Open(fileName)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	defer file.Close()
 
