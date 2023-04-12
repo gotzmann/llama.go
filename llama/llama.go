@@ -45,16 +45,6 @@ type pair struct {
 }
 
 type Context struct {
-
-	////std::mt19937 rng;
-	////int64_t t_load_us = 0;
-	////int64_t t_start_us = 0;
-	////int64_t t_sample_us = 0;
-	////int64_t t_eval_us   = 0;
-	////n_sample uint32 // number of tokens sampled
-	////n_eval   uint32 // number of eval calls
-	////size_t mem_per_token = 0;
-
 	Model *Model
 	Vocab *ml.Vocab
 
@@ -80,12 +70,10 @@ type ContextParams struct {
 	CtxSize    uint32 // text context
 	PartsCount int    // -1 for default
 	Seed       int    // RNG seed, 0 for random
-
-	////f16_kv    bool // use fp16 for KV cache
-	LogitsAll bool // the llama_eval() call computes all logits, not just the last one
-	VocabOnly bool // only load the vocabulary, no weights
-	UseLock   bool // force system to keep model in RAM
-	Embedding bool // embedding mode only
+	LogitsAll  bool   // the llama_eval() call computes all logits, not just the last one
+	VocabOnly  bool   // only load the vocabulary, no weights
+	UseLock    bool   // force system to keep model in RAM
+	Embedding  bool   // embedding mode only
 }
 
 type Layer struct {
@@ -110,7 +98,7 @@ type Layer struct {
 
 // default hparams (LLaMA 7B)
 type HParams struct {
-	ctxSize     uint32 // 512 // this is provided as user input?
+	ctxSize     uint32 // 512
 	vocabSize   uint32 // 32000
 	embdSize    uint32 // 4096
 	multSize    uint32 // 256
@@ -140,7 +128,7 @@ type KVCache struct {
 
 type Model struct {
 	Type    ModelType
-	ctx     *ml.Context // ggml_context
+	ctx     *ml.Context
 	hparams HParams
 
 	tokEmbeddings *ml.Tensor
@@ -148,17 +136,10 @@ type Model struct {
 	output        *ml.Tensor
 
 	layers []Layer
+	kvSelf KVCache // key + value cache for the self attention
 
-	// key + value cache for the self attention
-	// TODO: move to llama_state
-	kvSelf KVCache // llama_kv_cache
-
-	// the model memory buffer
-	////std::vector<uint8_t> buf;
-
-	// tensors
 	loadedCount uint32
-	tensors     map[string]*ml.Tensor // std::unordered_map<std::string, struct ggml_tensor *> tensors;
+	tensors     map[string]*ml.Tensor
 }
 
 func NewModel() *Model {
@@ -189,7 +170,6 @@ func min(a, b int) int {
 	return b
 }
 
-// FIXME Double Check
 // Safe Resize() for using instead of C++ std::vector:resize()
 // https://go.dev/play/p/VlQ7N75E5AD
 func Resize(slice []float32, size int) []float32 {
@@ -200,7 +180,6 @@ func Resize(slice []float32, size int) []float32 {
 	return newSlice
 }
 
-// FIXME Double Check
 // NB! This do not clear the underlying array when resizing
 // https://go.dev/play/p/DbK4dFqwrZn
 func ResizeInplace(slice *[]float32, size int) {
@@ -245,11 +224,9 @@ func Eval(
 
 	// for big prompts, if BLAS is enabled, it is better to use only one thread
 	// otherwise, the threads are spin-lock waiting for the BLAS calls and are degrading the performance
-	////ggml_cgraph gf = {};
-	////gf.n_threads = N > 255 && ggml_cpu_has_blas() ? 1 : n_threads;
 	graph := ml.Graph{ThreadsCount: threadsCount}
 
-	embd := ml.NewTensor1D(ctx0, ml.TYPE_F32 /*ml.TYPE_I32*/, N) // FIXME Will be created as FP32 anyway
+	embd := ml.NewTensor1D(ctx0, ml.TYPE_F32 /*ml.TYPE_I32*/, N)
 	////memcpy(embd->data, tokens, N*ggml_element_size(embd));
 	// FIXME Refactore inline initialization
 	for id := uint32(0); id < N; id++ {
@@ -423,7 +400,7 @@ func Eval(
 	inpL = ml.MulMat(ctx0, model.output, inpL)
 
 	// logits -> probs
-	// COMMentED inpL = ggml_soft_max(ctx0, inpL);
+	// COMMENTED inpL = ggml_soft_max(ctx0, inpL);
 
 	// run the computation
 	ml.BuildForwardExpand(&graph, inpL)
@@ -431,8 +408,6 @@ func Eval(
 	ml.GraphCompute(ctx0, &graph)
 
 	// --- extract logits
-
-	//logitsOut := lctx.Logits // FIXME ASAP What we'll doing with this? Just lost in thin air?
 
 	//fmt.Printf("\n\n=== INPL 09 === [%d,%d,%d,%d] ===\n", inpL.NE[0], inpL.NE[1], inpL.NE[2], inpL.NE[3]) // DEBUG
 	//for ii := 0; ii < 12; ii++ {
@@ -444,7 +419,6 @@ func Eval(
 		fmt.Print("\n[HALT] Not Expected : lctx.LogitsAll == true")
 		os.Exit(1)
 		////logits_out.resize(n_vocab * N);
-		///////////////////////////////////////////////////////////logitsOut = Resize(logitsOut, int(vocabSize*N)) // FIXME ASAP Why N multipy?
 		////memcpy(logits_out.data(), (float *) ggml_get_data(inpL), sizeof(float)*n_vocab*N);
 		// FIXME Double Check !! Why multiply for N? Replace with copy() for slices
 		for i := uint32(0); i < vocabSize*N; i++ {
@@ -452,21 +426,9 @@ func Eval(
 		}
 
 	} else {
-
-		// return result for just the last token
-		////logits_out.resize(n_vocab);
-		////////////////////////////////////////////////////////logitsOut = Resize(logitsOut, int(vocabSize))
-
-		// FIXME ASAP
-		////logitsOut = NewFloatSlice(vocabSize, vocabSize) // FIXME Duplicate rearrangment?
-
-		////memcpy(logits_out.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
-		// FIXME Double Check !! Replace with copy() for slices
-
 		// FIXME ASAP Logits LEN = 32,000 without *N | INPL LEN = 256,000
 		//memcpy(logits_out.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
 		for i := uint32(0); i < vocabSize; i++ {
-			//lctx.Logits[i] = inpL.Data[i]
 			lctx.Logits[i] = inpL.Data[vocabSize*(N-1)+i]
 		}
 	}
@@ -480,52 +442,14 @@ func Eval(
 		}
 	}
 
-	//os.Exit(0)
-
 	// --- extract embeddings
 
 	if len(lctx.Embedding) > 0 {
-		////embeddingOut := lctx.Embedding
-
-		////embedding_out.resize(n_embd);
-		//////////////////////////////embeddingOut = Resize(embeddingOut, int(embdSize)) // FIXME ASAP ^^^ down
-		///////////////////////////////////////embeddingOut = NewFloatSlice(embdSize, embdSize)
 		////memcpy(embedding_out.data(), (float *) ggml_get_data(embeddings) + (n_embd*(N - 1)), sizeof(float)*n_embd);
-		// FIXME ASAP Replace with copy() for slices
-		//////////////////////for i := uint32(0); i < embdSize; i++ {
-		////////////////////////////	(*embeddingOut)[i] = (*lctx.Embedding)[i]
-		//////////////////////////////}
-
-		////memcpy(embedding_out.data(), (float *) ggml_get_data(embeddings) + (n_embd*(N - 1)), sizeof(float)*n_embd);
-
 		for i := uint32(0); i < embdSize; i++ {
 			lctx.Embedding[i] = embeddings.Data[(embdSize*(N-1))+i] // FIXME ASAP
 		}
 	}
-
-	////if (mem_per_token == 0) {
-	////    mem_per_token = ggml_used_mem(ctx0)/N;
-	////}
-	//fmt.Printf("used_mem = %zu\n", ggml_used_mem(ctx0));
-
-	////#if 0
-	////    printf("\n%s: used_mem = %.3f MB, scratch -- %.3f MB %.3f MB\n", __func__,
-	////            ggml_used_mem(ctx0)/1024.0/1024.0,
-	////            lctx.get_buf_max_mem(0)/1024.0/1024.0,
-	////            lctx.get_buf_max_mem(1)/1024.0/1024.0);
-	////#endif
-
-	////ggml_free(ctx0);
-
-	// measure the performance only for the single-token evals
-	////if (N == 1) {
-	////    lctx.t_eval_us += ggml_time_us() - t_start_us;
-	////    lctx.n_eval++;
-	////}
-	////else if (N > 1) {
-	////    lctx.t_p_eval_us += ggml_time_us() - t_start_us;
-	////    lctx.n_p_eval += N;
-	////}
 
 	return nil
 }
@@ -735,22 +659,17 @@ func SampleTopPTopK(
 	// FIXME Why loop? We've already SORTED logitsID and the MAX is just the FIRST element
 	////double maxl = -INFINITY;
 	maxl := float32(math.Inf(-1))
-	////for (const auto & kv : logits_id) {
 	for _, kv := range logitsID {
 		//// maxl = std::max(maxl, kv.first);
 		maxl = max(maxl, kv.first)
 	}
-
-	//fmt.Printf("\nmaxl = %.3f", maxl)
 
 	// compute probs for the top k tokens
 	////probs.reserve(logits_id.size());
 	probs := make([]float32, 0, len(logitsID)) // FIXME LEN vs CAP
 
 	sum := float64(0.0)
-	////for (const auto & kv : logits_id) {
 	for _, kv := range logitsID {
-		// double p = exp(kv.first - maxl);
 		p := math.Exp(float64(kv.first - maxl))
 		probs = append(probs, float32(p))
 		sum += p
@@ -789,9 +708,7 @@ func SampleTopPTopK(
 		for i := uint32(0); i < uint32(len(probs)); i++ {
 			cumsum += probs[i]
 			if cumsum >= topP {
-				////probs.resize(i + 1) // FIXME ASAP
 				probs = probs[:i+1]
-				////logits_id.resize(i + 1) // FIXME ASAP
 				logitsID = logitsID[:i+1]
 				break
 			}
@@ -821,7 +738,7 @@ func SampleTopPTopK(
 	////return logits_id[idx].second;
 
 	// --- discrete distribution
-	//     TODO Do we need something better than Serge Gotsuliak's hand-crafted formula here?
+	//     TODO Do we need something better than hand-crafted math here?
 
 	seed := time.Now().UnixNano()
 	source := rand.NewSource(seed)
@@ -980,7 +897,7 @@ func LoadModel(
 	// --- load vocab
 
 	if !silent && runtime.GOOS == "windows" {
-		Colorize("\n\n[magenta][ INIT ][white] Loading vocab...")
+		Colorize("[magenta][ INIT ][white] Loading vocab...")
 	}
 
 	vocabBar := progressbar.NewOptions(
@@ -1087,7 +1004,7 @@ func LoadModel(
 	}
 
 	if !silent && runtime.GOOS == "windows" {
-		Colorize("\n[magenta][ INIT ][white] Loading model - please wait ...\n")
+		Colorize("\n[magenta][ INIT ][white] Loading model - please wait ...")
 	}
 
 	// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option

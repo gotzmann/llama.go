@@ -289,5 +289,5 @@ func showLogo() {
 	}
 
 	Colorize(logoColored)
-	Colorize("\n\n   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v1.0 ] [light_blue][ Pure Go implementation of Meta's LLaMA GPT model ] [magenta]▒▒▒▒\n\n")
+	Colorize("\n\n   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v1.0.0 ] [light_blue][ LLaMA GPT in pure Golang - based on LLaMA C++ ] [magenta]▒▒▒▒\n\n")
 }
