@@ -13,6 +13,8 @@ import (
 	"time"
 	"unsafe"
 
+	colorable "github.com/mattn/go-colorable"
+	"github.com/mitchellh/colorstring"
 	"github.com/schollz/progressbar/v3"
 	"github.com/x448/float16"
 	"golang.org/x/exp/slices"
@@ -978,7 +980,7 @@ func LoadModel(
 	// --- load vocab
 
 	if !silent && runtime.GOOS == "windows" {
-		fmt.Printf("\n\n[ INIT ] Loading vocab...")
+		Colorize("\n\n[magenta][ INIT ][white] Loading vocab...")
 	}
 
 	vocabBar := progressbar.NewOptions(
@@ -1085,7 +1087,7 @@ func LoadModel(
 	}
 
 	if !silent && runtime.GOOS == "windows" {
-		fmt.Printf("\n[ INIT ] Loading model - please wait ...\n")
+		Colorize("\n[magenta][ INIT ][white] Loading model - please wait ...\n")
 	}
 
 	// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
@@ -1424,4 +1426,9 @@ func readFP32(file *os.File) float32 {
 	}
 	bits := uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0])
 	return math.Float32frombits(bits)
+}
+
+func Colorize(format string, opts ...interface{}) (n int, err error) {
+	var DefaultOutput = colorable.NewColorableStdout()
+	return fmt.Fprintf(DefaultOutput, colorstring.Color(format), opts...)
 }

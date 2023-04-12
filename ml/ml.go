@@ -67,10 +67,10 @@ var TableExpFP16 [1 << 16]float16.Float16
 
 var BLCK_SIZE [TYPE_COUNT]uint32 = [TYPE_COUNT]uint32{0, QK, QK, 1, 1, 1, 1, 1}
 
-var TYPE_SIZE [TYPE_COUNT]uint32 = [TYPE_COUNT]uint32{0, 4 + QK/2, 4*2 + QK/2, 1, 2, 4, 2, 4} // FIXME
+var TYPE_SIZE [TYPE_COUNT]uint32 = [TYPE_COUNT]uint32{0, 4 + QK/2, 4*2 + QK/2, 1, 2, 4, 2, 4}
 
 func TypeSizeFloat(dt DType) float32 {
-	return float32(TYPE_SIZE[dt]) / float32(BLCK_SIZE[dt]) // FIXME
+	return float32(TYPE_SIZE[dt]) / float32(BLCK_SIZE[dt])
 }
 
 // available tensor operations
@@ -125,7 +125,7 @@ type Tensor struct {
 
 	Dims uint32
 	NE   [MAX_DIMS]uint32 // number of elements
-	NB   [MAX_DIMS]uint32 // stride in bytes: // FIXME ASAP
+	NB   [MAX_DIMS]uint32 // stride in bytes
 
 	op optype
 
@@ -143,7 +143,7 @@ type Tensor struct {
 	//perfCycles uint32
 	//perfTime   uint64
 
-	Data []float32 // FIXME Was simple slice before!
+	Data []float32
 	//padding [8]byte
 }
 
@@ -237,15 +237,13 @@ func MulImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	return result
 }
 
-// static inline bool ggml_can_mul_mat(const struct ggml_tensor * t0, const struct ggml_tensor * t1) {
+// ggml_can_mul_mat
 func CanMulMat(t0, t1 *Tensor) bool {
-
 	////static_assert(MAX_DIMS == 4, "MAX_DIMS is not 4 - update this function");
-
-	return (t0.NE[0] == t1.NE[0]) && (t0.NE[2] == t1.NE[2]) && (t0.NE[3] == t1.NE[3]) // FIXME Where NE[1] ??
+	return (t0.NE[0] == t1.NE[0]) && (t0.NE[2] == t1.NE[2]) && (t0.NE[3] == t1.NE[3])
 }
 
-// struct ggml_tensor * ggml_mul_mat(
+// ggml_mul_mat
 func MulMat(ctx *Context, a, b *Tensor) *Tensor {
 	////ASSERT(ggml_can_mul_mat(a, b));
 	////GGML_ASSERT(!ggml_is_transposed(a));
@@ -256,8 +254,7 @@ func MulMat(ctx *Context, a, b *Tensor) *Tensor {
 		isNode = true
 	}
 
-	////const int ne[4] = { a.ne[1], b.ne[1], a.ne[2], b.ne[3] };
-	result := NewTensor(ctx, TYPE_F32, min32(a.Dims, b.Dims), a.NE[1], b.NE[1], a.NE[2], b.NE[3], nil) // Check for indexes
+	result := NewTensor(ctx, TYPE_F32, min32(a.Dims, b.Dims), a.NE[1], b.NE[1], a.NE[2], b.NE[3], nil)
 
 	result.op = OP_MUL_MAT
 	result.src0 = a
@@ -491,10 +488,9 @@ func IsMatrix(tensor *Tensor) bool {
 }
 
 // ggml_get_rows
-
 func GetRows(ctx *Context, a, b *Tensor) *Tensor {
 	////ASSERT(ggml_is_matrix(a) && ggml_is_vector(b) && b.type == TYPE_I32);
-	if !IsMatrix(a) || !IsVector(b) /* FIXME || b.Type != TYPE_I32 */ {
+	if !IsMatrix(a) || !IsVector(b) /* || b.Type != TYPE_I32 */ {
 		fmt.Printf("\n[ERROR] GetRows fail basic assertions")
 		os.Exit(1)
 	}
@@ -504,8 +500,8 @@ func GetRows(ctx *Context, a, b *Tensor) *Tensor {
 	if a.grad != nil || b.grad != nil {
 		////ASSERT(false); // TODO: implement backward
 		isNode = true
-		fmt.Printf("\n[STOP] ml.GetRows") // FIXME ??
-		os.Exit(1)                        // FIXME ??
+		fmt.Printf("\n[STOP] ml.GetRows")
+		os.Exit(1)
 	}
 
 	// TODO: implement non F32 return
@@ -540,8 +536,8 @@ func RMSNormImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 	if !inplace && a.grad != nil {
 		////ASSERT(false); // TODO: implement backward
 		isNode = true
-		fmt.Printf("\n[STOP] ml.GetRows") // FIXME ??
-		os.Exit(1)                        // FIXME ??
+		fmt.Printf("\n[STOP] ml.GetRows")
+		os.Exit(1)
 	}
 
 	////struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
@@ -575,7 +571,7 @@ func View1D(ctx *Context, a *Tensor, ne0 uint32, offset uint32) *Tensor {
 	////}
 
 	slice := a.Data[offset:]
-	result := NewTensor(ctx, a.Type, 1, ne0, 1, 1, 1, slice) // FIXME
+	result := NewTensor(ctx, a.Type, 1, ne0, 1, 1, 1, slice)
 
 	result.op = OP_VIEW
 	result.grad = nil
@@ -585,7 +581,7 @@ func View1D(ctx *Context, a *Tensor, ne0 uint32, offset uint32) *Tensor {
 	return result
 }
 
-// static void ggml_build_forward_impl(struct ggml_cgraph * cgraph, struct ggml_tensor * tensor, bool expand) {
+// ggml_build_forward_impl
 func BuildForwardImpl(graph *Graph, tensor *Tensor, expand bool) {
 
 	if !expand {
@@ -594,12 +590,8 @@ func BuildForwardImpl(graph *Graph, tensor *Tensor, expand bool) {
 	}
 
 	n0 := graph.NodesCount
-	////UNUSED(n0); // FIXED
-
 	VisitParents(graph, tensor)
-
 	n_new := graph.NodesCount - n0
-	////PRINT_DEBUG("%s: visited %d new nodes\n", __func__, n_new);
 
 	if n_new > 0 {
 		// the last added node should always be starting point
@@ -611,12 +603,12 @@ func BuildForwardImpl(graph *Graph, tensor *Tensor, expand bool) {
 	}
 }
 
-// void ggml_build_forward_expand(struct ggml_cgraph * cgraph, struct ggml_tensor * tensor) {
+// ggml_build_forward_expand
 func BuildForwardExpand(graph *Graph, tensor *Tensor) {
 	BuildForwardImpl(graph, tensor, true)
 }
 
-// static void ggml_visit_parents(struct ggml_cgraph * cgraph, struct ggml_tensor * node) {
+// ggml_visit_parents
 func VisitParents(graph *Graph, node *Tensor) {
 
 	if node.grad == nil {
@@ -713,8 +705,8 @@ func CopyInplace(ctx *Context, a, b *Tensor) *Tensor {
 
 // computation graph
 type Graph struct {
-	NodesCount   uint32 // FIXME Do not need, having len() ??
-	LeafsCount   uint32 // FIXME Do not need, having len() ??
+	NodesCount   uint32
+	LeafsCount   uint32
 	ThreadsCount int
 
 	Jobs chan *ComputeParams
@@ -744,15 +736,15 @@ func NewTensor1D(ctx *Context, dt DType, ne0 uint32) *Tensor {
 
 // ggml_new_tensor_2d
 func NewTensor2D(ctx *Context, dt DType, ne0, ne1 uint32) *Tensor {
-	return NewTensor(ctx, dt, 2, ne0, ne1, 1, 1, nil) // FIXME
+	return NewTensor(ctx, dt, 2, ne0, ne1, 1, 1, nil)
 }
 
 func NewTensor3D(ctx *Context, dt DType, ne0, ne1, ne2 uint32) *Tensor {
-	return NewTensor(ctx, dt, 3, ne0, ne1, ne2, 1, nil) // FIXME
+	return NewTensor(ctx, dt, 3, ne0, ne1, ne2, 1, nil)
 }
 
 func NewTensor4D(ctx *Context, dt DType, ne0, ne1, ne2, ne3 uint32) *Tensor {
-	return NewTensor(ctx, dt, 4, ne0, ne1, ne2, ne3, nil) // FIXME
+	return NewTensor(ctx, dt, 4, ne0, ne1, ne2, ne3, nil)
 }
 
 // ggml_new_tensor_impl
@@ -770,7 +762,6 @@ func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 		Dims: dims,
 		NE:   [4]uint32{ne0, ne1, ne2, ne3},
 		op:   OP_NONE,
-		//opt:  [4]*Tensor{nil, nil, nil, nil},
 	}
 
 	////result->nb[0] = GGML_TYPE_SIZE[type];
@@ -787,7 +778,6 @@ func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 	total := ne0 * ne1 * ne2 * ne3
 
 	if data == nil {
-		//newData := make([]float32, total, total) // FIXME ASAP use CAP ??
 		result.Data = make([]float32, total, total) // &newData
 	} else {
 		result.Data = data
@@ -797,7 +787,6 @@ func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 }
 
 // ggml_permute
-
 func Permute(ctx *Context, a *Tensor, axis0, axis1, axis2, axis3 uint32) *Tensor {
 
 	////ASSERT(axis0 >= 0 && axis0 < MAX_DIMS);
@@ -927,18 +916,10 @@ func Reshape3D(ctx *Context, a *Tensor, ne0, ne1, ne2 uint32) *Tensor {
 	return result
 }
 
-// struct ggml_tensor * ggml_new_f32(struct ggml_context * ctx, float value) {
+// ggml_new_f32
 func NewFP32(ctx *Context, value float32) *Tensor {
-
-	////ctx.scratch_save = ctx.scratch;
-	////ctx.scratch.data = NULL;
-
 	result := NewTensor1D(ctx, TYPE_F32, 1)
-
-	////ctx.scratch = ctx.scratch_save;
-
 	SetFP32(result, value)
-
 	return result
 }
 
@@ -954,7 +935,6 @@ func SetFP32(tensor *Tensor, value float32) *Tensor {
 }
 
 // ggml_scale
-
 func ScaleImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	////ASSERT(ggml_is_scalar(b));
 	////ASSERT(ggml_is_padded_1d(a));
@@ -990,7 +970,6 @@ func ScaleInplace(ctx *Context, a, b *Tensor) *Tensor {
 }
 
 // ggml_diag_mask_inf
-
 func DiagMaskInf(ctx *Context, a *Tensor, past uint32) *Tensor {
 	////bool is_node = false;
 
@@ -1004,9 +983,7 @@ func DiagMaskInf(ctx *Context, a *Tensor, past uint32) *Tensor {
 	// TODO: when implement backward, fix this:
 	//struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 	result := ViewTensor(ctx, a)
-	//// FIXME
-	//// b := NewI32(ctx, past)
-	b := NewFP32(ctx, float32(past))
+	b := NewFP32(ctx, float32(past)) // FIXME NewI32(ctx, past)
 
 	result.op = OP_DIAG_MASK_INF
 	////result.grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
@@ -1018,7 +995,6 @@ func DiagMaskInf(ctx *Context, a *Tensor, past uint32) *Tensor {
 }
 
 // ggml_soft_max
-
 func SoftMax(ctx *Context, a *Tensor) *Tensor {
 	////bool is_node = false;
 
@@ -1139,32 +1115,6 @@ func Transpose(ctx *Context, a *Tensor) *Tensor {
 	return result
 }
 
-/*
-func BuildForwardImpl(graph *Graph, tensor *Tensor, expand bool) {
-
-	if !expand {
-		graph.NodesCount = 0
-		graph.LeafsCount = 0
-	}
-
-	n0 := graph.NodesCount
-	////UNUSED(n0); FIXME ASAP
-
-	VisitParents(graph, tensor)
-
-	newCount := graph.NodesCount - n0
-	////PRINT_DEBUG("%s: visited %d new nodes\n", __func__, n_new);
-
-	if newCount > 0 {
-		// the last added node should always be starting point
-		////ASSERT(cgraph.nodes[cgraph.n_nodes - 1] == tensor);
-	}
-}
-
-func BuildForwardExpand(graph *Graph, tensor *Tensor) {
-	BuildForwardImpl(graph, tensor, true)
-}*/
-
 func BuildForward(tensor *Tensor) *Graph {
 	result := Graph{}
 	BuildForwardImpl(&result, tensor, false)
@@ -1174,7 +1124,6 @@ func BuildForward(tensor *Tensor) *Graph {
 func BuildBackward(ctx *Context, gf *Graph, keep bool) Graph {
 
 	result := *gf
-
 	////ASSERT(gf.n_nodes > 0);
 
 	// if we are keeping the gradient graph, we have to detach the gradient nodes from the original graph
@@ -1661,6 +1610,7 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 	case OP_RMS_NORM:
 		ComputeForwardRMSNormFP32(params, tensor.src0, tensor)
 	case OP_MUL_MAT:
+
 		// TODO Optimize this
 		if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 			return
@@ -1669,44 +1619,25 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 		//ComputeForwardMulMatFP32(params, tensor.src0, tensor.src1, tensor)
 		//return
 
-		// DEBUG MULTI-THREAD
-		maxThreads := graph.ThreadsCount // uint32(8) // FIXME graph tasks count
-		//fmt.Printf("\nOP_MUL_MAT [%d] starting...", threads)
-
 		wg := new(sync.WaitGroup)
-		wg.Add(int(maxThreads))
+		wg.Add(graph.ThreadsCount)
 
-		//for i := 0; i < threads; i++ {
-		//	go ComputeForwardMulMatFP32(
-		//		&ComputeParams{
-		//			Type: TASK_COMPUTE,
-		//			ith:  uint32(i),
-		//			nth:  uint32(threads),
-		//			wg:   wg,
-		//		},
-		//		tensor.src0,
-		//		tensor.src1,
-		//		tensor)
-		//}
-
-		for i := 0; i < maxThreads; i++ {
+		for i := 0; i < graph.ThreadsCount; i++ {
 			graph.Jobs <- &ComputeParams{
 				Type:   TASK_COMPUTE,
 				ith:    uint32(i),
-				nth:    uint32(maxThreads),
+				nth:    uint32(graph.ThreadsCount),
 				tensor: tensor,
 				wg:     wg,
 			}
 		}
 
-		//fmt.Printf("\nCOMPUTE WAIT...")
 		wg.Wait()
-		//fmt.Printf("\nCOMPUTE WAIT SUCCESS...")
-		//fmt.Printf("\nOP_MUL_MAT finished!")
+
 	case OP_SCALE:
 		ComputeForwardScaleFP32(params, tensor.src0, tensor.src1, tensor)
 	case OP_CPY:
-		ComputeForwardDupFP32(params, tensor.src0, tensor) // FIXME Double Check
+		ComputeForwardDupFP32(params, tensor.src0, tensor)
 	case OP_RESHAPE:
 		ComputeForwardReshape(params, tensor.src0, tensor) // NOP
 	case OP_VIEW:
@@ -1906,7 +1837,6 @@ func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 				////(float *) ((char *)  dst->data + (i*nr0 + k)*( dst->nb[1]) + j*nc0*( dst->nb[0])),
 				////(float *) ((char *) src0->data + (        k)*(src0->nb[1])));
 
-				// FIXME ASAP Double Check !!
 				VecCopyFP32(nc0,
 					dst.Data[(i*nr0+k)*dst.NB[1]/4+j*nc0*dst.NB[0]/4:],
 					src0.Data[k*src0.NB[1]/4:])
@@ -2205,30 +2135,18 @@ func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 	////if (ggml_is_contiguous(src0) && src0->type == dst->type) {
 	if src0.IsContiguous() && src0.Type == dst.Type {
 		////memcpy(dst->data, src0->data, ggml_nelements(dst) * GGML_TYPE_SIZE[src0->type]);
-		////return;
-
-		copy(dst.Data, src0.Data) // FIXME Double Check
-
-		////n := dst.Nelements()
-		////for i := uint32(0); i < n; i++ {
-		////	dst.Data[i] = src0.Data[i]
-		////}
-
+		copy(dst.Data, src0.Data)
 		return
 	}
 
-	// src0 is NOT contigious
-
-	//fmt.Printf("[HALT] ComputeForwardDupFP32 for NOT contiguous is NOT implemented yet!")
-	//os.Exit(1)
-
+	// --- src0 is NOT contigious
 	// --- supporting only 4-bytes data for [src0] and FP32 for [dst]
 
 	if src0.NB[0] == TYPE_SIZE[TYPE_F32] {
 		if dst.Type == TYPE_F32 {
 
-			id := uint32(0)   // Row number ??
-			rs := ne00 * nb00 // FIXME Row size in 4-bytes elements
+			id := uint32(0)
+			rs := ne00 * nb00
 
 			for i03 := uint32(0); i03 < ne03; i03++ {
 				for i02 := uint32(0); i02 < ne02; i02++ {
@@ -2799,7 +2717,7 @@ func PopMax(queue *[]Bigram) Bigram {
 		if ((*queue)[max].Score < (*queue)[cur].Score) ||
 			((*queue)[max].Score == (*queue)[cur].Score &&
 				(*queue)[max].Left > (*queue)[cur].Left) {
-			max = cur // FIXME Double Check
+			max = cur
 		}
 	}
 
@@ -2902,7 +2820,7 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 			// output any symbols that did not form tokens as bytes.
 			for j := uint32(0); j < symbol.N; j++ {
 				////llama_vocab::id token_id = static_cast<uint8_t>(symbol.text[j]) + 3;
-				tokenID := uint32(symbol.Text[j] + 3) // FIXME ASAP
+				tokenID := uint32(symbol.Text[j] + 3)
 				output = append(output, tokenID)
 			}
 		} else {
@@ -2910,68 +2828,15 @@ func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 		}
 	}
 
+	if DEBUG {
+		fmt.Printf("\n\n=== TOKENIZER ===\n\n%+v", output)
+		for i := 0; i < len(output); i++ {
+			fmt.Printf("%d:'%s'  ", output[i], Token2Str(vocab, output[i]))
+		}
+	}
+
 	return output
 
-}
-
-// TODO Remove older version
-// FIXME Would it work with UTF-8? Rewrite for runes
-// SentencePiece implementation after https://guillaume-be.github.io/2020-05-30/sentence_piece
-// std::vector<gpt_vocab::id> llamaTokenize(const gpt_vocab & vocab, const std::string & text, bool bos) {
-func TokenizeOld(vocab *Vocab, text string, bos bool) []uint32 {
-
-	// TODO: Calculate this constant from the vocabulary
-	MAX_TOKEN_LEN := 18
-	length := len(text)
-
-	res := make([]uint32, 0)
-	score := make([]uint32, length+1)
-	prev := make([]uint32, length+1)
-
-	// --- Forward pass
-	for i := 0; i < length; i++ {
-		maxLen := min(length-i, MAX_TOKEN_LEN)
-		for subLen := 1; subLen <= maxLen; subLen++ {
-			sub := text[i : i+subLen]
-			token, ok := vocab.Token2ID[sub] // FIXME if not found?
-			if ok {
-				tokenScore := uint32(len(sub) * len(sub))
-				localScore := score[i] + tokenScore
-				next := i + subLen
-				if score[next] < localScore {
-					score[next] = localScore
-					prev[next] = token
-				}
-			}
-		}
-	}
-
-	// --- Backward pass
-
-	i := len(text)
-	for i > 0 {
-		tokenID := prev[i]
-		if tokenID == 0 {
-			// TODO: Return error or something more meaningful
-			fmt.Printf("\n[ERROR] Failed to tokenize string!")
-			break
-		}
-		res = append(res, tokenID)
-		token := vocab.ID2Token[tokenID].Token
-		i -= len(token)
-	}
-
-	if bos {
-		res = append(res, 1) // TODO: replace with vocab.bos
-	}
-
-	// Pieces are in reverse order so correct that
-	reversed := make([]uint32, 0, len(res))
-	for n := len(res); n > 0; n-- {
-		reversed = append(reversed, res[n-1])
-	}
-
-	return reversed
 }
 
 // TODO Do we need this?
