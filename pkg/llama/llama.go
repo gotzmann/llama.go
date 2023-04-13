@@ -2,6 +2,7 @@ package llama
 
 import (
 	"fmt"
+	"github.com/schollz/progressbar/v3"
 	"io"
 	"math"
 	"math/rand"
@@ -13,13 +14,12 @@ import (
 	"time"
 	"unsafe"
 
-	colorable "github.com/mattn/go-colorable"
+	"github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
-	"github.com/schollz/progressbar/v3"
 	"github.com/x448/float16"
 	"golang.org/x/exp/slices"
 
-	"github.com/gotzmann/llama.go/ml"
+	"github.com/gotzmann/llama.go/pkg/ml"
 )
 
 const (
