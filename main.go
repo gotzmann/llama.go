@@ -6,12 +6,12 @@ import (
 	"runtime"
 	"strings"
 
-	flags "github.com/jessevdk/go-flags"
-	colorable "github.com/mattn/go-colorable"
+	"github.com/jessevdk/go-flags"
+	"github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
 
-	"github.com/gotzmann/llama.go/llama"
-	"github.com/gotzmann/llama.go/ml"
+	"github.com/gotzmann/llama.go/pkg/llama"
+	"github.com/gotzmann/llama.go/pkg/ml"
 )
 
 type ModelParams struct {
@@ -69,7 +69,10 @@ func main() {
 		Chat    bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
 	}
 
-	flags.Parse(&opts)
+	_, err := flags.Parse(&opts)
+	if err != nil {
+		return
+	}
 
 	prompt := " " + opts.Prompt // add a space to match LLaMA tokenizer behavior
 	final := ""                 // accumulate model output
@@ -126,7 +129,10 @@ func main() {
 
 	ctx, err := llama.LoadModel(params.model, opts.Silent)
 	if err != nil {
-		Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.model)
+		_, err := Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.model)
+		if err != nil {
+			return
+		}
 		os.Exit(0)
 	}
 
@@ -235,25 +241,32 @@ func main() {
 				}
 
 				if len(strings.TrimSpace(final)) == len(strings.TrimSpace(prompt)) && (token != "\n") && (len(out) == 2) {
-					Colorize("\n\n[magenta]▒▒▒ [light_yellow]" + strings.TrimSpace(prompt) + "\n[light_blue]▒▒▒ ")
+					_, err := Colorize("\n\n[magenta]▒▒▒ [light_yellow]" + strings.TrimSpace(prompt) + "\n[light_blue]▒▒▒ ")
+					if err != nil {
+						return
+					}
 					continue
 				}
 
-				Colorize("[white]" + token)
+				_, err := Colorize("[white]" + token)
+				if err != nil {
+					return
+				}
 
 			}
 		}
 	}
 }
 
+// Colorize is a wrapper for colorstring.Color() and fmt.Fprintf()
 // Join colorstring and go-colorable to allow colors both on Mac and Windows
-// TODO Implement as a small library
+// TODO: Implement as a small library
 func Colorize(format string, opts ...interface{}) (n int, err error) {
 	var DefaultOutput = colorable.NewColorableStdout()
 	return fmt.Fprintf(DefaultOutput, colorstring.Color(format), opts...)
 }
 
-// TODO Show actual version
+// TODO: Show actual version
 func showLogo() {
 
 	// https://patorjk.com/software/taag/#p=display&f=3-D&t=llama.go%0A%0ALLaMA.go
@@ -288,6 +301,12 @@ func showLogo() {
 		}
 	}
 
-	Colorize(logoColored)
-	Colorize("\n\n   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v1.0.0 ] [light_blue][ LLaMA GPT in pure Golang - based on LLaMA C++ ] [magenta]▒▒▒▒\n\n")
+	_, err := Colorize(logoColored)
+	if err != nil {
+		return
+	}
+	_, err = Colorize("\n\n   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v1.0.0 ] [light_blue][ LLaMA GPT in pure Golang - based on LLaMA C++ ] [magenta]▒▒▒▒\n\n")
+	if err != nil {
+		return
+	}
 }

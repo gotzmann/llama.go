@@ -2,6 +2,7 @@ package llama
 
 import (
 	"fmt"
+	"github.com/schollz/progressbar/v3"
 	"io"
 	"math"
 	"math/rand"
@@ -13,13 +14,12 @@ import (
 	"time"
 	"unsafe"
 
-	colorable "github.com/mattn/go-colorable"
+	"github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
-	"github.com/schollz/progressbar/v3"
 	"github.com/x448/float16"
 	"golang.org/x/exp/slices"
 
-	"github.com/gotzmann/llama.go/ml"
+	"github.com/gotzmann/llama.go/pkg/ml"
 )
 
 const (
@@ -170,7 +170,7 @@ func min(a, b int) int {
 	return b
 }
 
-// Safe Resize() for using instead of C++ std::vector:resize()
+// Resize() (safe) for using instead of C++ std::vector:resize()
 // https://go.dev/play/p/VlQ7N75E5AD
 func Resize(slice []float32, size int) []float32 {
 	newSlice := make([]float32, size)
@@ -415,21 +415,28 @@ func Eval(
 	//}
 
 	if lctx.LogitsAll {
-
-		fmt.Print("\n[HALT] Not Expected : lctx.LogitsAll == true")
+		fmt.Print("\n[HALT] Not Expected: lctx.LogitsAll == true")
 		os.Exit(1)
-		////logits_out.resize(n_vocab * N);
-		////memcpy(logits_out.data(), (float *) ggml_get_data(inpL), sizeof(float)*n_vocab*N);
-		// FIXME Double Check !! Why multiply for N? Replace with copy() for slices
-		for i := uint32(0); i < vocabSize*N; i++ {
-			lctx.Logits[i] = inpL.Data[i] // FIXME ASAP Overflow ??
-		}
 
+		/*
+			// Copy inpL.Data to lctx.Logits
+			for i := uint32(0); i < vocabSize*N; i++ {
+				if i >= uint32(len(lctx.Logits)) || i >= uint32(len(inpL.Data)) {
+					fmt.Println("Error: Index out of bounds during Logits copy")
+					os.Exit(1)
+				}
+				lctx.Logits[i] = inpL.Data[i]
+			}
+		*/
 	} else {
-		// FIXME ASAP Logits LEN = 32,000 without *N | INPL LEN = 256,000
-		//memcpy(logits_out.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
+		// Copy only the relevant part of inpL.Data to lctx.Logits
 		for i := uint32(0); i < vocabSize; i++ {
-			lctx.Logits[i] = inpL.Data[vocabSize*(N-1)+i]
+			srcIndex := vocabSize*(N-1) + i
+			if i >= uint32(len(lctx.Logits)) || srcIndex >= uint32(len(inpL.Data)) {
+				fmt.Println("Error: Index out of bounds during Logits copy")
+				os.Exit(1)
+			}
+			lctx.Logits[i] = inpL.Data[srcIndex]
 		}
 	}
 
@@ -922,8 +929,8 @@ func LoadModel(
 			vocabBar.Set(int(i))
 		}
 
-		len := readInt(file)
-		token := readString(file, len)
+		lenFile := readInt(file)
+		token := readString(file, lenFile)
 		score := readFP32(file)
 
 		vocab.Token2ID[token] = i
@@ -1250,36 +1257,38 @@ func LoadModel(
 					//return false;
 					////}
 
-					if splitType == 0 {
-						np0 := ne[0]
+					/*
+						if splitType == 0 {
+							np0 := ne[0]
 
-						////const size_t row_size = (tensor->ne[0]/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
-						row_size := tensor.NE[0] * ml.TYPE_SIZE[tensor.Type] // FIXME Check twice
-						////assert(row_size == tensor->nb[1]);
+							////const size_t row_size = (tensor->ne[0]/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
+							row_size := tensor.NE[0] * ml.TYPE_SIZE[tensor.Type] // FIXME Check twice
+							////assert(row_size == tensor->nb[1]);
 
-						for i1 := uint32(0); i1 < ne[1]; i1++ {
-							//const size_t offset_row = i1*row_size;
-							offset_row := i1 * row_size
-							////offset = offset_row + ((part_id*np0)/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
+							for i1 := uint32(0); i1 < ne[1]; i1++ {
+								//const size_t offset_row = i1*row_size;
+								offset_row := i1 * row_size
+								////offset = offset_row + ((part_id*np0)/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
 
-							offset := offset_row + uint32(part_id)*np0*ml.TYPE_SIZE[tensor.Type]
-							fmt.Print(offset)
+								offset := offset_row + uint32(part_id)*np0*ml.TYPE_SIZE[tensor.Type]
+								fmt.Print(offset)
 
-							////fin.read(reinterpret_cast<char *>(tensor->data) + offset, row_size/n_parts);
+								////fin.read(reinterpret_cast<char *>(tensor->data) + offset, row_size/n_parts);
+							}
+						} else {
+							np1 := ne[1]
+
+							////const size_t row_size = (tensor->ne[0]/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
+							row_size := tensor.NE[0] * ml.TYPE_SIZE[tensor.Type]
+
+							for i1 := uint32(0); i1 < ne[1]; i1++ {
+								////const size_t offset_row = (i1 + part_id*np1)*row_size;
+								offset_row := (i1 + uint32(part_id)*np1) * row_size
+								////fin.read(reinterpret_cast<char *>(tensor->data) + offset_row, row_size);
+								fmt.Print(offset_row)
+							}
 						}
-					} else {
-						np1 := ne[1]
-
-						////const size_t row_size = (tensor->ne[0]/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
-						row_size := tensor.NE[0] * ml.TYPE_SIZE[tensor.Type]
-
-						for i1 := uint32(0); i1 < ne[1]; i1++ {
-							////const size_t offset_row = (i1 + part_id*np1)*row_size;
-							offset_row := (i1 + uint32(part_id)*np1) * row_size
-							////fin.read(reinterpret_cast<char *>(tensor->data) + offset_row, row_size);
-							fmt.Print(offset_row)
-						}
-					}
+					*/
 
 					////total_size += ggml_nbytes(tensor)/n_parts;
 				}
