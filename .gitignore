@@ -3,7 +3,7 @@
 .vscode
 *.pprof
 *.pdf
-/models
-/vendor
+./models
+./vendor
 .DS_Store
 __debug_bin
