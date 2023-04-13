@@ -123,10 +123,10 @@ release:
 	@echo "release: ok"
 
 convert16:
-	python3 convert.py ./LLaMA/7B/ 1
+	python3 ./scripts/convert.py ./LLaMA/7B/ 1
 
 convert32:
-	python3 convert.py ./LLaMA/7B/ 0
+	python3 ./scripts/convert.py ./LLaMA/7B/ 0
 
 quantize:
 	./quantize ~/models/7B/ggml-model-f32.bin ~/models/7B/ggml-model-q4_0.bin 2
