@@ -69,7 +69,10 @@ func main() {
 		Chat    bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
 	}
 
-	flags.Parse(&opts)
+	_, err := flags.Parse(&opts)
+	if err != nil {
+		return
+	}
 
 	prompt := " " + opts.Prompt // add a space to match LLaMA tokenizer behavior
 	final := ""                 // accumulate model output
