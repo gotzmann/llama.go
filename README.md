@@ -1,6 +1,8 @@
 # LLaMA.go
 
-<img width="100%" src="./assets/images/terminal.png">
+![](./assets/images/terminal.png?raw=true)
+
+[![Coverage](https://img.shields.io/badge/Coverage-0-red)](https://github.com/gotzmann/llama.go/actions/workflows/coverage.yml)
 
 ## The Goal
 
