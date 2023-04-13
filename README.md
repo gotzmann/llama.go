@@ -1,8 +1,6 @@
 # LLaMA.go
 
-<p align="center">
-  <img width="100%" src="terminal.png">
-</p>
+<img width="100%" src="./assets/images/terminal.png">
 
 ## The Goal
 
