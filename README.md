@@ -43,8 +43,15 @@ We hope using our beloved Golang instead of *soo-powerful* but *too-low-level* l
 
 ## How to Run
 
-```java
+```shell
 go run main.go --threads 8 --model ~/models/7B/ggml-model-f32.bin --temp 0.80 --context 128 --predict 128 --prompt "Why Golang is so popular?"
+```
+
+Or edit the Makefile and compile and run:
+
+```shell
+make
+./llama --threads 8 --model ~/models/7B/ggml-model-f32.bin --temp 0.80 --context 128 --predict 128 --prompt "Why Golang is so popular?"
 ```
 
 ## FAQ
@@ -57,6 +64,6 @@ Contact Meta directly or look around for some torrent alternatives
 
 Youl'll need original FP16 files placed into **models** directory, then convert with command:
 
-```java
-python3 convert.py ~/models/LLaMA/7B/ 0
+```shell
+python3 ./scripts/convert.py ~/models/LLaMA/7B/ 0
 ```
