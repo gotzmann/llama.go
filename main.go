@@ -74,6 +74,9 @@ func main() {
 		return
 	}
 
+	opts.Model = "./models/13B/ggml-model-f32.bin"
+	opts.Prompt = "Who was the first man in space?"
+
 	prompt := " " + opts.Prompt // add a space to match LLaMA tokenizer behavior
 	final := ""                 // accumulate model output
 
