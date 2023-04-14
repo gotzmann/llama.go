@@ -269,8 +269,14 @@ func Colorize(format string, opts ...interface{}) (n int, err error) {
 	return fmt.Fprintf(DefaultOutput, colorstring.Color(format), opts...)
 }
 
-// TODO: Show actual version
 func showLogo() {
+	// Read the version from the 'VERSION' file
+	version, err := os.ReadFile("VERSION")
+	if err != nil {
+		fmt.Printf("[ERROR] Failed to read VERSION file")
+		os.Exit(1)
+	}
+	versionStr := strings.TrimSpace(string(version))
 
 	// https://patorjk.com/software/taag/#p=display&f=3-D&t=llama.go%0A%0ALLaMA.go
 	// Isometric 1, Modular, Rectangles, Rozzo, Small Isometric 1, 3-D
@@ -304,11 +310,11 @@ func showLogo() {
 		}
 	}
 
-	_, err := Colorize(logoColored)
+	_, err = Colorize(logoColored)
 	if err != nil {
 		return
 	}
-	_, err = Colorize("\n\n   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v1.0.0 ] [light_blue][ LLaMA GPT in pure Golang - based on LLaMA C++ ] [magenta]▒▒▒▒\n\n")
+	_, err = Colorize("\n\n   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v" + versionStr + " ] [light_blue][ LLaMA GPT in pure Golang - based on LLaMA C++ ] [magenta]▒▒▒▒\n\n")
 	if err != nil {
 		return
 	}
