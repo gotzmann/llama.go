@@ -227,13 +227,14 @@ func Eval(
 	// otherwise, the threads are spin-lock waiting for the BLAS calls and are degrading the performance
 	graph := ml.Graph{ThreadsCount: threadsCount}
 
-	embd := ml.NewTensor1D(ctx0, ml.TYPE_F32 /*ml.TYPE_I32*/, N)
-	////memcpy(embd->data, tokens, N*ggml_element_size(embd));
-	// FIXME Refactore inline initialization
-	for id := uint32(0); id < N; id++ {
-		embd.Data[id] = float32(tokens[id]) // FIXME copy() for slices
+	// Convert the tokens to a []float32 slice
+	tokensFloat32 := make([]float32, len(tokens))
+	for i, token := range tokens {
+		tokensFloat32[i] = float32(token)
 	}
 
+	// Initialize the embd tensor with the tokensFloat32 data
+	embd := ml.NewTensor(ctx0, ml.TYPE_F32, 1, uint32(len(tokens)), 1, 1, 1, tokensFloat32)
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
 
 	for il := uint32(0); il < layersCount; il++ {
@@ -1073,12 +1074,8 @@ func LoadModel(
 			for {
 				dims := readInt(file)
 
-				// FIXME Check for EOF
-				//_, err := file.Seek(0, io.SeekCurrent)
-				//if err == io.EOF {
-				//if err != nil || dims > 2 {
-				if dims == 0 || dims > 2 {
-					//fmt.Printf("\n[STOP] Model was read...")
+				// Check for EOF
+				if err == io.EOF || dims == 0 || dims > 2 {
 					break
 				}
 

@@ -146,9 +146,6 @@ func main() {
 
 	var embd []uint32
 
-	// TODO: replace with ring-buffer
-	// lastNTokens := make([]uint32, params.ctxSize, params.ctxSize)
-
 	// Initialize the ring buffer
 	lastNTokens := ring.New(int(params.ctxSize))
 
