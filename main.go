@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/ring"
 	"fmt"
 	"os"
 	"runtime"
@@ -146,7 +147,16 @@ func main() {
 	var embd []uint32
 
 	// TODO: replace with ring-buffer
-	lastNTokens := make([]uint32, params.ctxSize, params.ctxSize)
+	// lastNTokens := make([]uint32, params.ctxSize, params.ctxSize)
+
+	// Initialize the ring buffer
+	lastNTokens := ring.New(int(params.ctxSize))
+
+	// A function to append a token to the ring buffer
+	appendToken := func(token uint32) {
+		lastNTokens.Value = token
+		lastNTokens = lastNTokens.Next()
+	}
 
 	inputNoEcho := false
 	pastCount := uint32(0)
@@ -169,7 +179,8 @@ func main() {
 				pastCount = params.keepCount
 
 				// insert n_left/2 tokens at the start of embd from last_n_tokens
-				embd = append(lastNTokens[:leftCount/2], embd...)
+				//embd = append(lastNTokens[:leftCount/2], embd...)
+				embd = append(llama.ExtractTokens(lastNTokens.Move(-int(leftCount/2)), int(leftCount/2)), embd...)
 			}
 
 			if err := llama.Eval(ctx, embd, uint32(len(embd)), pastCount, params.threadsCount); err != nil {
@@ -187,12 +198,20 @@ func main() {
 				ctx.Logits[ml.TOKEN_EOS] = 0
 			}
 
+			/*
+				id := llama.SampleTopPTopK(ctx,
+					lastNTokens[params.ctxSize-params.repeatLastN:], params.repeatLastN,
+					params.topK, params.topP, params.temp, params.repeatPenalty)
+
+				lastNTokens = lastNTokens[1:] ////last_n_tokens.erase(last_n_tokens.begin());
+				lastNTokens = append(lastNTokens, id)
+
+			*/
 			id := llama.SampleTopPTopK(ctx,
-				lastNTokens[params.ctxSize-params.repeatLastN:], params.repeatLastN,
+				lastNTokens, params.repeatLastN,
 				params.topK, params.topP, params.temp, params.repeatPenalty)
 
-			lastNTokens = lastNTokens[1:] ////last_n_tokens.erase(last_n_tokens.begin());
-			lastNTokens = append(lastNTokens, id)
+			appendToken(id)
 
 			// replace end of text token with newline token when in interactive mode
 			if id == ml.TOKEN_EOS && params.interactive && !params.instruct {
@@ -211,18 +230,27 @@ func main() {
 		} else {
 
 			// some user input remains from prompt or interaction, forward it to processing
+			/*
+				for len(embdInp) > int(consumedCount) {
+					embd = append(embd, embdInp[consumedCount])
+					if len(lastNTokens) > 0 {
+						lastNTokens = lastNTokens[1:]
+					}
+					lastNTokens = append(lastNTokens, embdInp[consumedCount])
+					consumedCount++
+					if len(embd) >= int(params.batchSize) {
+						break
+					}
+				}
+			*/
 			for len(embdInp) > int(consumedCount) {
 				embd = append(embd, embdInp[consumedCount])
-				if len(lastNTokens) > 0 {
-					lastNTokens = lastNTokens[1:]
-				}
-				lastNTokens = append(lastNTokens, embdInp[consumedCount])
+				appendToken(embdInp[consumedCount])
 				consumedCount++
 				if len(embd) >= int(params.batchSize) {
 					break
 				}
 			}
-
 		}
 
 		// --- display text
