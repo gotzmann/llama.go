@@ -3,7 +3,6 @@ package llama
 import (
 	"container/ring"
 	"fmt"
-	"github.com/schollz/progressbar/v3"
 	"io"
 	"math"
 	"math/rand"
@@ -11,12 +10,12 @@ import (
 	"reflect"
 	"runtime"
 	"sort"
-	"strings"
 	"time"
 	"unsafe"
 
 	"github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
+	"github.com/schollz/progressbar/v3"
 	"github.com/x448/float16"
 	"golang.org/x/exp/slices"
 
@@ -28,11 +27,15 @@ const (
 	LLAMA_FILE_MAGIC             = 0x67676a74 // 'ggjt' in hex
 	LLAMA_FILE_MAGIC_OLD         = 0x67676d66 // 'ggmf' in hex
 	LLAMA_FILE_MAGIC_UNVERSIONED = 0x67676d6c // 'ggml' pre-versioned files
+
+	SPLIT_NONE       = 0
+	SPLIT_BY_COLUMNS = 1
+	SPLIT_BY_ROWS    = 2
 )
 
 var (
 	// determine number of model parts based on the dimension
-	LLAMA_N_PARTS = map[uint32]uint32{
+	LLAMA_N_PARTS = map[uint32]int{
 		4096: 1,
 		5120: 2,
 		6656: 4,
@@ -857,48 +860,9 @@ func LoadModel(
 	lctx.Vocab = ml.NewVocab(vocabSize)
 	vocab := lctx.Vocab
 
-	//ctx.LogitsAll = params.LogitsAll
-	//if params.LogitsAll {
-	//ctx.Logits = make([]float32, ctx.Model.hparams.ctxSize*ctx.Model.hparams.vocabSize) // .reserve(hparams.n_ctx*hparams.n_vocab);
-	//} else {
-	// FIXME 32K -> 512 ?? Already reserved, skip
-	//ctx.Logits = make([]float32, ctx.Model.hparams.ctxSize) // .reserve(hparams.n_ctx);
-	//}
-
 	// FIXME Reserve extra space for tokensCount (N) = 8 (as with LogitsAll == true)
 	//lctx.Logits = make([]float32, vocabSize*8, vocabSize*8) // NewFloatSlice(vocabSize, vocabSize) // FIXME ASAP
 	lctx.Logits = make([]float32, vocabSize, vocabSize) // use just vocab size as CPP version does by default
-
-	//hparamsCtx = n_ctx
-
-	//n_ff = ((2*(4*hparams.n_embd)/3 + hparams.n_mult - 1)/hparams.n_mult)*hparams.n_mult;
-	//n_ff := ((2*(4*hparamsEmbd)/3 + hparamsMult - 1) / hparamsMult) * hparamsMult
-
-	//if partsCount < 1 {
-	partsCount := int(LLAMA_N_PARTS[embdSize]) // FIXME ASAP
-	//}
-
-	// temp warning to tell the user to use "--n_parts"
-	////if (hparams.f16 == 4 && n_parts != 1) {
-	////fprintf(stderr, "%s: GPTQ model detected - are you sure n_parts should be %d? we normally expect it to be 1\n", __func__, n_parts);
-	////fprintf(stderr, "%s: use '--n_parts 1' if necessary\n", __func__);
-	////}
-
-	////if (hparams.n_layer == 32) {
-	////model.type = e_model::MODEL_7B;
-	////}
-
-	////if (hparams.n_layer == 40) {
-	////model.type = e_model::MODEL_13B;
-	////}
-
-	////if (hparams.n_layer == 60) {
-	////model.type = e_model::MODEL_30B;
-	////}
-
-	////if (hparams.n_layer == 80) {
-	////model.type = e_model::MODEL_65B;
-	////}
 
 	if ml.DEBUG {
 		fmt.Printf("\nvocab  = %d", vocabSize)
@@ -912,7 +876,6 @@ func LoadModel(
 
 	//fmt.Printf("\nctx   = %d", hparamsCtx)
 	//fmt.Printf("\nn_ff    = %d", n_ff)
-	//fmt.Printf("\nn_parts = %d", n_parts)
 
 	n_ff := ((2*(4*embdSize)/3 + multSize - 1) / multSize) * multSize
 
@@ -944,8 +907,8 @@ func LoadModel(
 			vocabBar.Set(int(i))
 		}
 
-		lenFile := readInt(file)
-		token := readString(file, lenFile)
+		length := readInt(file)
+		token := readString(file, length)
 		score := readFP32(file)
 
 		vocab.Token2ID[token] = i
@@ -956,24 +919,6 @@ func LoadModel(
 		vocabBar.Finish()
 		fmt.Printf("\n")
 	}
-
-	// for the big tensors, we have the option to store the data in 16-bit floats or quantized
-	// in order to save memory and also to speed up the computation
-	//wtype := ml.TYPE_COUNT
-
-	////switch (model.hparams.f16) {
-	//// case 0: wtype = GGML_TYPE_F32;  break;
-	////case 1: wtype = GGML_TYPE_F16;  break;
-	////wtype := ml.TYPE_F16 // FIXME dtype
-	////case 2: wtype = GGML_TYPE_Q4_0; break;
-	////case 3: wtype = GGML_TYPE_Q4_1; break;
-	////default:
-	////        {
-	////            fmt.Printf("%s: invalid model file '%s' (bad f16 value %d)\n",
-	////                    __func__, fname.c_str(), model.hparams.f16);
-	////            return false;
-	////        }
-	////}
 
 	ctx := model.ctx
 
@@ -1045,278 +990,106 @@ func LoadModel(
 			BarEnd:        "[dark_gray]║[reset]",
 		}))
 
-	for i := 0; i < int(partsCount); i++ {
+	// --- load weights
 
-		part_id := i
-		//commented const int part_id = n_parts - i - 1;
+	var tensorsCount uint32
+	for {
 
-		fname_part := fileName
-		if i > 0 {
-			fname_part += "." + fmt.Sprintf("%d", i)
+		dims := readInt(file)
+		if dims < 1 || dims > 2 { // TODO Check for EOF
+			break
 		}
 
-		//fmt.Printf("\n\n[llamaModelLoad] Loading model part %d / %d from '%s'\n", i+1, partsCount, fname_part)
+		nameLength := readInt(file)
+		shardType := ml.DType(readInt(file))
 
-		// --- Python ---
-		// fout.write(struct.pack("iii", len(data.shape), len(sname), ftype_cur))
-		// for dim in reversed(data.shape):
-		//     fout.write(struct.pack("i", dim))
-		// fout.write(sname)
+		nelements := 1
+		ne := [2]uint32{1, 1}
+		for i := 0; i < int(dims); i++ {
+			ne[i] = readInt(file)
+			nelements *= int(ne[i])
+		}
 
-		//fin = std::ifstream(fname_part, std::ios::binary);
-		//fin.rdbuf()->pubsetbuf(f_buf.data(), f_buf.size());
-		//fin.seekg(file_offset);
+		name := readString(file, nameLength)
+		if _, ok := model.tensors[name]; !ok {
+			fmt.Printf("\n[ERROR] Unknown tensor '%s' in model file", name)
+			os.Exit(1)
+		}
 
-		// load weights
-		{
-			tensorsCount := uint32(0)
+		if ml.DEBUG {
+			typeStr := "FP32"
+			if shardType == ml.TYPE_F16 {
+				typeStr = "FP16"
+			}
+			memStr := fmt.Sprintf("%dM", nelements*4/1024/1024)
+			fmt.Printf("\n=== LAYER #%d === %s | %s | %s ===", tensorsCount, typeStr, name, memStr)
+		}
 
-			for {
-				dims := readInt(file)
+		/* The latest GGJT format is always ONE-PART-NO-SPLIT-TENSORS binary file, so the parsing is really streamlined
 
-				// Check for EOF
-				if err == io.EOF || dims == 0 || dims > 2 {
-					break
-				}
-
-				length := readInt(file)
-				ftype := readInt(file)
-				nelements := uint32(1)
-				//int32_t ne[2] = { 1, 1 };
-				ne := [2]uint32{1, 1} // FIXME Why only 2 ??
-				for i := uint32(0); i < dims; i++ {
-					////fin.read(reinterpret_cast<char *>(&ne[i]), sizeof(ne[i]));
-					ne[i] = readInt(file)
-					////nelements *= ne[i]
-					nelements *= ne[i]
-				}
-
-				name := readString(file, length)
-
-				if ml.DEBUG {
-					typeStr := "FP32"
-					if ftype == 1 {
-						typeStr = "FP16"
-					}
-					memStr := fmt.Sprintf("%dM", nelements*4/1024/1024) // FIXME element size
-					fmt.Printf("\n=== LAYER #%d === %s | %s | %s ===", tensorsCount, typeStr, name, memStr)
-				}
-
-				if _, ok := model.tensors[name]; !ok {
-					fmt.Printf("\n[ERROR] Unknown tensor '%s' in model file", name)
-					os.Exit(1)
-					//return false;
-				}
-
-				// splitType = 0: split by columns
-				// splitType = 1: split by rows
-				splitType := uint32(0)
-
-				// splitType = 0:
-				// regex:
-				//   - tok_embeddings.*
-				//   - layers.*.attention.wo.weight
-				//   - layers.*.feed_forward.w2.weight
-
-				// splitType = 1:
-				// regex:
-				//   - output.*
-				//   - layers.*.attention.wq.weight
-				//   - layers.*.attention.wk.weight
-				//   - layers.*.attention.wv.weight
-				//   - layers.*.feed_forward.w1.weight
-				//   - layers.*.feed_forward.w3.weight
-
-				if strings.Contains(name, "tok_embeddings") {
-					splitType = 0
-				} else if strings.Contains(name, "layers") {
-					if strings.Contains(name, "attention.wo.weight") {
-						splitType = 0
-					} else if strings.Contains(name, "feed_forward.w2.weight") {
-						splitType = 0
-					} else {
-						splitType = 1
-					}
-				} else if strings.Contains(name, "output") {
-					splitType = 1
-				}
-
-				////auto tensor = model.tensors[name.data()];
-				tensor := model.tensors[name]
-				tensorSize := tensor.Nelements()
-
-				if dims == 1 {
-					if tensorSize != nelements {
-						fmt.Printf("\n[ERROR] Tensor '%s' has wrong size in model file", name)
-						os.Exit(1)
-						//return false;
-					}
-				} else {
-					if tensorSize/uint32(partsCount) != nelements {
-						fmt.Printf("\n[ERROR] Tensor '%s' has wrong size in model file", name)
-						os.Exit(1)
-						//return false;
-					}
-				}
-
-				if dims == 1 {
-					if tensor.NE[0] != ne[0] || tensor.NE[1] != ne[1] {
-						fmt.Printf("\n[ERROR] Tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]",
-							name, tensor.NE[0], tensor.NE[1], ne[0], ne[1])
-						os.Exit(1)
-						//return false;
-					}
-				} else {
-					if splitType == 0 {
-						if tensor.NE[0]/uint32(partsCount) != ne[0] || tensor.NE[1] != ne[1] {
-							fmt.Printf("\n[ERROR] Tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]",
-								name, tensor.NE[0]/uint32(partsCount), tensor.NE[1], ne[0], ne[1])
-							os.Exit(1)
-							//return false;
-						}
-					} else {
-						if tensor.NE[0] != ne[0] || tensor.NE[1]/uint32(partsCount) != ne[1] {
-							fmt.Printf("\n[ERROR] Tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]",
-								name, tensor.NE[0], tensor.NE[1]/uint32(partsCount), ne[0], ne[1])
-							os.Exit(1)
-							//return false;
-						}
-					}
-				}
-
-				////if 0 {
-				////static const char * ftype_str[] = { "f32", "f16", "q4_0", "q4_1", };
-				////fmt.Printf("%24s - [%5d, %5d], type = %6s, split = %d\n", name.data(), ne[0], ne[1], ftype_str[ftype], splitType);
-				////}
-				/*
-					bpe := uint32(0) // FIXME or 64
-
-					switch ftype {
-					case 0:
-						bpe = ml.TYPE_SIZE[ml.TYPE_F32]
-					case 1:
-						bpe = ml.TYPE_SIZE[ml.TYPE_F16]
-					case 2:
-						bpe = ml.TYPE_SIZE[ml.TYPE_Q4_0] //; assert(ne[0] % 64 == 0); break;
-					case 3:
-						bpe = ml.TYPE_SIZE[ml.TYPE_Q4_1] //; assert(ne[0] % 64 == 0); break;
-					default:
-						fmt.Printf("\n[ERROR] unknown ftype %d in model file", ftype)
-						os.Exit(1)
-						//return false;
-					}
-				*/
-				if dims == 1 || partsCount == 1 {
-					////if (nelements*bpe)/ggml_blck_size(tensor->type) != ggml_nbytes(tensor)) {
-					////fmt.Printf("\n[ERROR] tensor '%s' has wrong size in model file: got %zu, expected %zu",
-					////    __func__, name.data(), ggml_nbytes(tensor), nelements*bpe);
-					////os.Exit(1)
-					//return false;
-					////}
-
-					if part_id == 0 {
-
-						if ftype == 1 { // --- FP16
-
-							for n := uint32(0); n < tensorSize; n++ {
-								tensor.Data[n] = readFP16ToFP32(file)
-							}
-
-						} else { // --- FP32
-
-							var fake []byte
-
-							fakeHeader := (*reflect.SliceHeader)(unsafe.Pointer(&fake))
-							// NB! unsafe.Pointer(tensor.Data) for *Data VS unsafe.Pointer(&tensor.Data) for Data
-							dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&tensor.Data))
-
-							fakeHeader.Data = dataHeader.Data
-							fakeHeader.Len = int(tensorSize * 4)
-							fakeHeader.Cap = int(tensorSize * 4)
-
-							// --- all tensors in file are aligned for 32 bytes
-
-							alignment := int64(32)
-							offset, _ := file.Seek(0, io.SeekCurrent)
-							for ; offset%alignment != 0; offset++ {
-							}
-							file.Seek(offset, io.SeekStart)
-
-							//fmt.Printf("\n== FAKE []BYTE LEN = %d", len(fake))
-							if count, err := io.ReadFull(file, fake); err != nil || count != int(tensorSize*4) {
-								fmt.Printf("\n[ERROR] Failed to read BIG FP32 chunk from model!")
-								fmt.Printf("\n[ERROR] COUNT = %d | ERR = %s", count, err.Error())
-								os.Exit(1)
-							}
-						}
-
-					} else {
-						////fin.seekg(ggml_nbytes(tensor), std::ios::cur);
-						fmt.Printf("\n[ERROR] The multi-part models are not supported yet")
-						os.Exit(1)
-					}
-
-				} else {
-
-					fmt.Printf("\nNOT EXPECTED WAY")
-					os.Exit(0)
-
-					////if ((nelements*bpe)/ggml_blck_size(tensor->type) != ggml_nbytes(tensor)/n_parts) {
-					////fmt.Printf("\n[ERROR] tensor '%s' has wrong size in model file: got %zu, expected %zu",
-					////    name.data(), ggml_nbytes(tensor)/n_parts, nelements*bpe);
-					////os.Exit(1)
-					//return false;
-					////}
-
-					/*
-						if splitType == 0 {
-							np0 := ne[0]
-
-							////const size_t row_size = (tensor->ne[0]/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
-							row_size := tensor.NE[0] * ml.TYPE_SIZE[tensor.Type] // FIXME Check twice
-							////assert(row_size == tensor->nb[1]);
-
-							for i1 := uint32(0); i1 < ne[1]; i1++ {
-								//const size_t offset_row = i1*row_size;
-								offset_row := i1 * row_size
-								////offset = offset_row + ((part_id*np0)/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
-
-								offset := offset_row + uint32(part_id)*np0*ml.TYPE_SIZE[tensor.Type]
-								fmt.Print(offset)
-
-								////fin.read(reinterpret_cast<char *>(tensor->data) + offset, row_size/n_parts);
-							}
-						} else {
-							np1 := ne[1]
-
-							////const size_t row_size = (tensor->ne[0]/ggml_blck_size(tensor->type))*ggml_type_size(tensor->type);
-							row_size := tensor.NE[0] * ml.TYPE_SIZE[tensor.Type]
-
-							for i1 := uint32(0); i1 < ne[1]; i1++ {
-								////const size_t offset_row = (i1 + part_id*np1)*row_size;
-								offset_row := (i1 + uint32(part_id)*np1) * row_size
-								////fin.read(reinterpret_cast<char *>(tensor->data) + offset_row, row_size);
-								fmt.Print(offset_row)
-							}
-						}
-					*/
-
-					////total_size += ggml_nbytes(tensor)/n_parts;
-				}
-
-				//fmt.Printf("%42s - [%5d, %5d], type = %6s, %6.2f MB\n", name.data(), ne[0], ne[1], ftype == 0 ? "float" : "f16", ggml_nbytes(tensor)/1024.0/1024.0);
-
-				tensorsCount++
-				model.loadedCount++
-				if !silent && runtime.GOOS != "windows" {
-					bar.Add(1)
+		    partsCount := LLAMA_N_PARTS[embdSize]
+			splitType := SPLIT_NONE
+			if partsCount > 1 && dims > 1 {
+				splitType = SPLIT_BY_COLUMNS
+				if strings.Contains(name, "output") {
+					splitType = SPLIT_NONE
+				} else if strings.Contains(name, "layers") &&
+					!strings.Contains(name, "attention.wo.weight") &&
+					!strings.Contains(name, "feed_forward.w2.weight") {
+					splitType = SPLIT_NONE
 				}
 			}
+		*/
+
+		tensor := model.tensors[name]
+		tensorSize := tensor.Nelements()
+
+		// --- all tensors in file are aligned for 32 bytes
+
+		alignment := int64(32)
+		offset, _ := file.Seek(0, io.SeekCurrent)
+		for ; offset%alignment != 0; offset++ {
+		}
+		file.Seek(offset, io.SeekStart)
+
+		// --- read tensor into memory
+
+		if shardType == ml.TYPE_F16 {
+			// FIXME Single-dimension tensors always presented as FP32
+			// after conversion from PyTorch even for FP16 models
+			for n := uint32(0); n < tensorSize; n++ {
+				tensor.Data[n] = readFP16ToFP32(file)
+			}
+		} else if shardType == ml.TYPE_F32 {
+			var fake []byte
+			fakeHeader := (*reflect.SliceHeader)(unsafe.Pointer(&fake))
+			// NB! unsafe.Pointer(tensor.Data) for *Data VS unsafe.Pointer(&tensor.Data) for Data
+			dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&tensor.Data))
+
+			fakeHeader.Data = dataHeader.Data
+			fakeHeader.Len = int(tensorSize * 4)
+			fakeHeader.Cap = int(tensorSize * 4)
+
+			//fmt.Printf("\n== FAKE []BYTE LEN = %d", len(fake))
+			if count, err := io.ReadFull(file, fake); err != nil || count != int(tensorSize*4) {
+				fmt.Printf("\n[ERROR] Failed to read BIG FP32 chunk from model!")
+				fmt.Printf("\n[ERROR] COUNT = %d | ERR = %s", count, err.Error())
+				os.Exit(1)
+			}
+		} else {
+			fmt.Printf("\n[ERROR] Tensor data type is not supported yet!")
+			os.Exit(0)
 		}
 
+		tensorsCount++
+		model.loadedCount++
 		if !silent && runtime.GOOS != "windows" {
-			bar.Finish()
+			bar.Add(1)
 		}
+	}
+
+	if !silent && runtime.GOOS != "windows" {
+		bar.Finish()
 	}
 
 	return lctx, nil

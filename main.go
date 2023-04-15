@@ -97,6 +97,11 @@ func main() {
 		opts.Temp = 0.8
 	}
 
+	repeatLastN := uint32(64)
+	if repeatLastN > opts.Context {
+		repeatLastN = opts.Context
+	}
+
 	if !opts.Silent {
 		showLogo()
 	}
@@ -114,7 +119,7 @@ func main() {
 		seed:         -1,
 		threadsCount: opts.Threads,
 		predictCount: opts.Predict,
-		repeatLastN:  64,
+		repeatLastN:  repeatLastN,
 		partsCount:   -1,
 		batchSize:    8,
 
