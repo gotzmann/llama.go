@@ -25,28 +25,27 @@ const (
 
 type DType uint8
 
-// TODO FP8, BFLOAT16
+// Data types are the same as in llama.cpp so full compatibility there
 const (
-	TYPE_NONE  DType = 0
-	TYPE_Q4_0  DType = 1
-	TYPE_Q4_1  DType = 2
-	TYPE_I8    DType = 3
-	TYPE_I16   DType = 4
-	TYPE_I32   DType = 5
-	TYPE_F16   DType = 6 // TODO FP16
-	TYPE_F32   DType = 7 // TODO FP32
-	TYPE_COUNT DType = 8 // NB! COUNT should be the last
+	TYPE_F32   DType = 0
+	TYPE_F16   DType = 1
+	TYPE_Q4_0  DType = 2
+	TYPE_Q4_1  DType = 3
+	TYPE_I8    DType = 4
+	TYPE_I16   DType = 5
+	TYPE_I32   DType = 6
+	TYPE_COUNT DType = 8
 )
 
 func printTensor(tensor *Tensor, name string) {
+
 	var dt string
-	if tensor.Type == TYPE_F16 {
+	switch tensor.Type {
+	case TYPE_F16:
 		dt = "FP16"
-	}
-	if tensor.Type == TYPE_F32 {
+	case TYPE_F32:
 		dt = "FP32"
-	}
-	if tensor.Type == TYPE_Q4_0 {
+	case TYPE_Q4_0:
 		dt = "INT4"
 	}
 
@@ -65,9 +64,8 @@ func printTensor(tensor *Tensor, name string) {
 // static ggml_fp16_t table_exp_f16[1 << 16];
 var TableExpFP16 [1 << 16]float16.Float16
 
-var BLCK_SIZE [TYPE_COUNT]uint32 = [TYPE_COUNT]uint32{0, QK, QK, 1, 1, 1, 1, 1}
-
-var TYPE_SIZE [TYPE_COUNT]uint32 = [TYPE_COUNT]uint32{0, 4 + QK/2, 4*2 + QK/2, 1, 2, 4, 2, 4}
+var BLCK_SIZE [TYPE_COUNT]uint32 = [TYPE_COUNT]uint32{1, 1, QK, QK, 1, 1, 1, 0}
+var TYPE_SIZE [TYPE_COUNT]uint32 = [TYPE_COUNT]uint32{4, 2, 4 + QK/2, 4*2 + QK/2, 1, 2, 4, 0}
 
 func TypeSizeFloat(dt DType) float32 {
 	return float32(TYPE_SIZE[dt]) / float32(BLCK_SIZE[dt])
