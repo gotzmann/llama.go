@@ -763,24 +763,19 @@ func SampleTopPTopK(
 	////return logits_id[idx].second;
 
 	// --- discrete distribution
-	//     TODO Do we need something better than hand-crafted math here?
 
 	seed := time.Now().UnixNano()
 	source := rand.NewSource(seed)
+	rng := rand.New(source)
 
-	for i := 0; i < len(probs); i++ {
-		f := float32(source.Int63()) / (1 << 63)
-		probs[i] = probs[i] * probs[i] * f * f
-	}
-
-	idx := 0
-	maxProb := probs[0]
+	cumulative := make([]float32, len(probs))
+	cumulative[0] = probs[0]
 	for i := 1; i < len(probs); i++ {
-		if probs[i] > maxProb {
-			idx = i
-			maxProb = probs[i]
-		}
+		cumulative[i] = cumulative[i-1] + probs[i]
 	}
+
+	target := rng.Float32() * cumulative[len(cumulative)-1]
+	idx := sort.Search(len(cumulative), func(i int) bool { return cumulative[i] >= target })
 
 	if ml.DEBUG {
 		fmt.Printf("\nidx = %d", idx)
