@@ -680,22 +680,16 @@ func SampleTopPTopK(
 		}
 	}
 
-	// FIXME Why loop? We've already SORTED logitsID and the MAX is just the FIRST element
-	////double maxl = -INFINITY;
-	maxl := float32(math.Inf(-1))
-	for _, kv := range logitsID {
-		//// maxl = std::max(maxl, kv.first);
-		maxl = max(maxl, kv.first)
-	}
+	// Since logitsID is already sorted, the max value is the first element
+	maxl := logitsID[0].first
 
-	// compute probs for the top k tokens
-	////probs.reserve(logits_id.size());
-	probs := make([]float32, 0, len(logitsID)) // FIXME LEN vs CAP
+	// Compute probabilities for the top k tokens
+	probs := make([]float32, len(logitsID))
 
-	sum := float64(0.0)
-	for _, kv := range logitsID {
+	sum := 0.0
+	for i, kv := range logitsID {
 		p := math.Exp(float64(kv.first - maxl))
-		probs = append(probs, float32(p))
+		probs[i] = float32(p)
 		sum += p
 	}
 
@@ -784,10 +778,9 @@ func SampleTopPTopK(
 	return logitsID[idx].second
 }
 
+// LoadModel loads a model's weights from a file
 // llama_model_load
-// load the model's weights from a file
 // see convert-pth-to-ggml.py for details on format
-
 func LoadModel(
 	fileName string,
 	//partsCount int,
@@ -985,7 +978,6 @@ func LoadModel(
 		}))
 
 	// --- load weights
-
 	var tensorsCount uint32
 	for {
 		dims := readInt(file)
@@ -1070,6 +1062,7 @@ func LoadModel(
 	return lctx, nil
 }
 
+// max returns the maximum of two float32 values
 func max(a, b float32) float32 {
 	if a >= b {
 		return a
@@ -1077,6 +1070,7 @@ func max(a, b float32) float32 {
 	return b
 }
 
+// readInt reads an integer from the file
 // NB! INT = 32 bits
 func readInt(file *os.File) uint32 {
 	buf := make([]byte, 4)
@@ -1086,6 +1080,7 @@ func readInt(file *os.File) uint32 {
 	return uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0])
 }
 
+// readString reads a string from the file
 func readString(file *os.File, len uint32) string {
 	buf := make([]byte, len)
 	if count, err := file.Read(buf); err != nil || count != int(len) {
@@ -1094,6 +1089,7 @@ func readString(file *os.File, len uint32) string {
 	return string(buf)
 }
 
+// readFP16ToFP32 reads a 16-bit float from the file and converts it to 32-bit
 func readFP16ToFP32(file *os.File) float32 {
 	buf := make([]byte, 2)
 	if count, err := file.Read(buf); err != nil || count != 2 {
@@ -1104,6 +1100,7 @@ func readFP16ToFP32(file *os.File) float32 {
 	return f16.Float32()
 }
 
+// readFP32 reads a 32-bit float from the file
 func readFP32(file *os.File) float32 {
 	buf := make([]byte, 4)
 	if count, err := file.Read(buf); err != nil || count != 4 {
@@ -1123,6 +1120,7 @@ func ExtractTokens(r *ring.Ring, count int) []uint32 {
 	return tokens
 }
 
+// Colorize is a function to print colored text to the console
 func Colorize(format string, opts ...interface{}) (n int, err error) {
 	var DefaultOutput = colorable.NewColorableStdout()
 	return fmt.Fprintf(DefaultOutput, colorstring.Color(format), opts...)
