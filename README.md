@@ -26,7 +26,7 @@ We hope using our beloved Golang instead of *soo-powerful* but *too-low-level* l
 
 - [x] Check cross-patform compatibility with Mac and Windows
 - [x] Release first stable version for ML hackers
-- [ ] Support bigger LLaMA models: 13B, 30B, 60B
+- [x] Support bigger LLaMA models: 13B, 30B, 60B
 - [ ] Enable interactive mode for real-time chat with GPT
 - [ ] Allow automatic download converted model weights from the Internet
 - [ ] Implement metrics for RAM and CPU usage
