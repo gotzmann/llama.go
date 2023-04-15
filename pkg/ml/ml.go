@@ -847,6 +847,7 @@ func Permute(ctx *Context, a *Tensor, axis0, axis1, axis2, axis3 uint32) *Tensor
 	return result
 }
 
+// Rope creates a rope tensor, e.g., 1,2,3,4 -> 1,2,3,4,1,2,3,4
 // ggml_rope
 func Rope(ctx *Context, a *Tensor, past, dims, mode uint32) *Tensor {
 	////ASSERT(n_past >= 0);
@@ -882,6 +883,7 @@ func Rope(ctx *Context, a *Tensor, past, dims, mode uint32) *Tensor {
 	return result
 }
 
+// Reshape3D reshapes a tensor to 3D
 func Reshape3D(ctx *Context, a *Tensor, ne0, ne1, ne2 uint32) *Tensor {
 	////ASSERT(ggml_is_contiguous(a));
 	////ASSERT(ggml_nelements(a) == ne0*ne1*ne2);
@@ -915,6 +917,7 @@ func Reshape3D(ctx *Context, a *Tensor, ne0, ne1, ne2 uint32) *Tensor {
 	return result
 }
 
+// NewFP32 creates a new tensor with a single float32 value
 // ggml_new_f32
 func NewFP32(ctx *Context, value float32) *Tensor {
 	result := NewTensor1D(ctx, TYPE_F32, 1)
@@ -922,6 +925,7 @@ func NewFP32(ctx *Context, value float32) *Tensor {
 	return result
 }
 
+// SetFP32 sets a tensor with a single float32 value
 // ggml_set_f32
 func SetFP32(tensor *Tensor, value float32) *Tensor {
 	// FIXME Optimize with mem zeroing
@@ -933,6 +937,7 @@ func SetFP32(tensor *Tensor, value float32) *Tensor {
 	return tensor
 }
 
+// ScaleImpl scales a tensor by a scalar
 // ggml_scale
 func ScaleImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	////ASSERT(ggml_is_scalar(b));
@@ -960,6 +965,7 @@ func ScaleImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	return result
 }
 
+// Scale scales a tensor by a scalar
 func Scale(ctx *Context, a, b *Tensor) *Tensor {
 	return ScaleImpl(ctx, a, b, false)
 }
@@ -968,6 +974,7 @@ func ScaleInplace(ctx *Context, a, b *Tensor) *Tensor {
 	return ScaleImpl(ctx, a, b, true)
 }
 
+// DiagMaskInf masks a tensor with a diagonal mask
 // ggml_diag_mask_inf
 func DiagMaskInf(ctx *Context, a *Tensor, past uint32) *Tensor {
 	////bool is_node = false;
@@ -993,6 +1000,7 @@ func DiagMaskInf(ctx *Context, a *Tensor, past uint32) *Tensor {
 	return result
 }
 
+// SoftMax applies the softmax function to a tensor
 // ggml_soft_max
 func SoftMax(ctx *Context, a *Tensor) *Tensor {
 	////bool is_node = false;
@@ -1017,8 +1025,8 @@ func SoftMax(ctx *Context, a *Tensor) *Tensor {
 	return result
 }
 
+// SiluImpl applies the silu function to a tensor, in-place or not
 // ggml_silu
-
 func SiluImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 	////bool is_node = false;
 
@@ -1042,6 +1050,7 @@ func SiluImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 	return result
 }
 
+// Silu applies the silu function to a tensor, not in-place
 func Silu(ctx *Context, a *Tensor) *Tensor {
 	return SiluImpl(ctx, a, false)
 }
@@ -1050,8 +1059,8 @@ func SiluInplace(ctx *Context, a *Tensor) *Tensor {
 	return SiluImpl(ctx, a, true)
 }
 
+// StepImpl applies the step function to a tensor, in-place or not
 // ggml_step
-
 func StepImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 	isNode := false
 
@@ -1079,6 +1088,7 @@ func StepImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 	return result
 }
 
+// Step applies the step function to a tensor, not in-place
 func Step(ctx *Context, a *Tensor) *Tensor {
 	return StepImpl(ctx, a, false)
 }
@@ -1087,8 +1097,8 @@ func StepInplace(ctx *Context, a *Tensor) *Tensor {
 	return StepImpl(ctx, a, true)
 }
 
+// Transpose transposes a tensor, swapping the first two dimensions
 // ggml_transpose
-
 func Transpose(ctx *Context, a *Tensor) *Tensor {
 	////isNode := false
 
@@ -1114,12 +1124,14 @@ func Transpose(ctx *Context, a *Tensor) *Tensor {
 	return result
 }
 
+// BuildForward builds the forward graph of a tensor, keeping the gradient graph
 func BuildForward(tensor *Tensor) *Graph {
 	result := Graph{}
 	BuildForwardImpl(&result, tensor, false)
 	return &result
 }
 
+// BuildBackward builds the backward graph of a tensor, keeping the gradient graph
 func BuildBackward(ctx *Context, gf *Graph, keep bool) Graph {
 
 	result := *gf
@@ -1158,8 +1170,7 @@ func BuildBackward(ctx *Context, gf *Graph, keep bool) Graph {
 	return result
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
+// ComputeBackward computes the backward graph of a tensor, keeping the gradient graph
 func ComputeBackward(ctx *Context, tensor *Tensor, inplace bool) {
 
 	src0 := tensor.src0
@@ -1344,8 +1355,7 @@ func ComputeBackward(ctx *Context, tensor *Tensor, inplace bool) {
 	}
 }
 
-// ---
-
+// TaskType is the type of task
 type TaskType uint8
 
 const (
@@ -1354,6 +1364,7 @@ const (
 	TASK_FINALIZE TaskType = 2
 )
 
+// ComputeParams is the parameters for Compute
 type ComputeParams struct {
 	Type TaskType
 
@@ -1410,6 +1421,7 @@ func Job(listen <-chan *ComputeParams) {
 	//fmt.Printf("\nJOB FINISHED...")
 }
 
+// GraphCompute is the main function to compute the graph, it is called from the main thread
 func GraphCompute(ctx *Context, graph *Graph) {
 
 	maxThreads := graph.ThreadsCount
@@ -1536,8 +1548,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 }
 
-// =======================================================================
-
+// ComputeForward is the main function to compute the graph, it is called from the main thread
 func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 
 	switch tensor.op {
@@ -1683,12 +1694,14 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 	}
 }
 
+// VecCopyFP32 copies a vector of floats, y = x
 func VecCopyFP32(n uint32, y, x []float32) {
 	for i := uint32(0); i < n; i++ {
 		y[i] = x[i]
 	}
 }
 
+// ComputeForwardGetRows computes the rows of a matrix, dst = src0[src1]
 // ggml_compute_forward_get_rows_f32
 func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 
@@ -1731,6 +1744,7 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 	}
 }
 
+// ComputeForwardRMSNormFP32 computes the RMS norm of a matrix, dst = sqrt(sum(src0^2))
 // ggml_compute_forward_rms_norm_f32
 func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
 
@@ -1793,6 +1807,7 @@ func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
 	}
 }
 
+// VecScaleFP32 scales a vector by a scalar, y = y * v
 // ggml_vec_scale_f32
 func VecScaleFP32(n uint32, y []float32, v float32) {
 	for i := uint32(0); i < n; i++ {
@@ -1800,6 +1815,7 @@ func VecScaleFP32(n uint32, y []float32, v float32) {
 	}
 }
 
+// ComputeForwardRepeatFP32 repeats a matrix along the first two dimensions
 // ggml_compute_forward_repeat
 func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 
@@ -1849,12 +1865,14 @@ func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 	}
 }
 
+// VecMulFP32 multiplies two vectors, z = x * y
 func VecMulFP32(n uint32, z, x, y []float32) {
 	for i := uint32(0); i < n; i++ {
 		z[i] = x[i] * y[i]
 	}
 }
 
+// ComputeForwardMulFP32 performs element-wise multiplication of two tensors
 // ggml_compute_forward_mul
 func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
@@ -1895,6 +1913,7 @@ func ComputeForwardMulFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	}
 }
 
+// VecDotFP32 computes the dot product of two vectors
 // ggml_vec_dot_f32
 func VecDotFP32(n uint32, x, y []float32) float32 {
 	sumf := float32(0.0)
@@ -1904,6 +1923,7 @@ func VecDotFP32(n uint32, x, y []float32) float32 {
 	return sumf
 }
 
+// VecMadFP32 computes the dot product of two vectors
 // ggml_vec_mad_f32
 func VecMadFP32(n uint32, y, x []float32, v float32) {
 	for i := uint32(0); i < n; i++ {
@@ -1911,6 +1931,7 @@ func VecMadFP32(n uint32, y, x []float32, v float32) {
 	}
 }
 
+// VecAccFP32 computes the dot product of two vectors
 // ggml_vec_acc_f32
 func VecAccFP32(n uint32, y, x []float32) {
 	for i := uint32(0); i < n; i++ {
@@ -1918,6 +1939,7 @@ func VecAccFP32(n uint32, y, x []float32) {
 	}
 }
 
+// ComputeForwardMulMatFP32 performs matrix multiplication of two tensors
 // ggml_compute_forward_mul_mat_f32
 func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
@@ -2091,6 +2113,7 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 }
 
+// ComputeForwardView is a NOP
 // ggml_compute_forward_view
 func ComputeForwardView(params *ComputeParams, src0 *Tensor) {
 	// NOP
@@ -2100,6 +2123,7 @@ func ComputeForwardCopy(params *ComputeParams, src0, dst *Tensor) {
 	ComputeForwardDupFP32(params, src0, dst)
 }
 
+// ComputeForwardDupFP32 copies src0 to dst:w
 // ggml_compute_forward_dup_f32
 func ComputeForwardDupFP32(params *ComputeParams, src0, dst *Tensor) {
 
@@ -2243,6 +2267,7 @@ func ComputeForwardPermute(params *ComputeParams, src0 *Tensor) {
 	// NOP
 }
 
+// ComputeForwardRopeFP32 computes the forward pass of the rope layer.
 // ggml_compute_forward_rope
 func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
@@ -2321,6 +2346,7 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 }
 
+// ComputeForwardScaleFP32 computes the forward pass of the scale layer.
 // ggml_compute_forward_scale_f32
 func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
@@ -2367,6 +2393,7 @@ func ComputeForwardScaleFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 }
 
+// ComputeForwardDiagMaskInfFP32 computes the forward pass of the diag_mask_inf layer.
 // ggml_compute_forward_diag_mask_inf
 func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
@@ -2407,6 +2434,7 @@ func ComputeForwardDiagMaskInfFP32(params *ComputeParams, src0, src1, dst *Tenso
 
 }
 
+// maxFloat returns the maximum of two float32 values.
 func maxFloat(x, y float32) float32 {
 	if x >= y {
 		return x
@@ -2414,6 +2442,7 @@ func maxFloat(x, y float32) float32 {
 	return y
 }
 
+// VecMaxFP32 returns the maximum value in a vector.
 func VecMaxFP32(n uint32, x []float32) float32 {
 	max := float32(math.Inf(-1)) // TODO use constant
 	for i := uint32(0); i < n; i++ {
@@ -2422,6 +2451,7 @@ func VecMaxFP32(n uint32, x []float32) float32 {
 	return max
 }
 
+// ComputeForwardSoftMaxFP32 computes the forward pass of the softmax layer.
 // ggml_compute_forward_soft_max
 func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 
@@ -2498,6 +2528,7 @@ func ComputeForwardSoftMaxFP32(params *ComputeParams, src0, dst *Tensor) {
 	}
 }
 
+// VecAddFP32 adds two vectors.
 // inline static void ggml_vec_add_f32 (const int n, float * z, const float * x, const float * y) { for (int i = 0; i < n; ++i) z[i]  = x[i] + y[i]; }
 func VecAddFP32(n uint32, z, x, y []float32) {
 	for i := uint32(0); i < n; i++ {
@@ -2505,6 +2536,7 @@ func VecAddFP32(n uint32, z, x, y []float32) {
 	}
 }
 
+// ComputeForwardAddFP32 computes the forward pass of the add layer.
 // ggml_compute_forward_add
 func ComputeForwardAddFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
@@ -2577,11 +2609,13 @@ func ComputeForwardAddFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	}
 }
 
+// SiluFP32 computes the Sigmoid Linear Unit (SiLU) function.
 // Sigmoid Linear Unit (SiLU) function
 func SiluFP32(x float32) float32 {
 	return x / float32(1.0+math.Exp(float64(-x)))
 }
 
+// VecSiluFP32 computes the Sigmoid Linear Unit (SiLU) function.
 // inline static void ggml_vec_silu_f32(const int n, float * y, const float * x) {
 func VecSiluFP32(n uint32, y, x []float32) {
 	for i := uint32(0); i < n; i++ {
@@ -2589,6 +2623,7 @@ func VecSiluFP32(n uint32, y, x []float32) {
 	}
 }
 
+// ComputeForwardSiluFP32 computes the forward pass of the SiLU layer.
 // ggml_compute_forward_silu
 func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
 
@@ -2637,18 +2672,19 @@ func ComputeForwardSiluFP32(params *ComputeParams, src0, dst *Tensor) {
 	}
 }
 
-// ---
-
+// TokenScore is a token and its score.
 type TokenScore struct {
 	Token string
 	Score float32
 }
 
+// Vocab is a vocabulary.
 type Vocab struct {
 	Token2ID map[string]uint32
 	ID2Token []TokenScore
 }
 
+// NewVocab creates a new vocabulary.
 func NewVocab(size uint32) *Vocab {
 	return &Vocab{
 		Token2ID: make(map[string]uint32, size),
@@ -2656,6 +2692,7 @@ func NewVocab(size uint32) *Vocab {
 	}
 }
 
+// min returns the minimum of a and b.
 func min(a, b int) int {
 	if a <= b {
 		return a
@@ -2663,6 +2700,7 @@ func min(a, b int) int {
 	return b
 }
 
+// min32 returns the minimum of a and b.
 func min32(a, b uint32) uint32 {
 	if a <= b {
 		return a
@@ -2672,6 +2710,7 @@ func min32(a, b uint32) uint32 {
 
 // ---- SentencePiece Tokenizer
 
+// Symbol is a symbol, i.e. a token.
 // struct llama_sp_symbol {
 type Symbol struct {
 	////using index = int;
@@ -2684,6 +2723,7 @@ type Symbol struct {
 	N    uint32
 }
 
+// Bigram is a bigram, i.e. a pair of tokens.
 // struct llama_sp_bigram {
 type Bigram struct {
 
@@ -2695,12 +2735,14 @@ type Bigram struct {
 	Size  uint32
 }
 
+// utf8Len returns the number of bytes in the first UTF-8 sequence.
 func utf8Len(src byte) uint32 {
 	lookup := []uint32{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 4}
 	highbits := uint8(src) >> 4
 	return lookup[highbits]
 }
 
+// Token2Str returns the token corresponding to the given token ID.
 func Token2Str(vocab *Vocab, token uint32) string {
 	if int(token) >= len(vocab.ID2Token) {
 		return ""
@@ -2709,6 +2751,7 @@ func Token2Str(vocab *Vocab, token uint32) string {
 	return vocab.ID2Token[token].Token
 }
 
+// PopMax pops the element with the highest score from the queue.
 func PopMax(queue *[]Bigram) Bigram {
 
 	max := 0 // index of max score element in queue
@@ -2729,6 +2772,7 @@ func PopMax(queue *[]Bigram) Bigram {
 	return pop
 }
 
+// TryAddBigram tries to add a bigram to the queue.
 func TryAddBigram(vocab *Vocab, symbols []Symbol, workQueue *[]Bigram, left, right int) {
 
 	if left == -1 || right == -1 {
@@ -2748,6 +2792,7 @@ func TryAddBigram(vocab *Vocab, symbols []Symbol, workQueue *[]Bigram, left, rig
 	*workQueue = append(*workQueue, bigram)
 }
 
+// Tokenize tokenizes the given text.
 // void tokenize(const std::string & text, std::vector<llama_vocab::id> & output) {
 func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 
