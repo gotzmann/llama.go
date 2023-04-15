@@ -3,6 +3,11 @@ package llama
 import (
 	"container/ring"
 	"fmt"
+	"github.com/mattn/go-colorable"
+	"github.com/mitchellh/colorstring"
+	"github.com/schollz/progressbar/v3"
+	"github.com/x448/float16"
+	"golang.org/x/exp/slices"
 	"io"
 	"math"
 	"math/rand"
@@ -12,12 +17,6 @@ import (
 	"sort"
 	"time"
 	"unsafe"
-
-	"github.com/mattn/go-colorable"
-	"github.com/mitchellh/colorstring"
-	"github.com/schollz/progressbar/v3"
-	"github.com/x448/float16"
-	"golang.org/x/exp/slices"
 
 	"github.com/gotzmann/llama.go/pkg/ml"
 )
@@ -989,7 +988,6 @@ func LoadModel(
 
 	var tensorsCount uint32
 	for {
-
 		dims := readInt(file)
 		if dims < 1 || dims > 2 { // TODO Check for EOF
 			break
@@ -1006,7 +1004,8 @@ func LoadModel(
 		}
 
 		name := readString(file, nameLength)
-		if _, ok := model.tensors[name]; !ok {
+		tensor, ok := model.tensors[name]
+		if !ok {
 			fmt.Printf("\n[ERROR] Unknown tensor '%s' in model file", name)
 			os.Exit(1)
 		}
@@ -1020,58 +1019,39 @@ func LoadModel(
 			fmt.Printf("\n=== LAYER #%d === %s | %s | %s ===", tensorsCount, typeStr, name, memStr)
 		}
 
-		/* The latest GGJT format is always ONE-PART-NO-SPLIT-TENSORS binary file, so the parsing is really streamlined
-
-		    partsCount := LLAMA_N_PARTS[embdSize]
-			splitType := SPLIT_NONE
-			if partsCount > 1 && dims > 1 {
-				splitType = SPLIT_BY_COLUMNS
-				if strings.Contains(name, "output") {
-					splitType = SPLIT_NONE
-				} else if strings.Contains(name, "layers") &&
-					!strings.Contains(name, "attention.wo.weight") &&
-					!strings.Contains(name, "feed_forward.w2.weight") {
-					splitType = SPLIT_NONE
-				}
-			}
-		*/
-
-		tensor := model.tensors[name]
 		tensorSize := tensor.Nelements()
 
-		// --- all tensors in file are aligned for 32 bytes
-
+		// Align all tensors in the file to 32 bytes
 		alignment := int64(32)
 		offset, _ := file.Seek(0, io.SeekCurrent)
 		for ; offset%alignment != 0; offset++ {
 		}
-		file.Seek(offset, io.SeekStart)
+		_, err2 := file.Seek(offset, io.SeekStart)
+		if err2 != nil {
+			return nil, err2
+		}
 
-		// --- read tensor into memory
-
-		if shardType == ml.TYPE_F16 {
-			// FIXME Single-dimension tensors always presented as FP32
-			// after conversion from PyTorch even for FP16 models
+		// Read tensor into memory
+		switch shardType {
+		case ml.TYPE_F16:
 			for n := uint32(0); n < tensorSize; n++ {
 				tensor.Data[n] = readFP16ToFP32(file)
 			}
-		} else if shardType == ml.TYPE_F32 {
+		case ml.TYPE_F32:
 			var fake []byte
 			fakeHeader := (*reflect.SliceHeader)(unsafe.Pointer(&fake))
-			// NB! unsafe.Pointer(tensor.Data) for *Data VS unsafe.Pointer(&tensor.Data) for Data
 			dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&tensor.Data))
 
 			fakeHeader.Data = dataHeader.Data
 			fakeHeader.Len = int(tensorSize * 4)
 			fakeHeader.Cap = int(tensorSize * 4)
 
-			//fmt.Printf("\n== FAKE []BYTE LEN = %d", len(fake))
 			if count, err := io.ReadFull(file, fake); err != nil || count != int(tensorSize*4) {
 				fmt.Printf("\n[ERROR] Failed to read BIG FP32 chunk from model!")
 				fmt.Printf("\n[ERROR] COUNT = %d | ERR = %s", count, err.Error())
 				os.Exit(1)
 			}
-		} else {
+		default:
 			fmt.Printf("\n[ERROR] Tensor data type is not supported yet!")
 			os.Exit(0)
 		}
