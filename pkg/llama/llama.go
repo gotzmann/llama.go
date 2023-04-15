@@ -1,6 +1,7 @@
 package llama
 
 import (
+	"container/ring"
 	"fmt"
 	"github.com/schollz/progressbar/v3"
 	"io"
@@ -226,13 +227,14 @@ func Eval(
 	// otherwise, the threads are spin-lock waiting for the BLAS calls and are degrading the performance
 	graph := ml.Graph{ThreadsCount: threadsCount}
 
-	embd := ml.NewTensor1D(ctx0, ml.TYPE_F32 /*ml.TYPE_I32*/, N)
-	////memcpy(embd->data, tokens, N*ggml_element_size(embd));
-	// FIXME Refactore inline initialization
-	for id := uint32(0); id < N; id++ {
-		embd.Data[id] = float32(tokens[id]) // FIXME copy() for slices
+	// Convert the tokens to a []float32 slice
+	tokensFloat32 := make([]float32, len(tokens))
+	for i, token := range tokens {
+		tokensFloat32[i] = float32(token)
 	}
 
+	// Initialize the embd tensor with the tokensFloat32 data
+	embd := ml.NewTensor(ctx0, ml.TYPE_F32, 1, uint32(len(tokens)), 1, 1, 1, tokensFloat32)
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
 
 	for il := uint32(0); il < layersCount; il++ {
@@ -533,7 +535,8 @@ func sampleTopK(logitsID []pair, topK uint32) []pair {
 // std::mt19937 = A Mersenne Twister pseudo-random generator of 32-bit numbers with a state size of 19937 bits.
 func SampleTopPTopK(
 	lctx *Context,
-	lastNTokens []uint32,
+	// lastNTokens []uint32,
+	lastNTokens *ring.Ring,
 	lastNTokensSize uint32, // FIXME Remove
 	topK uint32,
 	topP float32,
@@ -556,9 +559,16 @@ func SampleTopPTopK(
 		for i := int(len(logits)) - 1; i >= int(len(logits))-8; i-- {
 			fmt.Printf("%.4f ", logits[i])
 		}
-		fmt.Printf("\n=== LAST N TOKENS | %d ===\n", len(lastNTokens))
+		/*
+			fmt.Printf("\n=== LAST N TOKENS | %d ===\n", len(lastNTokens))
+			for i := 0; i < int(lastNTokensSize); i++ {
+				fmt.Printf("%d ", lastNTokens[i])
+			}
+		*/
+		extractedTokens := ExtractTokens(lastNTokens.Move(-int(lastNTokensSize)), int(lastNTokensSize))
+		fmt.Printf("\n=== LAST N TOKENS | %d ===\n", len(extractedTokens))
 		for i := 0; i < int(lastNTokensSize); i++ {
-			fmt.Printf("%d ", lastNTokens[i])
+			fmt.Printf("%d ", extractedTokens[i])
 		}
 	}
 
@@ -588,21 +598,26 @@ func SampleTopPTopK(
 		scale := float32(1.0 / temp)
 		for i := uint32(0); i < logitsCount; i++ {
 
-			// repetition penalty from ctrl paper (https://arxiv.org/abs/1909.05858)
-			// credit https://github.com/facebookresearch/llama/compare/main...shawwn:llama:main
+			// Repetition penalty from ctrl paper (https://arxiv.org/abs/1909.05858)
+			// Credit https://github.com/facebookresearch/llama/compare/main...shawwn:llama:main
 
-			// if lastNTokens already contains i-th token, append it with repeat penatly
-			////if (std::find(last_n_tokens.begin(), last_n_tokens.end(), i) != last_n_tokens.end()) {
-			if slices.IndexFunc(lastNTokens, func(el uint32) bool { return el == i }) != -1 {
-				// if score < 0 then repetition penalty has to multiplied to reduce the previous token probability
+			// Check if the i-th token is present in the last_n_tokens ring buffer
+			tokenExists := false
+			lastNTokens.Do(func(p interface{}) {
+				if p.(uint32) == i {
+					tokenExists = true
+				}
+			})
+
+			// If lastNTokens already contains i-th token, append it with repeat penalty
+			if tokenExists {
+				// If score < 0, then repetition penalty has to be multiplied to reduce the previous token probability
 				if plogits[i] < 0.0 {
-					////logits_id.push_back(std::make_pair(logits[i]*scale*repeat_penalty, i));
 					logitsID = append(logitsID, pair{plogits[i] * scale * repeatPenalty, i})
 				} else {
-					////logits_id.push_back(std::make_pair(logits[i]*scale/repeat_penalty, i));
 					logitsID = append(logitsID, pair{plogits[i] * scale / repeatPenalty, i})
 				}
-				// else append pair to logitsID	scaling probability
+				// Else append pair to logitsID, scaling probability
 			} else {
 				logitsID = append(logitsID, pair{plogits[i] * scale, i})
 			}
@@ -1059,12 +1074,8 @@ func LoadModel(
 			for {
 				dims := readInt(file)
 
-				// FIXME Check for EOF
-				//_, err := file.Seek(0, io.SeekCurrent)
-				//if err == io.EOF {
-				//if err != nil || dims > 2 {
-				if dims == 0 || dims > 2 {
-					//fmt.Printf("\n[STOP] Model was read...")
+				// Check for EOF
+				if err == io.EOF || dims == 0 || dims > 2 {
 					break
 				}
 
@@ -1352,6 +1363,16 @@ func readFP32(file *os.File) float32 {
 	}
 	bits := uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0])
 	return math.Float32frombits(bits)
+}
+
+// ExtractTokens is a function to extract a slice of tokens from the ring buffer
+func ExtractTokens(r *ring.Ring, count int) []uint32 {
+	tokens := make([]uint32, count)
+	for i := 0; i < count; i++ {
+		tokens[i] = r.Value.(uint32)
+		r = r.Next()
+	}
+	return tokens
 }
 
 func Colorize(format string, opts ...interface{}) (n int, err error) {
