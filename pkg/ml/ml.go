@@ -23,6 +23,7 @@ const (
 	TOKEN_EOS = 2
 )
 
+// DType is a data type for a tensor
 type DType uint8
 
 // Data types are the same as in llama.cpp so full compatibility there
@@ -37,6 +38,7 @@ const (
 	TYPE_COUNT DType = 8
 )
 
+// printTensor prints a tensor
 func printTensor(tensor *Tensor, name string) {
 
 	var dt string
@@ -60,7 +62,7 @@ func printTensor(tensor *Tensor, name string) {
 	}
 }
 
-// precomputed exp table for f16 (128 KB)
+// TableExpFP16 is a precomputed exp table for f16 (128 KB)
 // static ggml_fp16_t table_exp_f16[1 << 16];
 var TableExpFP16 [1 << 16]float16.Float16
 
@@ -71,7 +73,7 @@ func TypeSizeFloat(dt DType) float32 {
 	return float32(TYPE_SIZE[dt]) / float32(BLCK_SIZE[dt])
 }
 
-// available tensor operations
+// optype is an operation type for a tensor
 type optype uint8
 
 const (
@@ -117,7 +119,7 @@ const (
 	OP_COUNT
 )
 
-// n-dimensional tensor
+// Tensor is an n-dimensional tensor
 type Tensor struct {
 	Type DType
 
@@ -145,6 +147,7 @@ type Tensor struct {
 	//padding [8]byte
 }
 
+// IsContiguous returns true if the tensor is contiguous
 // static inline bool ggml_is_contiguous(const struct ggml_tensor * tensor) {
 func (tensor *Tensor) IsContiguous() bool {
 	//    static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
@@ -155,47 +158,56 @@ func (tensor *Tensor) IsContiguous() bool {
 		tensor.NB[3] == tensor.NB[2]*tensor.NE[2]
 }
 
+// AreSameShape returns true if the two tensors have the same shape
 func AreSameShape(a, b *Tensor) bool {
 	////static_assert(MAX_DIMS == 4, "MAX_DIMS is not 4 - update this function");
 	return (a.NE[0] == b.NE[0]) && (a.NE[1] == b.NE[1]) && (a.NE[2] == b.NE[2]) && (a.NE[3] == b.NE[3])
 }
 
+// Nelements returns the number of elements in the tensor
 func (t *Tensor) Nelements() uint32 {
 	////static_assert(MAX_DIMS == 4, "MAX_DIMS is not 4 - update this function");
 	return t.NE[0] * t.NE[1] * t.NE[2] * t.NE[3]
 }
 
+// Nrows returns the number of rows in the tensor
 func (t *Tensor) Nrows() uint32 {
 	////static_assert(MAX_DIMS == 4, "MAX_DIMS is not 4 - update this function");
 	return t.NE[1] * t.NE[2] * t.NE[3]
 }
 
+// NBytes returns the number of bytes in the tensor
 // size_t ggml_nbytes(const struct ggml_tensor * tensor) {
 func (t *Tensor) Nbytes() uint32 {
 	////static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
 	return (t.Nelements() * TYPE_SIZE[t.Type]) / BLCK_SIZE[t.Type]
 }
 
+// ViewTensor returns a view of the tensor
 // struct ggml_tensor * ggml_view_tensor(
 func ViewTensor(ctx *Context, src *Tensor) *Tensor {
 	return NewTensor(ctx, src.Type, src.Dims, src.NE[0], src.NE[1], src.NE[2], src.NE[3], src.Data)
 }
 
+// DupTensor returns a copy of the tensor
 // ggml.c : ggml_dup_tensor
 func DupTensor(ctx *Context, src *Tensor) *Tensor {
 	return NewTensor(ctx, src.Type, src.Dims, src.NE[0], src.NE[1], src.NE[2], src.NE[3], nil)
 }
 
+// Mul returns the product of two tensors
 // struct ggml_tensor * Mul(
 func Mul(ctx *Context, a, b *Tensor) *Tensor {
 	return MulImpl(ctx, a, b, false)
 }
 
+// MulInplace returns the product of two tensors
 // struct ggml_tensor * Mul_inplace(
 func MulInplace(ctx *Context, a, b *Tensor) *Tensor {
 	return MulImpl(ctx, a, b, true)
 }
 
+// MulImpl returns the product of two tensors
 // struct ggml_tensor * Mul_impl(
 func MulImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	////ASSERT(ggml_are_same_shape(a, b));
@@ -241,6 +253,7 @@ func CanMulMat(t0, t1 *Tensor) bool {
 	return (t0.NE[0] == t1.NE[0]) && (t0.NE[2] == t1.NE[2]) && (t0.NE[3] == t1.NE[3])
 }
 
+// MulMat returns the product of two matrices
 // ggml_mul_mat
 func MulMat(ctx *Context, a, b *Tensor) *Tensor {
 	////ASSERT(ggml_can_mul_mat(a, b));
@@ -267,8 +280,8 @@ func MulMat(ctx *Context, a, b *Tensor) *Tensor {
 	return result
 }
 
+// AddImpl returns the sum of two tensors
 // ggml_add
-
 func AddImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	////ASSERT(ggml_are_same_shape(a, b));
 
@@ -295,6 +308,7 @@ func AddImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	return result
 }
 
+// Add returns the sum of two tensors
 func Add(ctx *Context, a, b *Tensor) *Tensor {
 	return AddImpl(ctx, a, b, false)
 }
@@ -303,8 +317,8 @@ func AddInplace(ctx *Context, a, b *Tensor) *Tensor {
 	return AddImpl(ctx, a, b, true)
 }
 
+// Sum returns the sum of all elements in a tensor
 // ggml_sum
-
 func Sum(ctx *Context, a *Tensor) *Tensor {
 	isNode := false
 
@@ -327,8 +341,8 @@ func Sum(ctx *Context, a *Tensor) *Tensor {
 	return result
 }
 
+// SubImpl returns the difference of two tensors
 // ggml_sub
-
 func SubImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	////ASSERT(ggml_are_same_shape(a, b));
 
@@ -362,8 +376,8 @@ func SubInplace(ctx *Context, a, b *Tensor) *Tensor {
 	return SubImpl(ctx, a, b, true)
 }
 
+// DivImpl returns the quotient of two tensors
 // ggml_div
-
 func DivImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	////ASSERT(ggml_are_same_shape(a, b));
 
@@ -393,6 +407,7 @@ func DivImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	return result
 }
 
+// Div returns the quotient of two tensors
 func Div(ctx *Context, a, b *Tensor) *Tensor {
 	return DivImpl(ctx, a, b, false)
 }
@@ -401,8 +416,8 @@ func DivInplace(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	return DivImpl(ctx, a, b, true)
 }
 
+// SgnImpl returns the sign of a tensor
 // ggml_sgn
-
 func SgnImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 	isNode := false
 
@@ -430,6 +445,7 @@ func SgnImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 	return result
 }
 
+// Sgn returns the sign of a tensor
 func Sgn(ctx *Context, a *Tensor) *Tensor {
 	return SgnImpl(ctx, a, false)
 }
@@ -440,6 +456,7 @@ func SgnInplace(ctx *Context, a *Tensor) *Tensor {
 
 // Repeat
 
+// Repeat returns a tensor with the same elements as a, but with the shape of b
 // struct ggml_tensor * Repeat(
 func Repeat(ctx *Context, a, b *Tensor) *Tensor {
 	////ASSERT(ggml_can_repeat(a, b));
@@ -475,16 +492,19 @@ func IsScalar(tensor *Tensor) bool {
 	return tensor.NE[0] == 1 && tensor.NE[1] == 1 && tensor.NE[2] == 1 && tensor.NE[3] == 1
 }
 
+// IsVector returns true if the tensor is a vector
 func IsVector(tensor *Tensor) bool {
 	////static_assert(MAX_DIMS == 4, "MAX_DIMS is not 4 - update this function");
 	return tensor.NE[1] == 1 && tensor.NE[2] == 1 && tensor.NE[3] == 1
 }
 
+// IsMatrix returns true if the tensor is a matrix
 func IsMatrix(tensor *Tensor) bool {
 	////static_assert(MAX_DIMS == 4, "MAX_DIMS is not 4 - update this function");
 	return tensor.NE[2] == 1 && tensor.NE[3] == 1
 }
 
+// GetRows returns a matrix with the rows of a specified by b
 // ggml_get_rows
 func GetRows(ctx *Context, a, b *Tensor) *Tensor {
 	////ASSERT(ggml_is_matrix(a) && ggml_is_vector(b) && b.type == TYPE_I32);
@@ -519,6 +539,7 @@ func GetRows(ctx *Context, a, b *Tensor) *Tensor {
 	return result
 }
 
+// RMSNorm returns the root mean square of a tensor
 func RMSNorm(ctx *Context, a *Tensor) *Tensor {
 	return RMSNormImpl(ctx, a, false)
 }
@@ -527,7 +548,8 @@ func RMSNormInplace(ctx *Context, a *Tensor) *Tensor {
 	return RMSNormImpl(ctx, a, true)
 }
 
-// //struct ggml_tensor * ggml_rms_norm_impl(
+// RMSNormImpl returns the root mean square of a tensor
+// struct ggml_tensor * ggml_rms_norm_impl(
 func RMSNormImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 	isNode := false
 
@@ -559,6 +581,7 @@ func RMSNormImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 	return result
 }
 
+// View1D returns a 1D view of a tensor
 // ggml_view_1d
 // NB! Originally offset in bytes, but here in floats (4-bytes)
 func View1D(ctx *Context, a *Tensor, ne0 uint32, offset uint32) *Tensor {
@@ -579,6 +602,7 @@ func View1D(ctx *Context, a *Tensor, ne0 uint32, offset uint32) *Tensor {
 	return result
 }
 
+// BuildForwardImpl builds the forward graph
 // ggml_build_forward_impl
 func BuildForwardImpl(graph *Graph, tensor *Tensor, expand bool) {
 
@@ -601,11 +625,13 @@ func BuildForwardImpl(graph *Graph, tensor *Tensor, expand bool) {
 	}
 }
 
+// BuildForwardExpand builds the forward graph
 // ggml_build_forward_expand
 func BuildForwardExpand(graph *Graph, tensor *Tensor) {
 	BuildForwardImpl(graph, tensor, true)
 }
 
+// VisitParents visits all parents of a node
 // ggml_visit_parents
 func VisitParents(graph *Graph, node *Tensor) {
 
@@ -659,6 +685,7 @@ func VisitParents(graph *Graph, node *Tensor) {
 	}
 }
 
+// CopyImpl copies a tensor to another
 // ggml_cpy
 func CopyImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 
@@ -693,6 +720,7 @@ func CopyImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	return result
 }
 
+// Copy copies a tensor to another
 func Copy(ctx *Context, a, b *Tensor) *Tensor {
 	return CopyImpl(ctx, a, b, false)
 }
@@ -701,7 +729,7 @@ func CopyInplace(ctx *Context, a, b *Tensor) *Tensor {
 	return CopyImpl(ctx, a, b, true)
 }
 
-// computation graph
+// Graph is a computation graph
 type Graph struct {
 	NodesCount   uint32
 	LeafsCount   uint32
@@ -727,24 +755,29 @@ type InitParams struct {
 type Context struct {
 }
 
+// NewTensor1D creates a new 1D tensor
 // ggml_new_tensor_1d
 func NewTensor1D(ctx *Context, dt DType, ne0 uint32) *Tensor {
 	return NewTensor(ctx, dt, 1, ne0, 1, 1, 1, nil)
 }
 
+// NewTensor2D creates a new 2D tensor
 // ggml_new_tensor_2d
 func NewTensor2D(ctx *Context, dt DType, ne0, ne1 uint32) *Tensor {
 	return NewTensor(ctx, dt, 2, ne0, ne1, 1, 1, nil)
 }
 
+// NewTensor3D creates a new 3D tensor
 func NewTensor3D(ctx *Context, dt DType, ne0, ne1, ne2 uint32) *Tensor {
 	return NewTensor(ctx, dt, 3, ne0, ne1, ne2, 1, nil)
 }
 
+// NewTensor4D creates a new 4D tensor
 func NewTensor4D(ctx *Context, dt DType, ne0, ne1, ne2, ne3 uint32) *Tensor {
 	return NewTensor(ctx, dt, 4, ne0, ne1, ne2, ne3, nil)
 }
 
+// NewTensor creates a new tensor
 // ggml_new_tensor_impl
 func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
 
@@ -784,60 +817,28 @@ func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 	return &result
 }
 
+// Permute permutes a tensor, e.g., 1,2,3,4 -> 2,3,4,1
 // ggml_permute
 func Permute(ctx *Context, a *Tensor, axis0, axis1, axis2, axis3 uint32) *Tensor {
-
-	////ASSERT(axis0 >= 0 && axis0 < MAX_DIMS);
-	////ASSERT(axis1 >= 0 && axis1 < MAX_DIMS);
-	////ASSERT(axis2 >= 0 && axis2 < MAX_DIMS);
-	////ASSERT(axis3 >= 0 && axis3 < MAX_DIMS);
-
-	////ASSERT(axis0 != axis1);
-	////ASSERT(axis0 != axis2);
-	////ASSERT(axis0 != axis3);
-	////ASSERT(axis1 != axis2);
-	////ASSERT(axis1 != axis3);
-	////ASSERT(axis2 != axis3);
-
-	isNode := false
-
 	if a.grad != nil {
-		////ASSERT(false); // TODO: implement backward
-		isNode = true
+		// TODO: Implement backward
 		fmt.Printf("\n[STOP] Permute error")
 		os.Exit(1)
 	}
 
 	result := ViewTensor(ctx, a)
 
-	var ne [MAX_DIMS]uint32
-	var nb [MAX_DIMS]uint32
+	ne := [MAX_DIMS]uint32{a.NE[axis0], a.NE[axis1], a.NE[axis2], a.NE[axis3]}
+	nb := [MAX_DIMS]uint32{a.NB[axis0], a.NB[axis1], a.NB[axis2], a.NB[axis3]}
 
-	ne[axis0] = a.NE[0]
-	ne[axis1] = a.NE[1]
-	ne[axis2] = a.NE[2]
-	ne[axis3] = a.NE[3]
-
-	nb[axis0] = a.NB[0]
-	nb[axis1] = a.NB[1]
-	nb[axis2] = a.NB[2]
-	nb[axis3] = a.NB[3]
-
-	result.NE[0] = ne[0]
-	result.NE[1] = ne[1]
-	result.NE[2] = ne[2]
-	result.NE[3] = ne[3]
-
-	result.NB[0] = nb[0]
-	result.NB[1] = nb[1]
-	result.NB[2] = nb[2]
-	result.NB[3] = nb[3]
+	result.NE = ne
+	result.NB = nb
 
 	result.op = OP_PERMUTE
 	result.src0 = a
 	result.src1 = nil // TODO: maybe store the permutation here?
 
-	if isNode {
+	if a.grad != nil {
 		result.grad = DupTensor(ctx, result)
 	} else {
 		result.grad = nil
