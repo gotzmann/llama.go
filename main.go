@@ -15,6 +15,7 @@ import (
 	"github.com/gotzmann/llama.go/pkg/ml"
 )
 
+// ModelParams is a struct to hold model parameters
 type ModelParams struct {
 	seed         int
 	threadsCount int
@@ -202,15 +203,6 @@ func main() {
 				ctx.Logits[ml.TOKEN_EOS] = 0
 			}
 
-			/*
-				id := llama.SampleTopPTopK(ctx,
-					lastNTokens[params.ctxSize-params.repeatLastN:], params.repeatLastN,
-					params.topK, params.topP, params.temp, params.repeatPenalty)
-
-				lastNTokens = lastNTokens[1:] ////last_n_tokens.erase(last_n_tokens.begin());
-				lastNTokens = append(lastNTokens, id)
-
-			*/
 			id := llama.SampleTopPTopK(ctx,
 				lastNTokens, params.repeatLastN,
 				params.topK, params.topP, params.temp, params.repeatPenalty)
@@ -234,19 +226,6 @@ func main() {
 		} else {
 
 			// some user input remains from prompt or interaction, forward it to processing
-			/*
-				for len(embdInp) > int(consumedCount) {
-					embd = append(embd, embdInp[consumedCount])
-					if len(lastNTokens) > 0 {
-						lastNTokens = lastNTokens[1:]
-					}
-					lastNTokens = append(lastNTokens, embdInp[consumedCount])
-					consumedCount++
-					if len(embd) >= int(params.batchSize) {
-						break
-					}
-				}
-			*/
 			for len(embdInp) > int(consumedCount) {
 				embd = append(embd, embdInp[consumedCount])
 				appendToken(embdInp[consumedCount])
@@ -301,6 +280,7 @@ func Colorize(format string, opts ...interface{}) (n int, err error) {
 	return fmt.Fprintf(DefaultOutput, colorstring.Color(format), opts...)
 }
 
+// showLogo prints the logo
 func showLogo() {
 	// Read the version from the 'VERSION' file
 	version, err := os.ReadFile("VERSION")
