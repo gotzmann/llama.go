@@ -42,11 +42,13 @@ var (
 	}
 )
 
+// pair is a pair of floats and ints.
 type pair struct {
 	first  float32
 	second uint32
 }
 
+// Context is the context of the model.
 type Context struct {
 	Model *Model
 	Vocab *ml.Vocab
@@ -59,6 +61,7 @@ type Context struct {
 	Embedding []float32
 }
 
+// NewContext creates a new context.
 func NewContext() *Context {
 	return &Context{
 		Model:     NewModel(),
@@ -68,6 +71,7 @@ func NewContext() *Context {
 	}
 }
 
+// ContextParams are the parameters for the context.
 // struct llama_context_params {
 type ContextParams struct {
 	CtxSize    uint32 // text context
@@ -79,6 +83,7 @@ type ContextParams struct {
 	Embedding  bool   // embedding mode only
 }
 
+// Layer is a single layer of the model.
 type Layer struct {
 
 	// normalization
@@ -99,6 +104,7 @@ type Layer struct {
 	w3 *ml.Tensor
 }
 
+// HParams are the hyperparameters of the model.
 // default hparams (LLaMA 7B)
 type HParams struct {
 	ctxSize     uint32 // 512
@@ -111,6 +117,7 @@ type HParams struct {
 	f16         uint32 // 1
 }
 
+// ModelType is the type of the model.
 type ModelType uint8
 
 // available llama models
@@ -122,6 +129,7 @@ const (
 	MODEL_65B
 )
 
+// KVCache is a key-value cache for the self attention.
 type KVCache struct {
 	K *ml.Tensor
 	V *ml.Tensor
@@ -129,6 +137,7 @@ type KVCache struct {
 	N uint32 // number of tokens currently in the cache
 }
 
+// Model is the main llama model.
 type Model struct {
 	Type    ModelType
 	ctx     *ml.Context
@@ -145,6 +154,7 @@ type Model struct {
 	tensors     map[string]*ml.Tensor
 }
 
+// NewModel creates a new model with default hyperparameters.
 func NewModel() *Model {
 	return &Model{
 		hparams: HParams{
@@ -166,6 +176,7 @@ func NewModel() *Model {
 	}
 }
 
+// min returns the minimum of a and b.
 func min(a, b int) int {
 	if a <= b {
 		return a
@@ -196,16 +207,13 @@ func ResizeInplace(slice *[]float32, size int) {
 	}
 }
 
-// evaluate the transformer
+// Eval evaluates the transformer
 //
 //   - lctx:      llama context
 //   - tokens:    new batch of tokens to process
 //   - n_past:    the context size so far
 //   - n_threads: number of threads to use
-//
-
 func Eval(
-
 	lctx *Context,
 	tokens []uint32,
 	tokensCount uint32,
@@ -465,6 +473,7 @@ func Eval(
 	return nil
 }
 
+// printTensor prints a tensor
 func printTensor(tensor *ml.Tensor, name string) {
 	var dt string
 	if tensor.Type == ml.TYPE_F16 {
@@ -527,13 +536,11 @@ func sampleTopK(logitsID []pair, topK uint32) []pair {
 	return ret
 }
 
+// SampleTopPTopK samples next token given probabilities for each embedding
 // llama_sample_top_p_top_k
-// sample next token given probabilities for each embedding
-//
 //   - consider only the top K tokens
 //   - from them, consider only the top tokens with cumulative probability > P
 //
-
 // std::mt19937 = A Mersenne Twister pseudo-random generator of 32-bit numbers with a state size of 19937 bits.
 func SampleTopPTopK(
 	lctx *Context,
