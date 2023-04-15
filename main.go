@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/ring"
 	"fmt"
 	"os"
 	"runtime"
@@ -73,11 +74,6 @@ func main() {
 	if err != nil {
 		return
 	}
-
-	// DEBUG
-	//opts.Model = "./models/13B/ggml-model-f32.bin"
-	//opts.Model = "./models/7B/ggml-model-f32.bin"
-	//opts.Prompt = "Why Golang is so popular?"
 
 	prompt := " " + opts.Prompt // add a space to match LLaMA tokenizer behavior
 	final := ""                 // accumulate model output
@@ -152,8 +148,19 @@ func main() {
 
 	var embd []uint32
 
-	// TODO: replace with ring-buffer
-	lastNTokens := make([]uint32, params.ctxSize, params.ctxSize)
+	// Initialize the ring buffer
+	lastNTokens := ring.New(int(params.ctxSize))
+
+	for i := 0; i < int(params.ctxSize); i++ {
+		lastNTokens.Value = uint32(0)
+		lastNTokens = lastNTokens.Next()
+	}
+
+	// A function to append a token to the ring buffer
+	appendToken := func(token uint32) {
+		lastNTokens.Value = token
+		lastNTokens = lastNTokens.Next()
+	}
 
 	inputNoEcho := false
 	pastCount := uint32(0)
@@ -176,7 +183,8 @@ func main() {
 				pastCount = params.keepCount
 
 				// insert n_left/2 tokens at the start of embd from last_n_tokens
-				embd = append(lastNTokens[:leftCount/2], embd...)
+				//embd = append(lastNTokens[:leftCount/2], embd...)
+				embd = append(llama.ExtractTokens(lastNTokens.Move(-int(leftCount/2)), int(leftCount/2)), embd...)
 			}
 
 			if err := llama.Eval(ctx, embd, uint32(len(embd)), pastCount, params.threadsCount); err != nil {
@@ -194,12 +202,20 @@ func main() {
 				ctx.Logits[ml.TOKEN_EOS] = 0
 			}
 
+			/*
+				id := llama.SampleTopPTopK(ctx,
+					lastNTokens[params.ctxSize-params.repeatLastN:], params.repeatLastN,
+					params.topK, params.topP, params.temp, params.repeatPenalty)
+
+				lastNTokens = lastNTokens[1:] ////last_n_tokens.erase(last_n_tokens.begin());
+				lastNTokens = append(lastNTokens, id)
+
+			*/
 			id := llama.SampleTopPTopK(ctx,
-				lastNTokens[params.ctxSize-params.repeatLastN:], params.repeatLastN,
+				lastNTokens, params.repeatLastN,
 				params.topK, params.topP, params.temp, params.repeatPenalty)
 
-			lastNTokens = lastNTokens[1:] ////last_n_tokens.erase(last_n_tokens.begin());
-			lastNTokens = append(lastNTokens, id)
+			appendToken(id)
 
 			// replace end of text token with newline token when in interactive mode
 			if id == ml.TOKEN_EOS && params.interactive && !params.instruct {
@@ -218,18 +234,27 @@ func main() {
 		} else {
 
 			// some user input remains from prompt or interaction, forward it to processing
+			/*
+				for len(embdInp) > int(consumedCount) {
+					embd = append(embd, embdInp[consumedCount])
+					if len(lastNTokens) > 0 {
+						lastNTokens = lastNTokens[1:]
+					}
+					lastNTokens = append(lastNTokens, embdInp[consumedCount])
+					consumedCount++
+					if len(embd) >= int(params.batchSize) {
+						break
+					}
+				}
+			*/
 			for len(embdInp) > int(consumedCount) {
 				embd = append(embd, embdInp[consumedCount])
-				if len(lastNTokens) > 0 {
-					lastNTokens = lastNTokens[1:]
-				}
-				lastNTokens = append(lastNTokens, embdInp[consumedCount])
+				appendToken(embdInp[consumedCount])
 				consumedCount++
 				if len(embd) >= int(params.batchSize) {
 					break
 				}
 			}
-
 		}
 
 		// --- display text
@@ -276,8 +301,14 @@ func Colorize(format string, opts ...interface{}) (n int, err error) {
 	return fmt.Fprintf(DefaultOutput, colorstring.Color(format), opts...)
 }
 
-// TODO: Show actual version
 func showLogo() {
+	// Read the version from the 'VERSION' file
+	version, err := os.ReadFile("VERSION")
+	if err != nil {
+		fmt.Printf("[ERROR] Failed to read VERSION file")
+		os.Exit(1)
+	}
+	versionStr := strings.TrimSpace(string(version))
 
 	// https://patorjk.com/software/taag/#p=display&f=3-D&t=llama.go%0A%0ALLaMA.go
 	// Isometric 1, Modular, Rectangles, Rozzo, Small Isometric 1, 3-D
@@ -311,11 +342,11 @@ func showLogo() {
 		}
 	}
 
-	_, err := Colorize(logoColored)
+	_, err = Colorize(logoColored)
 	if err != nil {
 		return
 	}
-	_, err = Colorize("\n\n   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v1.0.0 ] [light_blue][ LLaMA GPT in pure Golang - based on LLaMA C++ ] [magenta]▒▒▒▒\n\n")
+	_, err = Colorize("\n\n   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v" + versionStr + " ] [light_blue][ LLaMA GPT in pure Golang - based on LLaMA C++ ] [magenta]▒▒▒▒\n\n")
 	if err != nil {
 		return
 	}

@@ -3,7 +3,6 @@ module github.com/gotzmann/llama.go
 go 1.20
 
 require (
-	github.com/gotzmann/llama.go/ml v0.0.0-20230412160549-c20730f209a3
 	github.com/jessevdk/go-flags v1.5.0
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
