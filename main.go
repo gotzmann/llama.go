@@ -75,9 +75,6 @@ func main() {
 		return
 	}
 
-	opts.Model = "./models/13B/ggml-model-f32.bin"
-	opts.Prompt = "Who was the first man in space?"
-
 	prompt := " " + opts.Prompt // add a space to match LLaMA tokenizer behavior
 	final := ""                 // accumulate model output
 
@@ -148,6 +145,11 @@ func main() {
 
 	// Initialize the ring buffer
 	lastNTokens := ring.New(int(params.ctxSize))
+
+	for i := 0; i < int(params.ctxSize); i++ {
+		lastNTokens.Value = uint32(0)
+		lastNTokens = lastNTokens.Next()
+	}
 
 	// A function to append a token to the ring buffer
 	appendToken := func(token uint32) {
