@@ -2192,16 +2192,9 @@ func ComputeForwardPermute(params *ComputeParams, src0 *Tensor) {
 }
 
 // ComputeForwardRopeFP32 computes the forward pass of the rope layer.
-// ggml_compute_forward_rope
 func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
-
-	////assert(params->ith == 0);
-	////assert(src1->type == GGML_TYPE_I32);
-	////assert(ggml_nelements(src1) == 3);
-
 	if src1.Nelements() != 3 {
-		fmt.Printf("\n[HALT] ComputeForwardRopeFP32 : src1 has NOT EXACT 3 elements!")
-		os.Exit(1)
+		panic("ComputeForwardRopeFP32: src1 has NOT EXACT 3 elements!")
 	}
 
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
@@ -2211,51 +2204,34 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	pastCount := uint32(src1.Data[0])
 	dims := uint32(src1.Data[1])
 	mode := uint32(src1.Data[2])
-
-	//const int ne0 = src0->ne[0];
 	ne1 := src0.NE[1]
 	ne2 := src0.NE[2]
 	ne3 := src0.NE[3]
-
 	nb0 := src0.NB[0]
 	nb1 := src0.NB[1]
 	nb2 := src0.NB[2]
 	nb3 := src0.NB[3]
 
-	////assert(nb0 == sizeof(float));
-
-	var modeCount uint32
-	if mode == 0 {
-		modeCount = 0
-	} else {
+	modeCount := uint32(0)
+	if mode != 0 {
 		modeCount = pastCount
 	}
 
-	// TODO: optimize
 	for i3 := uint32(0); i3 < ne3; i3++ {
 		for i2 := modeCount; i2 < ne2; i2++ {
-
-			////const int p = (mode == 0 ? n_past + i2 : i2);
-			var p uint32
+			p := i2
 			if mode == 0 {
-				p = pastCount + i2
-			} else {
-				p = i2
+				p += pastCount
 			}
 
 			for i1 := uint32(0); i1 < ne1; i1++ {
 				for i0 := 0; i0 < int(dims); i0 += 2 {
-
-					////const double theta = pow(10000.0, ((double)-i0)/n_dims);
 					theta := math.Pow(10000.0, float64(-i0)/float64(dims))
-
 					cosTheta := math.Cos(float64(p) * theta)
 					sinTheta := math.Sin(float64(p) * theta)
 
-					////const float * const src = (float *)((char *) src0->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
 					offset := i3*nb3/4 + i2*nb2/4 + i1*nb1/4 + uint32(i0)*nb0/4
 					src := src0.Data[offset:]
-					////   float * dst_data  = (float *)((char *)  dst->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
 					dstData := dst.Data[offset:]
 
 					x0 := float64(src[0])
@@ -2267,7 +2243,6 @@ func ComputeForwardRopeFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 			}
 		}
 	}
-
 }
 
 // ComputeForwardScaleFP32 computes the forward pass of the scale layer.
