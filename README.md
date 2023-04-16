@@ -65,5 +65,5 @@ Contact Meta directly or look around for some torrent alternatives
 Youl'll need original FP16 files placed into **models** directory, then convert with command:
 
 ```shell
-python3 ./scripts/convert.py ~/models/LLaMA/7B/ 0
+python3 ./scripts/convert-pth-to-ggml.py ~/models/LLaMA/7B/ 0
 ```
