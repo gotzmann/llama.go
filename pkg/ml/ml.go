@@ -2077,169 +2077,33 @@ func VecAccFP32(n uint32, y, x []float32) {
 }
 
 // ComputeForwardMulMatFP32 performs matrix multiplication of two tensors
-// ggml_compute_forward_mul_mat_f32
 func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
-
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
 	}
 
 	ith := params.ith
 	nth := params.nth
-
-	ne00 := src0.NE[0]
-	ne01 := src0.NE[1]
-	ne02 := src0.NE[2]
-	ne03 := src0.NE[3]
-
-	//ne10 := src1.NE[0] // for BLAS only
-	ne11 := src1.NE[1]
-	//ne12 := src1.NE[2]
-	//ne13 := src1.NE[3]
-
-	//ne0 := dst.NE[0]
-	//ne1 := dst.NE[1]
-	//ne2 := dst.NE[2]
-	//ne3 := dst.NE[3]
-	//ne := ne0 * ne1 * ne2 * ne3
-
-	//nb00 := src0.NB[0]
-	nb01 := src0.NB[1] / 4
-	nb02 := src0.NB[2] / 4
-	nb03 := src0.NB[3] / 4
-
-	//nb10 := src1.NB[0]
-	nb11 := src1.NB[1] / 4
-	nb12 := src1.NB[2] / 4
-	nb13 := src1.NB[3] / 4
-
-	nb0 := dst.NB[0] / 4
-	nb1 := dst.NB[1] / 4
-	nb2 := dst.NB[2] / 4
-	nb3 := dst.NB[3] / 4
-
-	////assert(ne02 == ne12);
-	////assert(ne03 == ne13);
-	////assert(ne2  == ne12);
-	////assert(ne3  == ne13);
-
-	// TODO: we don't support permuted src0
-	////assert(nb00 == sizeof(float) || nb01 == sizeof(float));
-
-	// dst cannot be transposed or permuted
-	////assert(nb0 == sizeof(float));
-	////assert(nb0 <= nb1);
-	////assert(nb1 <= nb2);
-	////assert(nb2 <= nb3);
-
-	////assert(ne0 == ne01);
-	////assert(ne1 == ne11);
-	////assert(ne2 == ne02);
-	////assert(ne3 == ne03);
-
-	// nb01 >= nb00 - src0 is not transposed
-	//   compute by src0 rows
-
-	/*
-		////#if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS)
-
-		////if (ggml_compute_forward_mul_mat_use_blas(src0, src1, dst)) {
-		////GGML_ASSERT(nb10 == sizeof(float));
-
-		if params.ith != 0 {
-		return
-		}
-
-		if params.Type == TASK_INIT {
-		return
-		}
-
-		if params.Type == TASK_FINALIZE {
-		return
-		}
-
-		for i03 := uint32(0); i03 < ne03; i03++ {
-		for i02 := uint32(0); i02 < ne02; i02++ {
-
-		const float * x = (float *) (src0->data);
-
-		////const float * y = (float *) ((char *) src1->data + i02*nb12 + i03*nb13);
-
-		////float * d = (float *) ((char *) dst->data + i02*nb2 + i03*nb3);
-
-		// zT = y * xT
-		////{
-		////cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
-		////ne11, ne01, ne10,
-		////1.0f,    y, ne10,
-		////         x, ne10,
-		////0.0f,    d, ne01);
-		////}
-		////}
-		////}
-
-		//printf("CBLAS F32 = %f ms, %d x %d x %d x %d\n", (ggml_perf_time_us() - t0)/1000.0, ne0, ne1, ne2, ne3);
-
-		////return;
-		////}
-		////#endif
-	*/
-
-	// TODO: do not support transposed src1
-	////assert(nb10 == sizeof(float));
-	////if nb10 == 4 {
-	////	fmt.Printf("\n[HALT] Do not support transposed src1")
-	////	os.Exit(1)
-	////}
-
-	// parallelize by src0 rows using ggml_vec_dot_f32
-
-	// total rows in src0
-	nr := ne01 * ne02 * ne03
-
-	// rows per thread
+	nr := src0.NE[1] * src0.NE[2] * src0.NE[3]
 	dr := (nr + nth - 1) / nth
-
-	// row range for this thread
 	ir0 := dr * ith
 	ir1 := min32(ir0+dr, nr)
 
-	for ir := uint32(ir0); ir < ir1; ir++ {
+	for ir := ir0; ir < ir1; ir++ {
+		i03 := ir / (src0.NE[2] * src0.NE[1])
+		i02 := (ir - i03*src0.NE[2]*src0.NE[1]) / src0.NE[1]
+		i01 := ir - i03*src0.NE[2]*src0.NE[1] - i02*src0.NE[1]
 
-		// src0 indices
-		i03 := ir / (ne02 * ne01)
-		i02 := (ir - i03*ne02*ne01) / ne01
-		i01 := (ir - i03*ne02*ne01 - i02*ne01)
-
-		// src1 indices
-		i13 := i03
-		i12 := i02
-		//i11 := ic
-
-		// dst indices
-		i0 := i01
-		//i1 := i11
-		i2 := i02
-		i3 := i03
-
-		for ic := uint32(0); ic < ne11; ic++ {
-
-			//dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3] =
-			//	VecDotFP32(ne00,
-			//		src0.Data[i01*nb01+i02*nb02+i03*nb03:],
-			//		src1.Data[ic*nb11+i12*nb12+i13*nb13:])
-
-			// --- inline VecDotFP32
-
-			src0Ptr := src0.Data[i01*nb01+i02*nb02+i03*nb03:]
-			src1Ptr := src1.Data[ic*nb11+i12*nb12+i13*nb13:]
-
+		for ic := uint32(0); ic < src1.NE[1]; ic++ {
+			src0Ptr := src0.Data[i01*src0.NB[1]/4+i02*src0.NB[2]/4+i03*src0.NB[3]/4:]
+			src1Ptr := src1.Data[ic*src1.NB[1]/4+i02*src1.NB[2]/4+i03*src1.NB[3]/4:]
 			sum := float32(0.0)
-			for i := uint32(0); i < ne00; i++ {
+
+			for i := uint32(0); i < src0.NE[0]; i++ {
 				sum += src0Ptr[i] * src1Ptr[i]
 			}
 
-			dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3] = sum
+			dst.Data[i01*dst.NB[0]/4+ic*dst.NB[1]/4+i02*dst.NB[2]/4+i03*dst.NB[3]/4] = sum
 		}
 	}
 
@@ -2247,7 +2111,6 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		fmt.Printf("\n\n>>> ComputeForwardMulMatFP32 OUT <<<\n")
 		printTensor(dst, "DST")
 	}
-
 }
 
 // ComputeForwardView is a NOP
