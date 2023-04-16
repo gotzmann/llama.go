@@ -813,15 +813,13 @@ func Permute(ctx *Context, a *Tensor, axis0, axis1, axis2, axis3 uint32) *Tensor
 
 	result := ViewTensor(ctx, a)
 
-	ne := [MAX_DIMS]uint32{a.NE[axis0], a.NE[axis1], a.NE[axis2], a.NE[axis3]}
-	nb := [MAX_DIMS]uint32{a.NB[axis0], a.NB[axis1], a.NB[axis2], a.NB[axis3]}
+	ne := [MAX_DIMS]uint32{a.NE[0], a.NE[1], a.NE[2], a.NE[3]}
+	nb := [MAX_DIMS]uint32{a.NB[0], a.NB[1], a.NB[2], a.NB[3]}
 
-	result.NE = ne
-	result.NB = nb
+	result.NE = [MAX_DIMS]uint32{ne[axis0], ne[axis1], ne[axis2], ne[axis3]}
+	result.NB = [MAX_DIMS]uint32{nb[axis0], nb[axis1], nb[axis2], nb[axis3]}
 
 	result.op = OP_PERMUTE
-	result.PermuteDims = [MAX_DIMS]uint32{axis0, axis1, axis2, axis3}
-
 	result.src0 = a
 	result.src1 = nil // TODO: maybe store the permutation here?
 
