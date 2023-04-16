@@ -76,9 +76,9 @@ func main() {
 	}
 
 	// DEBUG
-	opts.Threads = 1
+	//opts.Threads = 1
 	if opts.Model == "" {
-		opts.Model = "/Users/me/models/7B/ggml-model-f32.bin"
+		opts.Model = "C:\\models/7B/ggml-model-f32.bin"
 	}
 	if opts.Prompt == "" {
 		opts.Prompt = "Why Golang is so popular?"
