@@ -785,27 +785,47 @@ func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 }
 
 // Permute permutes a tensor, e.g., 1,2,3,4 -> 2,3,4,1
+// ggml_permute
 func Permute(ctx *Context, a *Tensor, axis0, axis1, axis2, axis3 uint32) *Tensor {
 
+	isNode := false
+
 	if a.grad != nil {
-		// TODO: implement backward
+		isNode = true
 		fmt.Printf("\n[STOP] Permute error")
 		os.Exit(1)
 	}
 
 	result := ViewTensor(ctx, a)
 
-	permutedNE := [MAX_DIMS]uint32{a.NE[axis0], a.NE[axis1], a.NE[axis2], a.NE[axis3]}
-	permutedNB := [MAX_DIMS]uint32{a.NB[axis0], a.NB[axis1], a.NB[axis2], a.NB[axis3]}
+	var ne [MAX_DIMS]uint32
+	var nb [MAX_DIMS]uint32
 
-	result.NE = permutedNE
-	result.NB = permutedNB
+	ne[axis0] = a.NE[0]
+	ne[axis1] = a.NE[1]
+	ne[axis2] = a.NE[2]
+	ne[axis3] = a.NE[3]
+
+	nb[axis0] = a.NB[0]
+	nb[axis1] = a.NB[1]
+	nb[axis2] = a.NB[2]
+	nb[axis3] = a.NB[3]
+
+	result.NE[0] = ne[0]
+	result.NE[1] = ne[1]
+	result.NE[2] = ne[2]
+	result.NE[3] = ne[3]
+
+	result.NB[0] = nb[0]
+	result.NB[1] = nb[1]
+	result.NB[2] = nb[2]
+	result.NB[3] = nb[3]
 
 	result.op = OP_PERMUTE
 	result.src0 = a
 	result.src1 = nil // TODO: maybe store the permutation here?
 
-	if a.grad != nil {
+	if isNode {
 		result.grad = DupTensor(ctx, result)
 	} else {
 		result.grad = nil
