@@ -5,7 +5,6 @@ import (
 	"github.com/x448/float16"
 	"math"
 	"os"
-	"runtime"
 	"sync"
 	"unsafe"
 )
@@ -1388,7 +1387,7 @@ func max(a, b int) int { // FIXME Not needed ?
 // The main purpose of the Job is to perform some part
 // of time consuming matrix multiplications
 func Job(listen <-chan *ComputeParams) {
-	runtime.LockOSThread() // DEBUG MULTI-THREADING
+	//runtime.LockOSThread() // DEBUG MULTI-THREADING
 
 	//fmt.Printf("\nJOB STARTED...")
 	for params := range listen {
@@ -1620,15 +1619,15 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 		//ComputeForwardMulMatFP32(params, tensor.src0, tensor.src1, tensor)
 		//return
 
-		wg := new(sync.WaitGroup)
-		wg.Add(graph.ThreadsCount)
-
 		// FIXME: Need better heuristic for how many threads to use there
 		// But not more than minimal dimension of tensors involved!
 		// Like if there dim = 8, it safe to use only 8 or less threads, not 12
 
 		maxThreads := min(int(tensor.src0.NE[0]), int(tensor.src1.NE[1]))
 		maxThreads = min(maxThreads, graph.ThreadsCount)
+
+		wg := new(sync.WaitGroup)
+		wg.Add(maxThreads /*graph.ThreadsCount*/)
 
 		for i := 0; i < maxThreads; /*graph.ThreadsCount*/ i++ {
 			graph.Jobs <- &ComputeParams{
@@ -2088,9 +2087,9 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		i3 := i03
 
 		// DEBUG
-		if ne00 == 4096 && (ir == 0 || ir == 4095) {
-			fmt.Printf("[ %d ] ", ir)
-		}
+		//if ne00 == 4096 && (ir == 0 || ir == 4095) {
+		//	fmt.Printf("[ %d ] ", ir)
+		//}
 
 		for ic := uint32(0); ic < ne11; ic++ {
 
@@ -2221,10 +2220,10 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	}
 
 	//if DEBUG {
-	fmt.Printf("\n\n>>> ComputeForwardMulMatFP32 OUT <<<\n")
-	printTensor(dst, "DST")
+	//fmt.Printf("\n\n>>> ComputeForwardMulMatFP32 OUT <<<\n")
+	//printTensor(dst, "DST")
 	//}
-	os.Exit(0)
+	//os.Exit(0)
 
 }
 
