@@ -2,6 +2,7 @@ package ml
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"sync"
@@ -117,15 +118,21 @@ const (
 	OP_FLASH_FF
 
 	OP_COUNT
+
+	OP_SQUARE
+	OP_RECIPROCAL
+	OP_SIGMOID
 )
 
 // Tensor is an n-dimensional tensor
 type Tensor struct {
 	Type DType
 
-	Dims uint32
-	NE   [MAX_DIMS]uint32 // number of elements
-	NB   [MAX_DIMS]uint32 // stride in bytes
+	Scalar      float32
+	PermuteDims [MAX_DIMS]uint32
+	Dims        uint32
+	NE          [MAX_DIMS]uint32 // number of elements
+	NB          [MAX_DIMS]uint32 // stride in bytes
 
 	op optype
 
@@ -505,36 +512,23 @@ func IsMatrix(tensor *Tensor) bool {
 }
 
 // GetRows returns a matrix with the rows of a specified by b
-// ggml_get_rows
 func GetRows(ctx *Context, a, b *Tensor) *Tensor {
-	////ASSERT(ggml_is_matrix(a) && ggml_is_vector(b) && b.type == TYPE_I32);
-	if !IsMatrix(a) || !IsVector(b) /* || b.Type != TYPE_I32 */ {
-		fmt.Printf("\n[ERROR] GetRows fail basic assertions")
-		os.Exit(1)
+	if !IsMatrix(a) || !IsVector(b) {
+		log.Fatalf("[ERROR] GetRows failed basic assertions")
 	}
-
-	isNode := false
 
 	if a.grad != nil || b.grad != nil {
-		////ASSERT(false); // TODO: implement backward
-		isNode = true
-		fmt.Printf("\n[STOP] ml.GetRows")
-		os.Exit(1)
+		log.Fatalf("[STOP] ml.GetRows") // TODO: implement backward
 	}
 
-	// TODO: implement non F32 return
-	//struct ggml_tensor * result = ggml_new_tensor_2d(ctx, a.type, a.ne[0], b.ne[0]);
 	result := NewTensor2D(ctx, TYPE_F32, a.NE[0], b.NE[0])
-
 	result.op = OP_GET_ROWS
-	if isNode {
+
+	if result.grad != nil {
 		result.grad = DupTensor(ctx, result)
-	} else {
-		result.grad = nil
 	}
 
-	result.src0 = a
-	result.src1 = b
+	result.src0, result.src1 = a, b
 
 	return result
 }
@@ -550,34 +544,25 @@ func RMSNormInplace(ctx *Context, a *Tensor) *Tensor {
 
 // RMSNormImpl returns the root mean square of a tensor
 // struct ggml_tensor * ggml_rms_norm_impl(
+// RMSNormImpl computes the root mean square of a tensor and returns it as a new Tensor object.
 func RMSNormImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
-	isNode := false
-
 	if !inplace && a.grad != nil {
-		////ASSERT(false); // TODO: implement backward
-		isNode = true
-		fmt.Printf("\n[STOP] ml.GetRows")
-		os.Exit(1)
+		log.Fatal("Gradient computation is not implemented yet.")
 	}
 
-	////struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
-	var result *Tensor
-	if inplace {
-		result = ViewTensor(ctx, a)
-	} else {
+	result := a
+	if !inplace {
 		result = DupTensor(ctx, a)
 	}
-
 	result.op = OP_RMS_NORM
-	result.src0 = a
 	result.src1 = nil // TODO: maybe store epsilon here?
-
-	if isNode {
-		result.grad = DupTensor(ctx, result)
-	} else {
+	if !inplace {
+		// result = View(result)
+		result = ViewTensor(ctx, result)
 		result.grad = nil
+	} else {
+		result.grad = DupTensor(ctx, result)
 	}
-
 	return result
 }
 
@@ -835,6 +820,8 @@ func Permute(ctx *Context, a *Tensor, axis0, axis1, axis2, axis3 uint32) *Tensor
 	result.NB = nb
 
 	result.op = OP_PERMUTE
+	result.PermuteDims = [MAX_DIMS]uint32{axis0, axis1, axis2, axis3}
+
 	result.src0 = a
 	result.src1 = nil // TODO: maybe store the permutation here?
 
@@ -1170,6 +1157,14 @@ func BuildBackward(ctx *Context, gf *Graph, keep bool) Graph {
 	return result
 }
 
+func (t *Tensor) Shape() []uint32 {
+	shape := make([]uint32, t.Dims)
+	for i := uint32(0); i < t.Dims; i++ {
+		shape[i] = t.NE[i]
+	}
+	return shape
+}
+
 // ComputeBackward computes the backward graph of a tensor, keeping the gradient graph
 func ComputeBackward(ctx *Context, tensor *Tensor, inplace bool) {
 
@@ -1257,7 +1252,10 @@ func ComputeBackward(ctx *Context, tensor *Tensor, inplace bool) {
 					inplace)
 		}
 	case OP_MEAN:
-		//// ASSERT(false); // TODO: implement
+		if src0.grad != nil {
+			gradMean := Mean(ctx, tensor.grad)
+			src0.grad = AddImpl(ctx, src0.grad, Repeat(ctx, gradMean, src0.grad), inplace)
+		}
 	case OP_REPEAT:
 		if src0.grad != nil {
 			src0.grad =
@@ -1298,12 +1296,42 @@ func ComputeBackward(ctx *Context, tensor *Tensor, inplace bool) {
 				inplace)
 		}
 	case OP_GELU:
-		//// ASSERT(false); // TODO: not implemented
+		if src0.grad != nil {
+			src0.grad = AddImpl(ctx,
+				src0.grad,
+				Mul(ctx,
+					GeluDerivative(ctx, src0),
+					tensor.grad),
+				inplace)
+		}
 	case OP_SILU:
-		//// ASSERT(false); // TODO: not implemented
+		if src0.grad != nil {
+			src0.grad = AddImpl(ctx,
+				src0.grad,
+				Mul(ctx,
+					SiluDerivative(ctx, src0),
+					tensor.grad),
+				inplace)
+		}
 	case OP_NORM:
+		if src0.grad != nil {
+			src0.grad = AddImpl(ctx,
+				src0.grad,
+				Mul(ctx,
+					NormDerivative(ctx, src0),
+					tensor.grad),
+				inplace)
+		}
 		//// ASSERT(false); // TODO: not implemented
 	case OP_RMS_NORM:
+		if src0.grad != nil {
+			src0.grad = AddImpl(ctx,
+				src0.grad,
+				Mul(ctx,
+					RMSNormDerivative(ctx, src0),
+					tensor.grad),
+				inplace)
+		}
 		//// ASSERT(false); // TODO: not implemented
 	case OP_MUL_MAT:
 		if src0.grad != nil {
@@ -1321,15 +1349,24 @@ func ComputeBackward(ctx *Context, tensor *Tensor, inplace bool) {
 					inplace)
 		}
 	case OP_SCALE:
-		//// ASSERT(false); // TODO: not implemented
+		if src0.grad != nil {
+			src0.grad = AddImpl(ctx, src0.grad, Mul(ctx, tensor.grad, ConstScalar(ctx, tensor.Scalar)), inplace)
+		}
 	case OP_CPY:
-		//// ASSERT(false); // TODO: not implemented
+		if src0.grad != nil {
+			src0.grad = AddImpl(ctx, src0.grad, tensor.grad, inplace)
+		}
 	case OP_RESHAPE:
-		//// ASSERT(false); // TODO: not implemented
+		if src0.grad != nil {
+			src0.grad = AddImpl(ctx, src0.grad, Reshape(ctx, tensor.grad, src0.Shape()...), inplace)
+		}
 	case OP_VIEW:
-		//// ASSERT(false); // not supported
+		fmt.Printf("\n[HALT] ComputeBackward : OP_VIEW not supported!")
+		os.Exit(1)
 	case OP_PERMUTE:
-		//// ASSERT(false); // TODO: not implemented
+		if src0.grad != nil {
+			src0.grad = AddImpl(ctx, src0.grad, Permute(ctx, tensor.grad, tensor.PermuteDims[0], tensor.PermuteDims[1], tensor.PermuteDims[2], tensor.PermuteDims[3]), inplace)
+		}
 	case OP_TRANSPOSE:
 		//// ASSERT(false); // TODO: not implemented
 	case OP_GET_ROWS:
@@ -1374,6 +1411,144 @@ type ComputeParams struct {
 	tensor *Tensor
 
 	wg *sync.WaitGroup
+}
+
+// Reshape changes the shape of the tensor
+func Reshape(ctx *Context, a *Tensor, newShape ...uint32) *Tensor {
+	if a.grad != nil {
+		// TODO: Implement backward
+		fmt.Printf("\n[STOP] Reshape error")
+		os.Exit(1)
+	}
+
+	if len(newShape) > MAX_DIMS {
+		fmt.Printf("\n[STOP] Reshape error: newShape dimensions exceed MAX_DIMS")
+		os.Exit(1)
+	}
+
+	// Calculate total number of elements in the new shape
+	newTotal := uint32(1)
+	for _, dim := range newShape {
+		newTotal *= dim
+	}
+
+	// Check if the total number of elements in the original tensor and the new shape match
+	oldTotal := uint32(1)
+	for _, dim := range a.NE {
+		oldTotal *= dim
+	}
+
+	if newTotal != oldTotal {
+		fmt.Printf("\n[STOP] Reshape error: Total number of elements in the original tensor and new shape do not match")
+		os.Exit(1)
+	}
+
+	// Create new Tensor with the updated shape
+	result := ViewTensor(ctx, a)
+	result.Dims = uint32(len(newShape))
+
+	// Copy new shape to result tensor and calculate new strides
+	for i, dim := range newShape {
+		result.NE[i] = dim
+		if i == 0 {
+			result.NB[i] = TYPE_SIZE[a.Type]
+		} else {
+			result.NB[i] = result.NB[i-1] * result.NE[i-1]
+		}
+	}
+
+	result.op = OP_RESHAPE
+	result.src0 = a
+	result.src1 = nil
+
+	if a.grad != nil {
+		result.grad = DupTensor(ctx, result)
+	} else {
+		result.grad = nil
+	}
+
+	return result
+}
+
+// GeluDerivative computes the derivative of the GELU (Gaussian Error Linear Unit) activation function
+func GeluDerivative(ctx *Context, a *Tensor) *Tensor {
+	alpha := 0.0356774
+	x := Mul(ctx, a, ConstScalar(ctx, 1.702))
+	sigmoid := Sigmoid(ctx, x)
+	term1 := Add(ctx, ConstScalar(ctx, 1), sigmoid)
+	term2 := Mul(ctx, x, sigmoid)
+	term3 := Add(ctx, term1, term2)
+	return Mul(ctx, ConstScalar(ctx, float32(alpha)), term3)
+}
+
+// SiluDerivative computes the derivative of the SiLU (Sigmoid Linear Unit) activation function
+func SiluDerivative(ctx *Context, a *Tensor) *Tensor {
+	sigmoid := Sigmoid(ctx, a)
+	silu := NewTensor(ctx, a.Type, a.Dims, a.NE[0], a.NE[1], a.NE[2], a.NE[3], nil)
+	VecSiluFP32(uint32(a.NE[0]), silu.Data, a.Data)
+	term1 := Add(ctx, sigmoid, Mul(ctx, a, sigmoid))
+	return Mul(ctx, term1, Sub(ctx, ConstScalar(ctx, 1), sigmoid))
+}
+
+// NormDerivative computes the derivative of the normalization function
+func NormDerivative(ctx *Context, a *Tensor) *Tensor {
+	norm := Norm(ctx, a)
+	return Div(ctx, a, norm)
+}
+
+// RMSNormDerivative computes the derivative of the RMS normalization function
+func RMSNormDerivative(ctx *Context, a *Tensor) *Tensor {
+	square := Square(ctx, a)
+	mean := Mean(ctx, square)
+	eps := 1e-5
+	term1 := Add(ctx, mean, ConstScalar(ctx, float32(eps)))
+	term2 := Sqrt(ctx, term1)
+	term3 := Reciprocal(ctx, term2)
+	return Mul(ctx, square, term3)
+}
+
+func ConstScalar(ctx *Context, v float32) *Tensor {
+	return NewTensor(ctx, TYPE_F32, 1, 1, 1, 1, 1, []float32{v})
+}
+
+func Square(ctx *Context, a *Tensor) *Tensor {
+	return Apply(ctx, a, Operation(OP_SQUARE))
+}
+
+func Mean(ctx *Context, a *Tensor) *Tensor {
+	return Apply(ctx, a, Operation(OP_MEAN))
+}
+
+func Sqrt(ctx *Context, a *Tensor) *Tensor {
+	return Apply(ctx, a, Operation(OP_SQRT))
+}
+
+func Reciprocal(ctx *Context, a *Tensor) *Tensor {
+	return Apply(ctx, a, Operation(OP_RECIPROCAL))
+}
+
+// Sigmoid computes the sigmoid function
+func Sigmoid(ctx *Context, a *Tensor) *Tensor {
+	return Apply(ctx, a, Operation(OP_SIGMOID))
+}
+
+// Norm computes the normalization function
+func Norm(ctx *Context, a *Tensor) *Tensor {
+	return Apply(ctx, a, Operation(OP_NORM))
+}
+
+// Operation is the type of operation
+type Operation uint8
+
+// Apply applies the operation to the tensor
+func Apply(ctx *Context, a *Tensor, op Operation) *Tensor {
+	tensor := NewTensor(ctx, a.Type, a.Dims, a.NE[0], a.NE[1], a.NE[2], a.NE[3], nil)
+	tensor.op = optype(op)
+	tensor.src0 = a
+	tensor.src1 = nil
+	// tensor.src2 = nil
+	// tensor.src3 = nil
+	return tensor
 }
 
 // Golang doesn’t have unary Bitwise NOT(~) like other programming languages
