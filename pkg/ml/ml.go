@@ -814,36 +814,30 @@ func Permute(ctx *Context, a *Tensor, axis0, axis1, axis2, axis3 uint32) *Tensor
 	return result
 }
 
-// Rope reshapes a tensor based on past, dims, and mode
+// Rope function
 func Rope(ctx *Context, a *Tensor, past, dims, mode uint32) *Tensor {
-	isNode := false
-
-	if a.grad != nil {
-		isNode = true
-		fmt.Printf("\n[STOP] Rope error")
+	// Check if the input tensor has gradients
+	isNode := a.grad != nil
+	if isNode {
+		fmt.Printf("\n[STOP] Rope error: Backward pass not implemented yet")
 		os.Exit(1)
 	}
 
-	// Determine the new shape based on past, dims, and mode
-	newShape := make([]uint32, len(a.NE))
-	copy(newShape, a.NE)
+	// Create a new tensor for the result
+	result := ViewTensor(ctx, a)
 
-	if mode == 0 {
-		newShape[2] = past + dims
-	} else {
-		newShape[2] = dims
-	}
+	// Create a 1D tensor to store past, dims, and mode
+	b := NewTensor1D(ctx, TYPE_I32, 3)
+	b.Data[0] = float32(past)
+	b.Data[1] = float32(dims)
+	b.Data[2] = float32(mode)
 
-	// Reshape the tensor
-	reshapedTensor := Reshape(ctx, a, newShape)
-
-	// Create the result tensor
-	result := ViewTensor(ctx, reshapedTensor)
-
+	// Set the operation and sources for the result tensor
 	result.op = OP_ROPE
 	result.src0 = a
-	result.src1 = nil // No need to store past, dims, and mode here, as they have been used for reshaping
+	result.src1 = b
 
+	// If the input tensor has gradients, duplicate the result tensor for the gradients
 	if isNode {
 		result.grad = DupTensor(ctx, result)
 	} else {
