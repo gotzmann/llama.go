@@ -814,31 +814,35 @@ func Permute(ctx *Context, a *Tensor, axis0, axis1, axis2, axis3 uint32) *Tensor
 	return result
 }
 
-// ggml_rope
+// Rope reshapes a tensor based on past, dims, and mode
 func Rope(ctx *Context, a *Tensor, past, dims, mode uint32) *Tensor {
-	////ASSERT(n_past >= 0);
-
 	isNode := false
 
 	if a.grad != nil {
-		////ASSERT(false); // TODO: implement backward
 		isNode = true
 		fmt.Printf("\n[STOP] Rope error")
 		os.Exit(1)
 	}
 
-	// TODO: when implement backward, fix this:
-	//struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
-	result := ViewTensor(ctx, a)
+	// Determine the new shape based on past, dims, and mode
+	newShape := make([]uint32, len(a.NE))
+	copy(newShape, a.NE)
 
-	b := NewTensor1D(ctx, TYPE_I32, 3)
-	b.Data[0] = float32(past)
-	b.Data[1] = float32(dims)
-	b.Data[2] = float32(mode)
+	if mode == 0 {
+		newShape[2] = past + dims
+	} else {
+		newShape[2] = dims
+	}
+
+	// Reshape the tensor
+	reshapedTensor := Reshape(ctx, a, newShape)
+
+	// Create the result tensor
+	result := ViewTensor(ctx, reshapedTensor)
 
 	result.op = OP_ROPE
 	result.src0 = a
-	result.src1 = b
+	result.src1 = nil // No need to store past, dims, and mode here, as they have been used for reshaping
 
 	if isNode {
 		result.grad = DupTensor(ctx, result)
