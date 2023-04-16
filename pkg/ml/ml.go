@@ -1368,7 +1368,9 @@ func ComputeBackward(ctx *Context, tensor *Tensor, inplace bool) {
 			src0.grad = AddImpl(ctx, src0.grad, Permute(ctx, tensor.grad, tensor.PermuteDims[0], tensor.PermuteDims[1], tensor.PermuteDims[2], tensor.PermuteDims[3]), inplace)
 		}
 	case OP_TRANSPOSE:
-		//// ASSERT(false); // TODO: not implemented
+		if src0.grad != nil {
+			src0.grad = AddImpl(ctx, src0.grad, Transpose(ctx, tensor.grad), inplace)
+		}
 	case OP_GET_ROWS:
 		//// ASSERT(false); // TODO: not implemented
 	case OP_DIAG_MASK_INF:
@@ -1920,12 +1922,7 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 }
 
 // ComputeForwardRMSNormFP32 computes the RMS norm of a matrix, dst = sqrt(sum(src0^2))
-// ggml_compute_forward_rms_norm_f32
 func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
-
-	////GGML_ASSERT(ggml_are_same_shape(src0, dst));
-	////GGML_ASSERT(src0->nb[0] == sizeof(float));
-
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
 	}
@@ -1933,48 +1930,29 @@ func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
 	ith := params.ith
 	nth := params.nth
 
-	ne00 := src0.NE[0]
-	ne01 := src0.NE[1]
-	ne02 := src0.NE[2]
-	ne03 := src0.NE[3]
-
-	nb01 := src0.NB[1]
-	nb02 := src0.NB[2]
-	nb03 := src0.NB[3]
-
-	nb1 := dst.NB[1]
-	nb2 := dst.NB[2]
-	nb3 := dst.NB[3]
+	ne := src0.NE
+	nb := src0.NB
+	nbDst := dst.NB
 
 	eps := 1e-5 // TODO: make this a parameter
 
-	// TODO: optimize
-	for i03 := uint32(0); i03 < ne03; i03++ {
-		for i02 := uint32(0); i02 < ne02; i02++ {
-			for i01 := uint32(ith); i01 < ne01; i01 += nth {
-
-				////const float * x = (float *) ((char *) src0->data + i01*nb01 + i02*nb02 + i03*nb03);
-				x := src0.Data[i01*nb01/4+i02*nb02/4+i03*nb03/4:]
+	// Iterate through the tensor dimensions
+	for i03 := uint32(0); i03 < ne[3]; i03++ {
+		for i02 := uint32(0); i02 < ne[2]; i02++ {
+			for i01 := uint32(ith); i01 < ne[1]; i01 += nth {
+				x := src0.Data[i01*nb[1]/4+i02*nb[2]/4+i03*nb[3]/4:]
 
 				mean := 0.0
-				// TODO Simplify to directly access [src]
-				for i00 := uint32(0); i00 < ne00; i00++ {
-					////mean += x[i00] * x[i00];
+				for i00 := uint32(0); i00 < ne[0]; i00++ {
 					mean += float64(x[i00] * x[i00])
 				}
 
-				mean /= float64(ne00)
+				mean /= float64(ne[0])
 
 				scale := float32(1.0 / math.Sqrt(mean+eps))
+				y := dst.Data[i01*nbDst[1]/4+i02*nbDst[2]/4+i03*nbDst[3]/4:]
 
-				// TODO Simplify to directly update [dst]
-				////float * y = (float *) ((char *) dst->data + i01*nb1 + i02*nb2 + i03*nb3);
-				y := dst.Data[i01*nb1/4+i02*nb2/4+i03*nb3/4:]
-
-				////memcpy(y, x, ne00 * sizeof(float));
-				//VecScaleFP32(ne00, y, float32(scale))
-
-				for i := uint32(0); i < ne00; i++ {
+				for i := uint32(0); i < ne[0]; i++ {
 					y[i] = x[i] * scale
 				}
 			}
