@@ -1971,19 +1971,9 @@ func VecScaleFP32(n uint32, y []float32, v float32) {
 // ComputeForwardRepeatFP32 repeats a matrix along the first two dimensions
 // ggml_compute_forward_repeat
 func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
-
-	////assert(params->ith == 0);
-	////assert(ggml_can_repeat(src0, dst));
-
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
 	}
-
-	// TODO: implement support for rank > 2 tensors
-	////assert(src0->ne[2] == 1);
-	////assert(src0->ne[3] == 1);
-	////assert( dst->ne[2] == 1);
-	////assert( dst->ne[3] == 1);
 
 	nc := dst.NE[0]
 	nr := dst.NE[1]
@@ -1992,22 +1982,16 @@ func ComputeForwardRepeatFP32(params *ComputeParams, src0, dst *Tensor) {
 	ncr := nc / nc0 // guaranteed to be an integer due to the check in ggml_can_repeat
 	nrr := nr / nr0 // guaranteed to be an integer due to the check in ggml_can_repeat
 
-	// TODO: support for transposed / permuted tensors
-	////assert( dst->nb[0] == sizeof(float));
-	////assert(src0->nb[0] == sizeof(float));
-
-	// TODO: maybe this is not optimal?
+	// Iterate through the tensor dimensions
 	for i := uint32(0); i < nrr; i++ {
-		for j := uint32(0); j < ncr; j++ {
-			for k := uint32(0); k < nr0; k++ {
+		for k := uint32(0); k < nr0; k++ {
+			// Calculate row offsets
+			dstRowOffset := (i*nr0 + k) * dst.NB[1] / 4
+			srcRowOffset := k * src0.NB[1] / 4
 
-				////ggml_vec_cpy_f32(nc0,
-				////(float *) ((char *)  dst->data + (i*nr0 + k)*( dst->nb[1]) + j*nc0*( dst->nb[0])),
-				////(float *) ((char *) src0->data + (        k)*(src0->nb[1])));
-
-				VecCopyFP32(nc0,
-					dst.Data[(i*nr0+k)*dst.NB[1]/4+j*nc0*dst.NB[0]/4:],
-					src0.Data[k*src0.NB[1]/4:])
+			// Repeat the row ncr times
+			for j := uint32(0); j < ncr; j++ {
+				VecCopyFP32(nc0, dst.Data[dstRowOffset+j*nc0*dst.NB[0]/4:], src0.Data[srcRowOffset:])
 			}
 		}
 	}
