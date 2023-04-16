@@ -1939,7 +1939,7 @@ func ComputeForwardRMSNormFP32(params *ComputeParams, src0, dst *Tensor) {
 	// Iterate through the tensor dimensions
 	for i03 := uint32(0); i03 < ne[3]; i03++ {
 		for i02 := uint32(0); i02 < ne[2]; i02++ {
-			for i01 := uint32(ith); i01 < ne[1]; i01 += nth {
+			for i01 := ith; i01 < ne[1]; i01 += nth {
 				x := src0.Data[i01*nb[1]/4+i02*nb[2]/4+i03*nb[3]/4:]
 
 				mean := 0.0
