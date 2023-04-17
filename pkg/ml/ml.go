@@ -1397,13 +1397,13 @@ func max(a, b int) int { // FIXME Not needed ?
 // Job is goroutine existing while the computation loop is active
 // The main purpose of the Job is to perform some part
 // of time consuming matrix multiplications
-func Job(listen <-chan *ComputeParams) {
+func Job(listen <-chan *ComputeParams, id int) {
 	//runtime.LockOSThread() // DEBUG MULTI-THREADING
 
 	//fmt.Printf("\nJOB STARTED...")
 	for params := range listen {
 
-		//fmt.Printf("\n...JOB SIGNAL")
+		//fmt.Printf("[JOB #%d]", id)
 		ComputeForwardMulMatFP32(
 			params,
 			params.tensor.src0,
@@ -1431,11 +1431,12 @@ func GraphCompute(ctx *Context, graph *Graph) {
 	// --- init N job goroutines and channel to send tasks for them
 
 	graph.Jobs = make(chan *ComputeParams, maxThreads+1) // TODO Right place to init? +1 for safety?
+	//graph.Jobs = make(chan *ComputeParams) // TODO Right place to init? +1 for safety?
 	defer close(graph.Jobs)
 
 	// TODO Investigate https://pkg.go.dev/runtime#LockOSThread
 	for i := 0; i < maxThreads; i++ {
-		go Job(graph.Jobs)
+		go Job(graph.Jobs, i)
 	}
 
 	// --- initialize tasks
@@ -2037,9 +2038,6 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	// so going to use just precomputed offset addition for every loop iteration instead of more complex arithmetic
 	// not sure yet, seems src1 should be presented in transposed column-major format before fast vector math?
 
-	useNEON := params.UseNEON && ne00 >= 8 && src0.IsContiguous() && src1.IsContiguous()
-	//useNEON = false
-
 	//fmt.Printf("ComputeForwardMulMatFP32 :: useNEON == %v", useNEON)
 
 	//if src0.NE[2] != 1 || src1.NE[2] != 1 {
@@ -2047,12 +2045,8 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	//	fmt.Printf("\nsrc0 isCont? %v | src1 isCont? %v ", src0.IsContiguous(), src1.IsContiguous())
 	//}
 
-	if useNEON {
-
-		if nb01 != ne00*4 {
-			fmt.Printf("\n nb01 != ne00 * 4")
-			os.Exit(0)
-		}
+	// Ideal case for high-performance NEON
+	if params.UseNEON && ne00 >= 8 && src0.IsContiguous() && src1.IsContiguous() {
 
 		stride := nb01 // ne00 * 4 // common dimension size [in bytes] between src0 [row] and src1 [column]
 
@@ -2086,6 +2080,7 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		//printTensor(dst, "DST NEON")
 		//os.Exit(0)
 
+		return
 	}
 
 	// DEBUG AVX2
@@ -2233,8 +2228,7 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 			src1Offet := ic*nb11 + i02*nb12 + i03*nb13
 			dstOffset := i01*nb0 + ic*nb1 + i02*nb2 + i03*nb3
 
-			useNEON = true
-			if useNEON {
+			if params.UseNEON {
 
 				src0Ptr := unsafe.Add(unsafe.Pointer(&src0.Data[0]), src0Offset)
 				src1Ptr := unsafe.Add(unsafe.Pointer(&src1.Data[0]), src1Offet)
