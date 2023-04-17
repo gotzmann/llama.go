@@ -7,53 +7,14 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/jessevdk/go-flags"
-	"github.com/mattn/go-colorable"
+	flags "github.com/jessevdk/go-flags"
+	colorable "github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
+	"github.com/pkg/profile"
 
 	"github.com/gotzmann/llama.go/pkg/llama"
 	"github.com/gotzmann/llama.go/pkg/ml"
 )
-
-type ModelParams struct {
-	seed         int
-	threadsCount int
-	predictCount uint32 // new tokens to predict
-	repeatLastN  uint32 // last n tokens to penalize
-	partsCount   int    // amount of model parts (-1 = determine from model dimensions)
-	ctxSize      uint32 // context size
-	batchSize    uint32 // batch size for prompt processing
-	keepCount    uint32
-
-	// --- sampling parameters
-
-	topK          uint32  // 40
-	topP          float32 // 0.95
-	temp          float32 // 0.80
-	repeatPenalty float32 // 1.10
-
-	model       string // model path
-	prompt      string
-	inputPrefix string // string to prefix user inputs with
-
-	antiprompt []string // string upon seeing which more user input is prompted
-
-	memoryFP16   bool // use f16 instead of f32 for memory kv
-	randomPrompt bool // do not randomize prompt if none provided
-	useColor     bool // use color to distinguish generations and inputs
-	interactive  bool // interactive mode
-
-	embedding        bool // get only sentence embedding
-	interactiveStart bool // wait for user input immediately
-
-	instruct   bool // instruction mode (used for Alpaca models)
-	ignoreEOS  bool // do not stop generating after eos
-	perplexity bool // compute perplexity over the prompt
-	use_mlock  bool // use mlock to keep model in memory
-	memTest    bool // compute maximum memory usage
-
-	verbosePrompt bool
-}
 
 func main() {
 
@@ -68,6 +29,9 @@ func main() {
 		Temp    float32 `long:"temp" description:"Model temperature hyper parameter [ 0.8 by default ]"`
 		Silent  bool    `long:"silent" description:"Hide welcome logo and other output [ show by default ]"`
 		Chat    bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
+		Profile bool    `long:"profile" description:"Profe CPU performance while running and store results to [cpu.pprof] file"`
+		UseNEON bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple / ARM machines"`
+		UseAVX2 bool    `long:"avx2" description:"Enable x64 AVX2 optimizations for Intel / AMD machines"`
 	}
 
 	_, err := flags.Parse(&opts)
@@ -75,10 +39,15 @@ func main() {
 		return
 	}
 
+	if opts.Profile {
+		defer profile.Start(profile.ProfilePath(".")).Stop()
+	}
+
 	// DEBUG
 	//opts.Threads = 1
 	if opts.Model == "" {
-		opts.Model = "C:\\models/7B/ggml-model-f32.bin"
+		//opts.Model = "C:\\models/7B/ggml-model-f32.bin"
+		opts.Model = "/Users/me/models/7B/ggml-model-f32.bin"
 	}
 	if opts.Prompt == "" {
 		opts.Prompt = "Why Golang is so popular?"
@@ -120,31 +89,36 @@ func main() {
 		os.Exit(0)
 	}
 
-	params := ModelParams{
-		model:       opts.Model,
-		interactive: opts.Chat,
+	params := llama.ModelParams{
+		Model: opts.Model,
 
-		ctxSize:      opts.Context,
-		seed:         -1,
-		threadsCount: opts.Threads,
-		predictCount: opts.Predict,
-		repeatLastN:  repeatLastN,
-		partsCount:   -1,
-		batchSize:    8,
+		MaxThreads: opts.Threads,
 
-		topK:          40,
-		topP:          0.95,
-		temp:          opts.Temp,
-		repeatPenalty: 1.10,
+		UseNEON: opts.UseNEON,
+		UseAVX2: opts.UseAVX2,
 
-		memoryFP16: true,
+		Interactive: opts.Chat,
+
+		CtxSize:      opts.Context,
+		Seed:         -1,
+		PredictCount: opts.Predict,
+		RepeatLastN:  repeatLastN,
+		PartsCount:   -1,
+		BatchSize:    8,
+
+		TopK:          40,
+		TopP:          0.95,
+		Temp:          opts.Temp,
+		RepeatPenalty: 1.10,
+
+		MemoryFP16: true,
 	}
 
 	// --- load the model
 
-	ctx, err := llama.LoadModel(params.model, opts.Silent)
+	ctx, err := llama.LoadModel(params.Model, opts.Silent)
 	if err != nil {
-		_, err := Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.model)
+		_, err := Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.Model)
 		if err != nil {
 			return
 		}
@@ -158,9 +132,9 @@ func main() {
 	var embd []uint32
 
 	// Initialize the ring buffer
-	lastNTokens := ring.New(int(params.ctxSize))
+	lastNTokens := ring.New(int(params.CtxSize))
 
-	for i := 0; i < int(params.ctxSize); i++ {
+	for i := 0; i < int(params.CtxSize); i++ {
 		lastNTokens.Value = uint32(0)
 		lastNTokens = lastNTokens.Next()
 	}
@@ -173,10 +147,10 @@ func main() {
 
 	inputNoEcho := false
 	pastCount := uint32(0)
-	remainCount := params.predictCount
+	remainCount := params.PredictCount
 	consumedCount := uint32(0)
 
-	for remainCount != 0 || params.interactive {
+	for remainCount != 0 || params.Interactive {
 
 		// --- predict
 
@@ -187,16 +161,16 @@ func main() {
 			// - take the n_keep first tokens from the original prompt (via n_past)
 			// - take half of the last (n_ctx - n_keep) tokens and recompute the logits in a batch
 
-			if pastCount+uint32(len(embd)) > params.ctxSize {
-				leftCount := pastCount - params.keepCount
-				pastCount = params.keepCount
+			if pastCount+uint32(len(embd)) > params.CtxSize {
+				leftCount := pastCount - params.KeepCount
+				pastCount = params.KeepCount
 
 				// insert n_left/2 tokens at the start of embd from last_n_tokens
 				//embd = append(lastNTokens[:leftCount/2], embd...)
 				embd = append(llama.ExtractTokens(lastNTokens.Move(-int(leftCount/2)), int(leftCount/2)), embd...)
 			}
 
-			if err := llama.Eval(ctx, embd, uint32(len(embd)), pastCount, params.threadsCount); err != nil {
+			if err := llama.Eval(ctx, embd, uint32(len(embd)), pastCount, params); err != nil {
 				fmt.Printf("\n[ERROR] Failed to eval")
 				os.Exit(1)
 			}
@@ -207,7 +181,7 @@ func main() {
 
 		if len(embdInp) <= int(consumedCount) { // && !isInteracting {
 
-			if params.ignoreEOS {
+			if params.IgnoreEOS {
 				ctx.Logits[ml.TOKEN_EOS] = 0
 			}
 
@@ -221,13 +195,13 @@ func main() {
 
 			*/
 			id := llama.SampleTopPTopK(ctx,
-				lastNTokens, params.repeatLastN,
-				params.topK, params.topP, params.temp, params.repeatPenalty)
+				lastNTokens, params.RepeatLastN,
+				params.TopK, params.TopP, params.Temp, params.RepeatPenalty)
 
 			appendToken(id)
 
 			// replace end of text token with newline token when in interactive mode
-			if id == ml.TOKEN_EOS && params.interactive && !params.instruct {
+			if id == ml.TOKEN_EOS && params.Interactive && !params.Instruct {
 				id = tokenNewline
 			}
 
@@ -260,7 +234,7 @@ func main() {
 				embd = append(embd, embdInp[consumedCount])
 				appendToken(embdInp[consumedCount])
 				consumedCount++
-				if len(embd) >= int(params.batchSize) {
+				if len(embd) >= int(params.BatchSize) {
 					break
 				}
 			}

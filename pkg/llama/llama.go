@@ -43,6 +43,50 @@ var (
 	}
 )
 
+type ModelParams struct {
+	Model  string // model path
+	Prompt string
+
+	MaxThreads int
+
+	UseNEON bool
+	UseAVX2 bool
+
+	Seed         int
+	PredictCount uint32 // new tokens to predict
+	RepeatLastN  uint32 // last n tokens to penalize
+	PartsCount   int    // amount of model parts (-1 = determine from model dimensions)
+	CtxSize      uint32 // context size
+	BatchSize    uint32 // batch size for prompt processing
+	KeepCount    uint32
+
+	// --- sampling parameters
+
+	TopK          uint32  // 40
+	TopP          float32 // 0.95
+	Temp          float32 // 0.80
+	RepeatPenalty float32 // 1.10
+
+	InputPrefix string   // string to prefix user inputs with
+	Antiprompt  []string // string upon seeing which more user input is prompted
+
+	MemoryFP16   bool // use f16 instead of f32 for memory kv
+	RandomPrompt bool // do not randomize prompt if none provided
+	UseColor     bool // use color to distinguish generations and inputs
+	Interactive  bool // interactive mode
+
+	Embedding        bool // get only sentence embedding
+	InteractiveStart bool // wait for user input immediately
+
+	Instruct   bool // instruction mode (used for Alpaca models)
+	IgnoreEOS  bool // do not stop generating after eos
+	Perplexity bool // compute perplexity over the prompt
+	UseMLock   bool // use mlock to keep model in memory
+	MemTest    bool // compute maximum memory usage
+
+	VerbosePrompt bool
+}
+
 type pair struct {
 	first  float32
 	second uint32
@@ -211,7 +255,7 @@ func Eval(
 	tokens []uint32,
 	tokensCount uint32,
 	pastCount uint32,
-	threadsCount int) error {
+	params ModelParams) error {
 
 	N := tokensCount
 	model := lctx.Model
@@ -228,7 +272,11 @@ func Eval(
 
 	// for big prompts, if BLAS is enabled, it is better to use only one thread
 	// otherwise, the threads are spin-lock waiting for the BLAS calls and are degrading the performance
-	graph := ml.Graph{ThreadsCount: threadsCount}
+	graph := &ml.Graph{
+		MaxThreads: params.MaxThreads,
+		UseNEON:    params.UseNEON,
+		UseAVX2:    params.UseAVX2,
+	}
 
 	// Convert the tokens to a []float32 slice
 	tokensFloat32 := make([]float32, len(tokens))
@@ -276,8 +324,8 @@ func Eval(
 				k := ml.View1D(ctx0, kvSelf.K, N*embdSize, embdSize*(il*ctxSize+pastCount))
 				v := ml.View1D(ctx0, kvSelf.V, N*embdSize, embdSize*(il*ctxSize+pastCount))
 
-				ml.BuildForwardExpand(&graph, ml.Copy(ctx0, Kcur, k))
-				ml.BuildForwardExpand(&graph, ml.Copy(ctx0, Vcur, v))
+				ml.BuildForwardExpand(graph, ml.Copy(ctx0, Kcur, k))
+				ml.BuildForwardExpand(graph, ml.Copy(ctx0, Vcur, v))
 			}
 
 			// Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)
@@ -408,9 +456,9 @@ func Eval(
 	// COMMENTED inpL = ggml_soft_max(ctx0, inpL);
 
 	// run the computation
-	ml.BuildForwardExpand(&graph, inpL)
+	ml.BuildForwardExpand(graph, inpL)
 
-	ml.GraphCompute(ctx0, &graph)
+	ml.GraphCompute(ctx0, graph)
 
 	// --- extract logits
 

@@ -2,11 +2,12 @@ package ml
 
 import (
 	"fmt"
-	"github.com/x448/float16"
 	"math"
 	"os"
 	"sync"
 	"unsafe"
+
+	"github.com/x448/float16"
 )
 
 const (
@@ -117,7 +118,10 @@ const (
 	OP_COUNT
 )
 
-// n-dimensional tensor
+// Tensor of up to 4x dimensions
+// The multi-dimensional tensors are stored in row-major order
+// and the array indexes are written row-first (lexicographical access order)
+
 type Tensor struct {
 	Type DType
 
@@ -703,9 +707,13 @@ func CopyInplace(ctx *Context, a, b *Tensor) *Tensor {
 
 // computation graph
 type Graph struct {
-	NodesCount   uint32
-	LeafsCount   uint32
-	ThreadsCount int
+	MaxThreads int
+
+	UseNEON bool
+	UseAVX2 bool
+
+	NodesCount uint32
+	LeafsCount uint32
 
 	Jobs chan *ComputeParams
 
@@ -1362,6 +1370,9 @@ type ComputeParams struct {
 	tensor *Tensor
 
 	wg *sync.WaitGroup
+
+	UseNEON bool
+	UseAVX2 bool
 }
 
 // Golang doesn’t have unary Bitwise NOT(~) like other programming languages
@@ -1413,11 +1424,13 @@ func Job(listen <-chan *ComputeParams) {
 
 func GraphCompute(ctx *Context, graph *Graph) {
 
-	maxThreads := graph.ThreadsCount
+	maxThreads := graph.MaxThreads
+
+	//fmt.Printf("\nGraphCompute :: maxThreads = %d", maxThreads)
 
 	// --- init N job goroutines and channel to send tasks for them
 
-	graph.Jobs = make(chan *ComputeParams, maxThreads) // TODO Right place to init?
+	graph.Jobs = make(chan *ComputeParams, maxThreads+1) // TODO Right place to init? +1 for safety?
 	defer close(graph.Jobs)
 
 	// TODO Investigate https://pkg.go.dev/runtime#LockOSThread
@@ -1510,13 +1523,13 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			fmt.Printf("\n\n### STEP #%d ### %d - %d [ %d:%d:%d:%d ]", i, node.op, node.Type, node.NE[0], node.NE[1], node.NE[2], node.NE[3])
 		}
 
-		params := ComputeParams{
+		params := &ComputeParams{
 			Type: TASK_INIT,
 			ith:  0,
 			nth:  uint32(node.TasksCount),
 		}
 
-		ComputeForward(graph, &params, node) // TASK_INIT
+		ComputeForward(graph, params, node) // TASK_INIT
 
 		// --- COMPUTE
 
@@ -1527,12 +1540,12 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		//}
 
 		params.Type = TASK_COMPUTE
-		ComputeForward(graph, &params, node)
+		ComputeForward(graph, params, node)
 
 		// --- FINALIZE
 
 		params.Type = TASK_FINALIZE
-		ComputeForward(graph, &params, node)
+		ComputeForward(graph, params, node)
 	}
 
 }
@@ -1624,18 +1637,22 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 		// Like if there dim = 8, it safe to use only 8 or less threads, not 12
 
 		maxThreads := min(int(tensor.src0.NE[0]), int(tensor.src1.NE[1]))
-		maxThreads = min(maxThreads, graph.ThreadsCount)
+		maxThreads = min(maxThreads, graph.MaxThreads)
+
+		//fmt.Printf("\nOP_MUL_MAT :: maxThreads = %d", maxThreads)
 
 		wg := new(sync.WaitGroup)
 		wg.Add(maxThreads /*graph.ThreadsCount*/)
 
 		for i := 0; i < maxThreads; /*graph.ThreadsCount*/ i++ {
 			graph.Jobs <- &ComputeParams{
-				Type:   TASK_COMPUTE,
-				ith:    uint32(i),
-				nth:    uint32(maxThreads), // uint32(graph.ThreadsCount),
-				tensor: tensor,
-				wg:     wg,
+				Type:    TASK_COMPUTE,
+				ith:     uint32(i),
+				nth:     uint32(maxThreads), // uint32(graph.ThreadsCount),
+				tensor:  tensor,
+				UseNEON: graph.UseNEON,
+				UseAVX2: graph.UseAVX2,
+				wg:      wg,
 			}
 		}
 
@@ -1926,9 +1943,9 @@ func VecAccFP32(n uint32, y, x []float32) {
 	}
 }
 
-func MulMatFP32NEON(params *ComputeParams, src0, src1, dst *Tensor) {
-	//func vdot(a, b, n, ret unsafe.Pointer)
-}
+//func MulMatFP32NEON(params *ComputeParams, src0, src1, dst *Tensor) {
+//func vdot(a, b, n, ret unsafe.Pointer)
+//}
 
 // ggml_compute_forward_mul_mat_f32
 func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
@@ -1957,19 +1974,24 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	//ne := ne0 * ne1 * ne2 * ne3
 
 	//nb00 := src0.NB[0]
-	nb01 := src0.NB[1] / 4
-	nb02 := src0.NB[2] / 4
-	nb03 := src0.NB[3] / 4
+	nb01 := src0.NB[1]
+	nb02 := src0.NB[2]
+	nb03 := src0.NB[3]
 
 	//nb10 := src1.NB[0]
-	nb11 := src1.NB[1] / 4
-	nb12 := src1.NB[2] / 4
-	nb13 := src1.NB[3] / 4
+	nb11 := src1.NB[1]
+	nb12 := src1.NB[2]
+	nb13 := src1.NB[3]
 
-	nb0 := dst.NB[0] / 4
-	nb1 := dst.NB[1] / 4
-	nb2 := dst.NB[2] / 4
-	nb3 := dst.NB[3] / 4
+	nb0 := dst.NB[0]
+	nb1 := dst.NB[1]
+	nb2 := dst.NB[2]
+	nb3 := dst.NB[3]
+
+	ne00Ptr := unsafe.Pointer(uintptr(ne00))
+	src0Data := unsafe.Pointer(&src0.Data[0])
+	src1Data := unsafe.Pointer(&src1.Data[0])
+	dstData := unsafe.Pointer(&dst.Data[0])
 
 	////assert(ne02 == ne12);
 	////assert(ne03 == ne13);
@@ -1993,59 +2015,12 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	// nb01 >= nb00 - src0 is not transposed
 	//   compute by src0 rows
 
-	/*
-		////#if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS)
-
-		////if (ggml_compute_forward_mul_mat_use_blas(src0, src1, dst)) {
-		////GGML_ASSERT(nb10 == sizeof(float));
-
-		if params.ith != 0 {
-		return
-		}
-
-		if params.Type == TASK_INIT {
-		return
-		}
-
-		if params.Type == TASK_FINALIZE {
-		return
-		}
-
-		for i03 := uint32(0); i03 < ne03; i03++ {
-		for i02 := uint32(0); i02 < ne02; i02++ {
-
-		const float * x = (float *) (src0->data);
-
-		////const float * y = (float *) ((char *) src1->data + i02*nb12 + i03*nb13);
-
-		////float * d = (float *) ((char *) dst->data + i02*nb2 + i03*nb3);
-
-		// zT = y * xT
-		////{
-		////cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
-		////ne11, ne01, ne10,
-		////1.0f,    y, ne10,
-		////         x, ne10,
-		////0.0f,    d, ne01);
-		////}
-		////}
-		////}
-
-		//printf("CBLAS F32 = %f ms, %d x %d x %d x %d\n", (ggml_perf_time_us() - t0)/1000.0, ne0, ne1, ne2, ne3);
-
-		////return;
-		////}
-		////#endif
-	*/
-
 	// TODO: do not support transposed src1
 	////assert(nb10 == sizeof(float));
 	////if nb10 == 4 {
 	////	fmt.Printf("\n[HALT] Do not support transposed src1")
 	////	os.Exit(1)
 	////}
-
-	// parallelize by src0 rows using ggml_vec_dot_f32
 
 	// total rows in src0
 	nr := ne01 * ne02 * ne03
@@ -2057,39 +2032,78 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	ir0 := dr * ith
 	ir1 := min32(ir0+dr, nr)
 
+	// DEBUG NEON
+	// want to implement a most effective code for the case of contigious 2D matrixes
+	// so going to use just precomputed offset addition for every loop iteration instead of more complex arithmetic
+	// not sure yet, seems src1 should be presented in transposed column-major format before fast vector math?
+
+	useNEON := params.UseNEON && ne00 >= 8 && src0.IsContiguous() && src1.IsContiguous()
+	//useNEON = false
+
+	//fmt.Printf("ComputeForwardMulMatFP32 :: useNEON == %v", useNEON)
+
+	//if src0.NE[2] != 1 || src1.NE[2] != 1 {
+	//	fmt.Printf("\nsrc0 %d | src1 %d ", src0.NE[2], src1.NE[2])
+	//	fmt.Printf("\nsrc0 isCont? %v | src1 isCont? %v ", src0.IsContiguous(), src1.IsContiguous())
+	//}
+
+	if useNEON {
+
+		if nb01 != ne00*4 {
+			fmt.Printf("\n nb01 != ne00 * 4")
+			os.Exit(0)
+		}
+
+		stride := nb01 // ne00 * 4 // common dimension size [in bytes] between src0 [row] and src1 [column]
+
+		// set start offsets for the current [ith] thread
+		// src0 is split between [ith..nth) threads by rows
+		// src1 is always scanned for all the columns within one thread
+
+		for ir := ir0; ir < ir1; ir++ {
+			//src0Ptr := unsafe.Add(unsafe.Pointer(&src0.Data[0]), ir * stride)
+
+			src0Ptr := unsafe.Add(src0Data, ir*stride)
+			src1Ptr := unsafe.Add(src1Data, 0)
+			dstPtr := unsafe.Add(dstData, ir*4)
+
+			for ic := uint32(0); ic < ne11; ic++ {
+				//src1Ptr := unsafe.Add(unsafe.Pointer(&src1.Data[0]), ic * stride)
+
+				//vdot(src0Ptr, src1Ptr, ne00Ptr, dstPtr)
+				vdot(src0Ptr, src1Ptr, ne00Ptr, dstPtr)
+
+				//var offset int
+				//offset = int(i01*nb01 + i02*nb02 + i03*nb03)
+				//src0Ptr = unsafe.Add(src0Ptr, srcStride)
+				src1Ptr = unsafe.Add(src1Ptr, stride)
+				//offset = int(i0*nb0 + ic*nb1 + i2*nb2 + i3*nb3)
+				dstPtr = unsafe.Add(dstPtr, stride)
+
+			}
+		}
+
+		//printTensor(dst, "DST NEON")
+		//os.Exit(0)
+
+	}
+
 	// DEBUG AVX2
 
 	//ne00Ptr := unsafe.Pointer(&ne00)
-	ne00Ptr := unsafe.Pointer(uintptr(int(ne00)))
-	src0Data := unsafe.Pointer(&src0.Data[0])
-	src1Data := unsafe.Pointer(&src1.Data[0])
-	dstData := unsafe.Pointer(&dst.Data[0])
-
-	//useAVX2 := false
-	useAVX2 := src0.IsContiguous() && src1.IsContiguous()
+	//ne00Ptr := unsafe.Pointer(uintptr(int(ne00)))
+	//src0Data := unsafe.Pointer(&src0.Data[0])
+	//src1Data := unsafe.Pointer(&src1.Data[0])
+	//dstData := unsafe.Pointer(&dst.Data[0])
 
 	for ir := uint32(ir0); ir < ir1; ir++ {
 
-		// src0 indices
+		// indices
 		i03 := ir / (ne02 * ne01)
 		i02 := (ir - i03*ne02*ne01) / ne01
 		i01 := (ir - i03*ne02*ne01 - i02*ne01)
 
-		// src1 indices
-		i13 := i03
-		i12 := i02
-		//i11 := ic
-
-		// dst indices
-		i0 := i01
-		//i1 := i11
-		i2 := i02
-		i3 := i03
-
-		// DEBUG
-		//if ne00 == 4096 && (ir == 0 || ir == 4095) {
-		//	fmt.Printf("[ %d ] ", ir)
-		//}
+		src0Offset := i01*nb01 + i02*nb02 + i03*nb03
 
 		for ic := uint32(0); ic < ne11; ic++ {
 
@@ -2100,130 +2114,167 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 			// FIXME: Experimental code for AVX2
 			// TODO: Skip for smaller tensors, like (ne0 >= 32 && ne1 >= 32 && ne10 >= 32)
-
-			if useAVX2 {
-				/*
-					ne00Ptr := unsafe.Pointer(&ne00)
-					src0Data := unsafe.Pointer(&src0.Data[0])
-					src1Data := unsafe.Pointer(&src1.Data[0])
-					dstData := unsafe.Pointer(&dst.Data[0])
-				*/
-				//dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&src0.Data))
-
-				//MulMatFP32NEON(params, src0, src1, dst)
-				//ne00Ptr := unsafe.Pointer(&ne00)
-				//ne00Ptr2 := &ne00
-				//ne00ptr := unsafe.Pointer(&ne00)
-
-				// TODO: Optimize Add() with the same pointer adding just predefined size constant
-				//src0Ptr := unsafe.Add(unsafe.Pointer(&src0.Data[0]), 4*(i01*nb01+i02*nb02+i03*nb03)) // FIXME 4
-				//                                     i01*nb01+i02*nb02+i03*nb03
-				//src0Header := (*reflect.SliceHeader)(unsafe.Pointer(&src0))
-				//src0ptr := unsafe.Pointer(src0Header.Data)
-				//src0Ptr := unsafe.Add(src0Data, 4*(i01*nb01+i02*nb02+i03*nb03)) // FIXME 4
-				//src0Ptr := unsafe.Add(src0Data, i01*nb01+i02*nb02+i03*nb03) // FIXME 4
-				var offset int
-				offset = 4 * int(i01*nb01+i02*nb02+i03*nb03)
-				src0Ptr := unsafe.Add(src0Data, offset) // FIXME 4
-
-				//src1Ptr := unsafe.Pointer(&src1.Data[ic*nb11+i12*nb12+i13*nb13])
-				//src1Ptr := unsafe.Add(unsafe.Pointer(&src1.Data[0]), 4*(ic*nb11+i12*nb12+i13*nb13))
-				//src1Header := (*reflect.SliceHeader)(unsafe.Pointer(&src1))
-				//src1ptr := unsafe.Pointer(src1Header.Data)
-				//                                     ic*nb11+i12*nb12+i13*nb13
-				//src1Ptr := unsafe.Add(src1Data, 4*(ic*nb11+i12*nb12+i13*nb13))
-				//src1Ptr := unsafe.Add(src1Data, ic*nb11+i12*nb12+i13*nb13)
-				offset = 4 * int(ic*nb11+i12*nb12+i13*nb13)
-				src1Ptr := unsafe.Add(src1Data, offset)
-
-				//dstPtr := unsafe.Pointer(&dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3])
-				//dstPtr := unsafe.Add(unsafe.Pointer(&dst.Data[0]), 4*(i0*nb0+ic*nb1+i2*nb2+i3*nb3))
-				//dstHeader := (*reflect.SliceHeader)(unsafe.Pointer(&dst))
-				//dstptr := unsafe.Pointer(dstHeader.Data)
-				//                                   i0*nb0+ic*nb1+i2*nb2+i3*nb3
-				//dstPtr := unsafe.Add(dstData, 4*(i0*nb0+ic*nb1+i2*nb2+i3*nb3))
-				//dstPtr := unsafe.Add(dstData, i0*nb0+ic*nb1+i2*nb2+i3*nb3)
-				offset = 4 * int(i0*nb0+ic*nb1+i2*nb2+i3*nb3)
-				dstPtr := unsafe.Add(dstData, offset)
-
-				// func vdot(a, b, n, ret unsafe.Pointer)
-				//fmt.Printf("\n[ AVX2 ] Starting vdot(a, b, n, ret)... ")
-				//fmt.Printf("\nne00 | %v == %v ", ne00Ptr, ne00Ptr2)
-				//fmt.Printf("\n 4*(i01*nb01+i02*nb02+i03*nb03) = %d", 4*(i01*nb01+i02*nb02+i03*nb03))
-				//fmt.Printf("\nsrc0 | %v == %v == %v == %v == %v \n",
-				//	&src0.Data[0], unsafe.Pointer(&src0.Data[0]), src0Ptr, src0Header.Data, unsafe.Pointer(src0Header.Data))
-
-				//vdot(src0ptr, src1ptr, ne00ptr, dstptr)
-				//vdot(src0Ptr, src1Ptr, ne00Ptr, dstPtr) // PANIC
-				//_mm256_dot(src0Ptr, src1Ptr, ne00Ptr, dstPtr)
-				//_mm256_dot(src0Ptr, src1Ptr, unsafe.Pointer(uintptr(int(ne00))), dstPtr)
-				_mm256_dot(src0Ptr, src1Ptr, ne00Ptr, dstPtr)
-
-				//fmt.Printf("[ AVX2 ] Finished vdot(a, b, n, ret)... ")
-
-				continue
-			}
 			/*
-				// FIXME: Experimental code for ARM NEON
-				// TODO: Skip for smaller tensors, like (ne0 >= 32 && ne1 >= 32 && ne10 >= 32)
-				USE_NEON := true
-				if USE_NEON && src0.IsContiguous() && src1.IsContiguous() {
+				if useAVX2 {
+
+					//	ne00Ptr := unsafe.Pointer(&ne00)
+					//	src0Data := unsafe.Pointer(&src0.Data[0])
+					//	src1Data := unsafe.Pointer(&src1.Data[0])
+					//	dstData := unsafe.Pointer(&dst.Data[0])
 
 					//dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&src0.Data))
 
 					//MulMatFP32NEON(params, src0, src1, dst)
-					ne00Ptr := unsafe.Pointer(&ne00)
-					ne00Ptr2 := &ne00
-					ne00ptr := unsafe.Pointer(&ne00)
+					//ne00Ptr := unsafe.Pointer(&ne00)
+					//ne00Ptr2 := &ne00
+					//ne00ptr := unsafe.Pointer(&ne00)
 
-					src0Ptr := unsafe.Add(unsafe.Pointer(&src0.Data[0]), 4*(i01*nb01+i02*nb02+i03*nb03)) // FIXME 4
-					src0Header := (*reflect.SliceHeader)(unsafe.Pointer(&src0))
-					src0ptr := unsafe.Pointer(src0Header.Data)
+					// TODO: Optimize Add() with the same pointer adding just predefined size constant
+					//src0Ptr := unsafe.Add(unsafe.Pointer(&src0.Data[0]), 4*(i01*nb01+i02*nb02+i03*nb03)) // FIXME 4
+					//                                     i01*nb01+i02*nb02+i03*nb03
+					//src0Header := (*reflect.SliceHeader)(unsafe.Pointer(&src0))
+					//src0ptr := unsafe.Pointer(src0Header.Data)
+					//src0Ptr := unsafe.Add(src0Data, 4*(i01*nb01+i02*nb02+i03*nb03)) // FIXME 4
+					//src0Ptr := unsafe.Add(src0Data, i01*nb01+i02*nb02+i03*nb03) // FIXME 4
+					var offset int
+					offset = 4 * int(i01*nb01+i02*nb02+i03*nb03)
+					src0Ptr := unsafe.Add(src0Data, offset) // FIXME 4
 
 					//src1Ptr := unsafe.Pointer(&src1.Data[ic*nb11+i12*nb12+i13*nb13])
-					src1Ptr := unsafe.Add(unsafe.Pointer(&src1.Data[0]), 4*(ic*nb11+i12*nb12+i13*nb13))
-					src1Header := (*reflect.SliceHeader)(unsafe.Pointer(&src1))
-					src1ptr := unsafe.Pointer(src1Header.Data)
+					//src1Ptr := unsafe.Add(unsafe.Pointer(&src1.Data[0]), 4*(ic*nb11+i12*nb12+i13*nb13))
+					//src1Header := (*reflect.SliceHeader)(unsafe.Pointer(&src1))
+					//src1ptr := unsafe.Pointer(src1Header.Data)
+					//                                     ic*nb11+i12*nb12+i13*nb13
+					//src1Ptr := unsafe.Add(src1Data, 4*(ic*nb11+i12*nb12+i13*nb13))
+					//src1Ptr := unsafe.Add(src1Data, ic*nb11+i12*nb12+i13*nb13)
+					offset = 4 * int(ic*nb11+i12*nb12+i13*nb13)
+					src1Ptr := unsafe.Add(src1Data, offset)
 
 					//dstPtr := unsafe.Pointer(&dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3])
-					dstPtr := unsafe.Add(unsafe.Pointer(&dst.Data[0]), 4*(i0*nb0+ic*nb1+i2*nb2+i3*nb3))
-					dstHeader := (*reflect.SliceHeader)(unsafe.Pointer(&dst))
-					dstptr := unsafe.Pointer(dstHeader.Data)
+					//dstPtr := unsafe.Add(unsafe.Pointer(&dst.Data[0]), 4*(i0*nb0+ic*nb1+i2*nb2+i3*nb3))
+					//dstHeader := (*reflect.SliceHeader)(unsafe.Pointer(&dst))
+					//dstptr := unsafe.Pointer(dstHeader.Data)
+					//                                   i0*nb0+ic*nb1+i2*nb2+i3*nb3
+					//dstPtr := unsafe.Add(dstData, 4*(i0*nb0+ic*nb1+i2*nb2+i3*nb3))
+					//dstPtr := unsafe.Add(dstData, i0*nb0+ic*nb1+i2*nb2+i3*nb3)
+					offset = 4 * int(i0*nb0+ic*nb1+i2*nb2+i3*nb3)
+					dstPtr := unsafe.Add(dstData, offset)
 
 					// func vdot(a, b, n, ret unsafe.Pointer)
-					fmt.Printf("\n[ NEON ] Starting vdot(a, b, n, ret)... ")
-					fmt.Printf("\nne00 | %v == %v ", ne00Ptr, ne00Ptr2)
-					fmt.Printf("\n 4*(i01*nb01+i02*nb02+i03*nb03) = %d", 4*(i01*nb01+i02*nb02+i03*nb03))
-					fmt.Printf("\nsrc0 | %v == %v == %v == %v == %v \n",
-						&src0.Data[0], unsafe.Pointer(&src0.Data[0]), src0Ptr, src0Header.Data, unsafe.Pointer(src0Header.Data))
+					//fmt.Printf("\n[ AVX2 ] Starting vdot(a, b, n, ret)... ")
+					//fmt.Printf("\nne00 | %v == %v ", ne00Ptr, ne00Ptr2)
+					//fmt.Printf("\n 4*(i01*nb01+i02*nb02+i03*nb03) = %d", 4*(i01*nb01+i02*nb02+i03*nb03))
+					//fmt.Printf("\nsrc0 | %v == %v == %v == %v == %v \n",
+					//	&src0.Data[0], unsafe.Pointer(&src0.Data[0]), src0Ptr, src0Header.Data, unsafe.Pointer(src0Header.Data))
 
 					//vdot(src0ptr, src1ptr, ne00ptr, dstptr)
 					//vdot(src0Ptr, src1Ptr, ne00Ptr, dstPtr) // PANIC
+					//_mm256_dot(src0Ptr, src1Ptr, ne00Ptr, dstPtr)
+					//_mm256_dot(src0Ptr, src1Ptr, unsafe.Pointer(uintptr(int(ne00))), dstPtr)
+					_mm256_dot(src0Ptr, src1Ptr, ne00Ptr, dstPtr)
 
-					fmt.Printf("[ NEON ] Finished vdot(a, b, n, ret)... ")
+					//fmt.Printf("[ AVX2 ] Finished vdot(a, b, n, ret)... ")
 
 					continue
-				}*/
+				}
+			*/
+			/*
+				// FIXME: Experimental code for ARM NEON
+				// TODO: Skip for smaller tensors, like (ne0 >= 32 && ne1 >= 32 && ne10 >= 32)
+				//USE_NEON := true
+				if useNEON {
 
+					//dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&src0.Data))
+
+					//MulMatFP32NEON(params, src0, src1, dst)
+					////ne00Ptr := unsafe.Pointer(&ne00)
+					////ne00Ptr2 := &ne00
+					////ne00ptr := unsafe.Pointer(&ne00)
+
+					////src0Ptr := unsafe.Add(unsafe.Pointer(&src0.Data[0]), 4*(i01*nb01+i02*nb02+i03*nb03)) // FIXME 4
+					////src0Header := (*reflect.SliceHeader)(unsafe.Pointer(&src0))
+					////src0ptr := unsafe.Pointer(src0Header.Data)
+					var offset int
+					offset = int(i01*nb01 + i02*nb02 + i03*nb03)
+					src0Ptr := unsafe.Add(src0Data, offset) // FIXME 4
+
+					//src1Ptr := unsafe.Pointer(&src1.Data[ic*nb11+i12*nb12+i13*nb13])
+					////src1Ptr := unsafe.Add(unsafe.Pointer(&src1.Data[0]), 4*(ic*nb11+i12*nb12+i13*nb13))
+					////src1Header := (*reflect.SliceHeader)(unsafe.Pointer(&src1))
+					////src1ptr := unsafe.Pointer(src1Header.Data)
+					offset = int(ic*nb11 + i12*nb12 + i13*nb13)
+					src1Ptr := unsafe.Add(src1Data, offset)
+
+					//dstPtr := unsafe.Pointer(&dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3])
+					////dstPtr := unsafe.Add(unsafe.Pointer(&dst.Data[0]), 4*(i0*nb0+ic*nb1+i2*nb2+i3*nb3))
+					////dstHeader := (*reflect.SliceHeader)(unsafe.Pointer(&dst))
+					////dstptr := unsafe.Pointer(dstHeader.Data)
+					offset = int(i0*nb0 + ic*nb1 + i2*nb2 + i3*nb3)
+					dstPtr := unsafe.Add(dstData, offset)
+
+					// func vdot(a, b, n, ret unsafe.Pointer)
+					////fmt.Printf("\n[ NEON ] Starting vdot(a, b, n, ret)... ")
+					////fmt.Printf("\nne00 | %v == %v ", ne00Ptr, ne00Ptr2)
+					////fmt.Printf("\n 4*(i01*nb01+i02*nb02+i03*nb03) = %d", 4*(i01*nb01+i02*nb02+i03*nb03))
+					////fmt.Printf("\nsrc0 | %v == %v == %v == %v == %v \n",
+					////	&src0.Data[0], unsafe.Pointer(&src0.Data[0]), src0Ptr, src0Header.Data, unsafe.Pointer(src0Header.Data))
+
+					//vdot(src0ptr, src1ptr, ne00ptr, dstptr)
+					//vdot(src0Ptr, src1Ptr, ne00Ptr, dstPtr) // PANIC
+					vdot(src0Ptr, src1Ptr, ne00Ptr, dstPtr)
+
+					////fmt.Printf("[ NEON ] Finished vdot(a, b, n, ret)... ")
+
+					continue
+				}
+			*/
 			// --- inline VecDotFP32
 
-			src0Ptr := src0.Data[i01*nb01+i02*nb02+i03*nb03:]
-			src1Ptr := src1.Data[ic*nb11+i12*nb12+i13*nb13:]
+			src1Offet := ic*nb11 + i02*nb12 + i03*nb13
+			dstOffset := i01*nb0 + ic*nb1 + i02*nb2 + i03*nb3
 
-			sum := float32(0.0)
-			for i := uint32(0); i < ne00; i++ {
-				sum += src0Ptr[i] * src1Ptr[i]
+			useNEON = true
+			if useNEON {
+
+				src0Ptr := unsafe.Add(unsafe.Pointer(&src0.Data[0]), src0Offset)
+				src1Ptr := unsafe.Add(unsafe.Pointer(&src1.Data[0]), src1Offet)
+				dstPtr := unsafe.Add(unsafe.Pointer(&dst.Data[0]), dstOffset)
+
+				vdot(src0Ptr, src1Ptr, ne00Ptr, dstPtr)
+
+			} else { // CPU math
+
+				src0Ptr := src0.Data[src0Offset/4:]
+				src1Ptr := src1.Data[src1Offet/4:]
+
+				sum := float32(0.0)
+				for i := uint32(0); i < ne00; i++ {
+					sum += src0Ptr[i] * src1Ptr[i]
+				}
+
+				dst.Data[dstOffset/4] = sum
 			}
 
-			dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3] = sum
 		}
 	}
+	/*
+		if src0.NE[2] == 32 && useNEON {
+			printTensor(dst, "DST CPU+NEON")
+			os.Exit(0)
+		}
 
-	//if DEBUG {
-	//fmt.Printf("\n\n>>> ComputeForwardMulMatFP32 OUT <<<\n")
-	//printTensor(dst, "DST")
-	//}
-	//os.Exit(0)
+		if src0.NE[2] == 32 && !useNEON {
+			printTensor(dst, "DST CPU")
+			os.Exit(0)
+		}
+	*/
+	if src0.NE[2] != 1 || src1.NE[2] != 1 {
+		//if DEBUG {
+		//fmt.Printf("\n\n>>> ComputeForwardMulMatFP32 OUT <<<\n")
+		//printTensor(dst, "DST CPU")
+		//}
+		//os.Exit(0)
+	}
 
 }
 
