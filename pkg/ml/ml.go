@@ -1416,7 +1416,7 @@ func Job(listen <-chan *ComputeParams, id int) {
 		//defer fmt.Printf("\nTHREAD #%d ... defer Done()", params.ith)
 		//}
 
-		//fmt.Printf("\n...JOB DONE")
+		//fmt.Printf("[END #%d]", id)
 		params.wg.Done()
 	}
 	//fmt.Printf("\nJOB FINISHED...")
@@ -1643,13 +1643,13 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 		//fmt.Printf("\nOP_MUL_MAT :: maxThreads = %d", maxThreads)
 
 		wg := new(sync.WaitGroup)
-		wg.Add(maxThreads /*graph.ThreadsCount*/)
+		wg.Add(maxThreads)
 
-		for i := 0; i < maxThreads; /*graph.ThreadsCount*/ i++ {
+		for i := 0; i < maxThreads; i++ {
 			graph.Jobs <- &ComputeParams{
 				Type:    TASK_COMPUTE,
 				ith:     uint32(i),
-				nth:     uint32(maxThreads), // uint32(graph.ThreadsCount),
+				nth:     uint32(maxThreads),
 				tensor:  tensor,
 				UseNEON: graph.UseNEON,
 				UseAVX2: graph.UseAVX2,
@@ -1753,7 +1753,7 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 		// FIXME ASAP and double check!
 		// VecCopyFP32(nc, (*dst.Data)[i*dst.NE[0]:], (*src0.Data)[uint32(r)*src0.NE[0]:])
 		// VecCopyFP32(nc, dst.Data[i*dst.NB[1]/4:], src0.Data[r*src0.NB[1]/4:])
-		VecCopyFP32(nc, dst.Data[i*dst.NE[0]:], src0.Data[r*src0.NE[0]:])
+		VecCopyFP32(nc, dst.Data[i*dst.NE[0]:], src0.Data[r*src0.NE[0]:]) // TODO copy()
 	}
 }
 
@@ -1948,15 +1948,54 @@ func VecAccFP32(n uint32, y, x []float32) {
 //func vdot(a, b, n, ret unsafe.Pointer)
 //}
 
+// TODO: Implement all the tensor asserts BEFORE the real computing
+func CheckGraph() {
+
+	// --- ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor)
+
+	////assert(ne02 == ne12);
+	////assert(ne03 == ne13);
+	////assert(ne2  == ne12);
+	////assert(ne3  == ne13);
+
+	// TODO: we don't support permuted src0
+	////assert(nb00 == sizeof(float) || nb01 == sizeof(float));
+
+	// dst cannot be transposed or permuted
+	////assert(nb0 == sizeof(float));
+	////assert(nb0 <= nb1);
+	////assert(nb1 <= nb2);
+	////assert(nb2 <= nb3);
+
+	////assert(ne0 == ne01);
+	////assert(ne1 == ne11);
+	////assert(ne2 == ne02);
+	////assert(ne3 == ne03);
+
+	// nb01 >= nb00 - src0 is not transposed
+	//   compute by src0 rows
+
+	// TODO: do not support transposed src1
+	////assert(nb10 == sizeof(float));
+	////if nb10 == 4 {
+	////	fmt.Printf("\n[HALT] Do not support transposed src1")
+	////	os.Exit(1)
+	////}
+
+}
+
 // ggml_compute_forward_mul_mat_f32
 func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
+	// TODO: This extra check is not needed
 	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
 		return
 	}
 
-	ith := params.ith
-	nth := params.nth
+	// --- Copy tensor parameters to local vars for compact fitting in CPU cache lines
+
+	//ith := params.ith
+	//nth := params.nth
 
 	ne00 := src0.NE[0]
 	ne01 := src0.NE[1]
@@ -1994,43 +2033,14 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	src1Data := unsafe.Pointer(&src1.Data[0])
 	dstData := unsafe.Pointer(&dst.Data[0])
 
-	////assert(ne02 == ne12);
-	////assert(ne03 == ne13);
-	////assert(ne2  == ne12);
-	////assert(ne3  == ne13);
-
-	// TODO: we don't support permuted src0
-	////assert(nb00 == sizeof(float) || nb01 == sizeof(float));
-
-	// dst cannot be transposed or permuted
-	////assert(nb0 == sizeof(float));
-	////assert(nb0 <= nb1);
-	////assert(nb1 <= nb2);
-	////assert(nb2 <= nb3);
-
-	////assert(ne0 == ne01);
-	////assert(ne1 == ne11);
-	////assert(ne2 == ne02);
-	////assert(ne3 == ne03);
-
-	// nb01 >= nb00 - src0 is not transposed
-	//   compute by src0 rows
-
-	// TODO: do not support transposed src1
-	////assert(nb10 == sizeof(float));
-	////if nb10 == 4 {
-	////	fmt.Printf("\n[HALT] Do not support transposed src1")
-	////	os.Exit(1)
-	////}
-
 	// total rows in src0
 	nr := ne01 * ne02 * ne03
 
 	// rows per thread
-	dr := (nr + nth - 1) / nth
+	dr := (nr + params.nth - 1) / params.nth
 
 	// row range for this thread
-	ir0 := dr * ith
+	ir0 := dr * params.ith
 	ir1 := min32(ir0+dr, nr)
 
 	// DEBUG NEON
@@ -2038,15 +2048,15 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	// so going to use just precomputed offset addition for every loop iteration instead of more complex arithmetic
 	// not sure yet, seems src1 should be presented in transposed column-major format before fast vector math?
 
-	//fmt.Printf("ComputeForwardMulMatFP32 :: useNEON == %v", useNEON)
-
-	//if src0.NE[2] != 1 || src1.NE[2] != 1 {
-	//	fmt.Printf("\nsrc0 %d | src1 %d ", src0.NE[2], src1.NE[2])
-	//	fmt.Printf("\nsrc0 isCont? %v | src1 isCont? %v ", src0.IsContiguous(), src1.IsContiguous())
-	//}
-
 	// Ideal case for high-performance NEON
-	if params.UseNEON && ne00 >= 8 && src0.IsContiguous() && src1.IsContiguous() {
+	params.UseNEON = false
+	if params.UseNEON /*&& ne00 >= 8*/ &&
+		src0.NE[2] == 1 && src0.NE[3] == 1 &&
+		src1.NE[2] == 1 && src1.NE[3] == 1 &&
+		src0.NB[1] == src0.NE[0]*4 && src1.NB[1] == src0.NE[0]*4 &&
+		src0.NB[0] == 4 && src1.NB[0] == 4 &&
+		nb01 == ne00*4 &&
+		src0.IsContiguous() && src1.IsContiguous() {
 
 		stride := nb01 // ne00 * 4 // common dimension size [in bytes] between src0 [row] and src1 [column]
 
@@ -2080,6 +2090,11 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 		//printTensor(dst, "DST NEON")
 		//os.Exit(0)
 
+		//if src0.NE[2] == 32 {
+		//	printTensor(dst, "DST NEON")
+		//	os.Exit(0)
+		//}
+
 		return
 	}
 
@@ -2091,12 +2106,20 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	//src1Data := unsafe.Pointer(&src1.Data[0])
 	//dstData := unsafe.Pointer(&dst.Data[0])
 
+	mult := ne02 * ne01
 	for ir := uint32(ir0); ir < ir1; ir++ {
 
 		// indices
-		i03 := ir / (ne02 * ne01)
-		i02 := (ir - i03*ne02*ne01) / ne01
-		i01 := (ir - i03*ne02*ne01 - i02*ne01)
+		//i03 := ir / (ne02 * ne01)
+		i03 := ir / mult
+		//i02 := (ir - i03*ne02*ne01) / ne01
+		diff := ir - i03*mult
+		//i02 := (ir - i03*mult) / ne01
+		i02 := diff / ne01
+		//i01 := (ir - i03*ne02*ne01 - i02*ne01)
+		//i01 := ir - i03*mult - i02*ne01
+		i01 := diff - i02*ne01
+		//i01 := uint32(0) // FIXME
 
 		src0Offset := i01*nb01 + i02*nb02 + i03*nb03
 
@@ -2228,11 +2251,15 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 			src1Offet := ic*nb11 + i02*nb12 + i03*nb13
 			dstOffset := i01*nb0 + ic*nb1 + i02*nb2 + i03*nb3
 
+			params.UseNEON = true
 			if params.UseNEON {
 
-				src0Ptr := unsafe.Add(unsafe.Pointer(&src0.Data[0]), src0Offset)
-				src1Ptr := unsafe.Add(unsafe.Pointer(&src1.Data[0]), src1Offet)
-				dstPtr := unsafe.Add(unsafe.Pointer(&dst.Data[0]), dstOffset)
+				//src0Ptr := unsafe.Add(unsafe.Pointer(&src0.Data[0]), src0Offset)
+				src0Ptr := unsafe.Add(src0Data, src0Offset)
+				//src1Ptr := unsafe.Add(unsafe.Pointer(&src1.Data[0]), src1Offet)
+				src1Ptr := unsafe.Add(src1Data, src1Offet)
+				//dstPtr := unsafe.Add(unsafe.Pointer(&dst.Data[0]), dstOffset)
+				dstPtr := unsafe.Add(dstData, dstOffset)
 
 				vdot(src0Ptr, src1Ptr, ne00Ptr, dstPtr)
 
@@ -2248,27 +2275,26 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 				dst.Data[dstOffset/4] = sum
 			}
-
 		}
 	}
 	/*
-		if src0.NE[2] == 32 && useNEON {
+		if src0.NE[2] == 32 && params.UseNEON {
 			printTensor(dst, "DST CPU+NEON")
 			os.Exit(0)
 		}
 
-		if src0.NE[2] == 32 && !useNEON {
+		if src0.NE[2] == 32 && !params.UseNEON {
 			printTensor(dst, "DST CPU")
 			os.Exit(0)
 		}
 	*/
-	if src0.NE[2] != 1 || src1.NE[2] != 1 {
-		//if DEBUG {
-		//fmt.Printf("\n\n>>> ComputeForwardMulMatFP32 OUT <<<\n")
-		//printTensor(dst, "DST CPU")
-		//}
-		//os.Exit(0)
-	}
+	//if src0.NE[2] != 1 || src1.NE[2] != 1 {
+	//if DEBUG {
+	//fmt.Printf("\n\n>>> ComputeForwardMulMatFP32 OUT <<<\n")
+	//printTensor(dst, "DST CPU")
+	//}
+	//os.Exit(0)
+	//}
 
 }
 

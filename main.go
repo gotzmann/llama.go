@@ -56,10 +56,10 @@ func main() {
 	prompt := " " + opts.Prompt // add a space to match LLaMA tokenizer behavior
 	final := ""                 // accumulate model output
 
-	// Allow to use ALL cores for the program itself and user-specified number for tensor math
+	// Allow to use ALL cores for the program itself and CLI specified number of cores for the parallel tensor math
 	// TODO Optimize default settings for CPUs with P and E cores like M1 Pro = 8 performant and 2 energy cores
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	if opts.Threads == 0 {
+	if opts.Threads == 0 || opts.Threads > runtime.NumCPU() {
 		opts.Threads = runtime.NumCPU()
 	}
 
