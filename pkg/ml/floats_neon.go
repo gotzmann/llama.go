@@ -19,4 +19,5 @@ func vmul_const(a, b, n unsafe.Pointer)
 func vmul_to(a, b, c, n unsafe.Pointer)
 
 //go:noescape
-func vdot(a, b, n, ret unsafe.Pointer)
+//func vdot(a, b, n, ret unsafe.Pointer)
+func vdot(a, b unsafe.Pointer, n uint64, ret unsafe.Pointer)
