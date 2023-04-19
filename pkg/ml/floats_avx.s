@@ -553,7 +553,8 @@ LBB3_18:
 	WORD $0xf8c5; BYTE $0x77 // vzeroupper
 	BYTE $0xc3               // retq
 
-TEXT ·_mm256_dot(SB), $0-32
+// TEXT ·_mm256_dot(SB), $0-32
+TEXT ·vdot(SB), $0-32
 	MOVQ a+0(FP), DI
 	MOVQ b+8(FP), SI
 	MOVQ n+16(FP), DX

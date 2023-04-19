@@ -19,4 +19,10 @@ func _mm256_mul_const(a, b, n unsafe.Pointer)
 func _mm256_mul_to(a, b, c, n unsafe.Pointer)
 
 //go:noescape
-func _mm256_dot(a, b, n, ret unsafe.Pointer)
+//func _mm256_dot(a, b, n, ret unsafe.Pointer)
+
+//go:noescape
+//func _mm256_dot(src0, src1 unsafe.Pointer, ne uint64, dst unsafe.Pointer)
+
+//go:noescape
+func vdot(src0, src1 unsafe.Pointer, ne uint64, dst unsafe.Pointer)
