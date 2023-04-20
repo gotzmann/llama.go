@@ -17,6 +17,8 @@ import (
 	"github.com/gotzmann/llama.go/pkg/ml"
 )
 
+const VERSION = "1.2.0"
+
 func main() {
 
 	// --- Parse command line args and set default parameters
@@ -119,10 +121,7 @@ func main() {
 
 	ctx, err := llama.LoadModel(params.Model, opts.Silent)
 	if err != nil {
-		_, err := Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.Model)
-		if err != nil {
-			return
-		}
+		Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.Model)
 		os.Exit(0)
 	}
 
@@ -263,18 +262,11 @@ func main() {
 				}
 
 				if len(strings.TrimSpace(final)) == len(strings.TrimSpace(prompt)) && (token != "\n") && (len(out) == 2) {
-					_, err := Colorize("\n\n[magenta]▒▒▒ [light_yellow]" + strings.TrimSpace(prompt) + "\n[light_blue]▒▒▒ ")
-					if err != nil {
-						return
-					}
+					Colorize("\n\n[magenta]▒▒▒ [light_yellow]" + strings.TrimSpace(prompt) + "\n[light_blue]▒▒▒ ")
 					continue
 				}
 
-				_, err := Colorize("[white]" + token)
-				if err != nil {
-					return
-				}
-
+				Colorize("[white]" + token)
 			}
 		}
 	}
@@ -287,7 +279,10 @@ func main() {
 	}
 	avgEval /= int64(len(evalPerformance))
 
-	Colorize("\n\n[light_magenta][ HALT ][white] Time per token: [light_cyan]%d[white] ms | Tokens per second: [light_cyan]%.2f\n\n", avgEval, float64(1000)/float64(avgEval))
+	Colorize(
+		"\n\n[light_magenta][ HALT ][white] Time per token: [light_cyan]%d[white] ms | Tokens per second: [light_cyan]%.2f\n\n",
+		avgEval,
+		float64(1000)/float64(avgEval))
 }
 
 // Colorize is a wrapper for colorstring.Color() and fmt.Fprintf()
@@ -299,13 +294,6 @@ func Colorize(format string, opts ...interface{}) (n int, err error) {
 }
 
 func showLogo() {
-	// Read the version from the 'VERSION' file
-	version, err := os.ReadFile("VERSION")
-	if err != nil {
-		fmt.Printf("[ERROR] Failed to read VERSION file")
-		os.Exit(1)
-	}
-	versionStr := strings.TrimSpace(string(version))
 
 	// https://patorjk.com/software/taag/#p=display&f=3-D&t=llama.go%0A%0ALLaMA.go
 	// Isometric 1, Modular, Rectangles, Rozzo, Small Isometric 1, 3-D
@@ -339,12 +327,9 @@ func showLogo() {
 		}
 	}
 
-	_, err = Colorize(logoColored)
-	if err != nil {
-		return
-	}
-	_, err = Colorize("\n\n   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v" + versionStr + " ] [light_blue][ LLaMA GPT in pure Golang - based on LLaMA C++ ] [magenta]▒▒▒▒\n\n")
-	if err != nil {
-		return
-	}
+	Colorize(logoColored)
+	Colorize(
+		"\n\n   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v" +
+			VERSION +
+			" ] [light_blue][ LLaMA GPT in pure Golang - based on LLaMA C++ ] [magenta]▒▒▒▒\n\n")
 }
