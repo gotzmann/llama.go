@@ -3,11 +3,6 @@ package llama
 import (
 	"container/ring"
 	"fmt"
-	"github.com/mattn/go-colorable"
-	"github.com/mitchellh/colorstring"
-	"github.com/schollz/progressbar/v3"
-	"github.com/x448/float16"
-	"golang.org/x/exp/slices"
 	"io"
 	"math"
 	"math/rand"
@@ -17,6 +12,12 @@ import (
 	"sort"
 	"time"
 	"unsafe"
+
+	"github.com/mattn/go-colorable"
+	"github.com/mitchellh/colorstring"
+	"github.com/schollz/progressbar/v3"
+	"github.com/x448/float16"
+	"golang.org/x/exp/slices"
 
 	"github.com/gotzmann/llama.go/pkg/ml"
 )
@@ -181,7 +182,7 @@ type KVCache struct {
 	N uint32 // number of tokens currently in the cache
 }
 
-// Model is the main llama model.
+// Model is the representation of any NN model (and LLaMA too).
 type Model struct {
 	Type    ModelType
 	ctx     *ml.Context
@@ -806,41 +807,67 @@ func SampleTopPTopK(
 		}
 	}
 
-	////std::discrete_distribution<> dist(probs.begin(), probs.end());
-	////int idx = dist(rng);
-	////return logits_id[idx].second;
+	// --- Hand-crafted Discrete Distribution math - do we need something better?
 
-	// --- discrete distribution
+	// Original C++ version
+	// std::discrete_distribution<> dist(probs.begin(), probs.end());
+	// int idx = dist(rng);
+	// return logits_id[idx].second;
 
 	seed := time.Now().UnixNano()
 	source := rand.NewSource(seed)
-	rng := rand.New(source)
 
-	cumulative := make([]float32, len(probs))
-	cumulative[0] = probs[0]
-	for i := 1; i < len(probs); i++ {
-		cumulative[i] = cumulative[i-1] + probs[i]
+	for i := 0; i < len(probs); i++ {
+		f := float32(source.Int63()) / (1 << 63)
+		probs[i] = probs[i] * probs[i] * f * f
 	}
 
-	target := rng.Float32() * cumulative[len(cumulative)-1]
-	idx := sort.Search(len(cumulative), func(i int) bool { return cumulative[i] >= target })
+	idx := 0
+	maxProb := probs[0]
+	for i := 1; i < len(probs); i++ {
+		if probs[i] > maxProb {
+			idx = i
+			maxProb = probs[i]
+		}
+	}
 
 	if ml.DEBUG {
-		fmt.Printf("\nidx = %d", idx)
-		fmt.Printf("\nlogitsID = %d | weight = %f", logitsID[idx].second, logitsID[idx].first)
+		fmt.Printf("\n=== PROVED === ")
+		for i := 0; i < min(8, len(probs)); i++ {
+			fmt.Printf("%.3f | ", probs[i])
+		}
+		fmt.Printf(" === idx = %d | logitsID = %d | weight = %.3f | ", idx, logitsID[idx].second, logitsID[idx].first)
 	}
+
+	/*
+		// --- experimental approach seems doesn't work right yet
+
+		rng := rand.New(source)
+
+		cumulative := make([]float32, len(probs))
+		cumulative[0] = probs[0]
+		for i := 1; i < len(probs); i++ {
+			cumulative[i] = cumulative[i-1] + probs[i]
+		}
+
+		target := rng.Float32() * cumulative[len(cumulative)-1]
+		idx := sort.Search(len(cumulative), func(i int) bool { return cumulative[i] >= target })
+
+		if ml.DEBUG {
+			fmt.Printf("\n=== EXPERIMENTAL === ")
+			for i := 0; i < min(8, len(probs)); i++ {
+				fmt.Printf("%.3f | ", probs[i])
+			}
+			fmt.Printf(" === idx = %d | logitsID = %d | weight = %.3f | ", idx, logitsID[idx].second, logitsID[idx].first)
+		}
+	*/
 
 	return logitsID[idx].second
 }
 
 // LoadModel loads a model's weights from a file
-// llama_model_load
-// see convert-pth-to-ggml.py for details on format
-func LoadModel(
-	fileName string,
-	//partsCount int,
-	silent bool,
-) (*Context, error) {
+// See convert-pth-to-ggml.py for details on format
+func LoadModel(fileName string, silent bool) (*Context, error) {
 
 	lctx := NewContext()
 
@@ -1068,17 +1095,19 @@ func LoadModel(
 
 		tensorSize := tensor.Nelements()
 
-		// Align all tensors in the file to 32 bytes
+		// --- All tensors in file are aligned for 32 bytes
+
 		alignment := int64(32)
 		offset, _ := file.Seek(0, io.SeekCurrent)
 		for ; offset%alignment != 0; offset++ {
 		}
-		_, err2 := file.Seek(offset, io.SeekStart)
-		if err2 != nil {
-			return nil, err2
+		_, err = file.Seek(offset, io.SeekStart)
+		if err != nil {
+			return nil, err
 		}
 
-		// Read tensor into memory
+		// --- Read tensor into memory
+
 		switch shardType {
 		case ml.TYPE_F16:
 			for n := uint32(0); n < tensorSize; n++ {
@@ -1125,8 +1154,7 @@ func max(a, b float32) float32 {
 	return b
 }
 
-// readInt reads an integer from the file
-// NB! INT = 32 bits
+// readInt reads 32-bit integer from the file
 func readInt(file *os.File) uint32 {
 	buf := make([]byte, 4)
 	if count, err := file.Read(buf); err != nil || count != 4 {
