@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"sync"
+	"unsafe"
 
 	"github.com/x448/float16"
 )
@@ -117,7 +118,10 @@ const (
 	OP_COUNT
 )
 
-// n-dimensional tensor
+// Tensor of up to 4x dimensions
+// The multi-dimensional tensors are stored in row-major order
+// and the array indexes are written row-first (lexicographical access order)
+
 type Tensor struct {
 	Type DType
 
@@ -703,9 +707,13 @@ func CopyInplace(ctx *Context, a, b *Tensor) *Tensor {
 
 // computation graph
 type Graph struct {
-	NodesCount   uint32
-	LeafsCount   uint32
-	ThreadsCount int
+	MaxThreads int
+
+	UseAVX  bool
+	UseNEON bool
+
+	NodesCount uint32
+	LeafsCount uint32
 
 	Jobs chan *ComputeParams
 
@@ -1362,6 +1370,9 @@ type ComputeParams struct {
 	tensor *Tensor
 
 	wg *sync.WaitGroup
+
+	UseAVX  bool
+	UseNEON bool
 }
 
 // Golang doesn’t have unary Bitwise NOT(~) like other programming languages
@@ -1386,41 +1397,40 @@ func max(a, b int) int { // FIXME Not needed ?
 // Job is goroutine existing while the computation loop is active
 // The main purpose of the Job is to perform some part
 // of time consuming matrix multiplications
-func Job(listen <-chan *ComputeParams) {
-	//fmt.Printf("\nJOB STARTED...")
+// TODO: Investigate https://pkg.go.dev/runtime#LockOSThread
+func Job(listen <-chan *ComputeParams, id int) {
+	//runtime.LockOSThread()
 	for params := range listen {
-
-		//fmt.Printf("\n...JOB SIGNAL")
 		ComputeForwardMulMatFP32(
 			params,
 			params.tensor.src0,
 			params.tensor.src1,
 			params.tensor)
-
-		// DEBUG MULTI_THREAD
-		//if params.nth > 1 {
-		//	defer params.wg.Done()
-		//defer fmt.Printf("\nTHREAD #%d ... defer Done()", params.ith)
-		//}
-
-		//fmt.Printf("\n...JOB DONE")
 		params.wg.Done()
 	}
-	//fmt.Printf("\nJOB FINISHED...")
+}
+
+// Do is an experimental alternative for always waiting Job threads
+func Do(params *ComputeParams, id int) {
+	ComputeForwardMulMatFP32(
+		params,
+		params.tensor.src0,
+		params.tensor.src1,
+		params.tensor)
+	params.wg.Done()
 }
 
 func GraphCompute(ctx *Context, graph *Graph) {
 
-	maxThreads := graph.ThreadsCount
+	maxThreads := graph.MaxThreads
 
 	// --- init N job goroutines and channel to send tasks for them
 
-	graph.Jobs = make(chan *ComputeParams, maxThreads) // TODO Right place to init?
+	graph.Jobs = make(chan *ComputeParams, maxThreads) // TODO Right place to init? +1 for safety?
 	defer close(graph.Jobs)
 
-	// TODO Investigate https://pkg.go.dev/runtime#LockOSThread
 	for i := 0; i < maxThreads; i++ {
-		go Job(graph.Jobs)
+		go Job(graph.Jobs, i)
 	}
 
 	// --- initialize tasks
@@ -1430,7 +1440,6 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		// TasksCount might be 0, 1, or ThreadsCount
 		for i := uint32(0); i < graph.NodesCount; i++ {
 
-			////struct ggml_tensor * node = cgraph->nodes[i];
 			node := graph.Nodes[i]
 
 			if DEBUG {
@@ -1508,13 +1517,13 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			fmt.Printf("\n\n### STEP #%d ### %d - %d [ %d:%d:%d:%d ]", i, node.op, node.Type, node.NE[0], node.NE[1], node.NE[2], node.NE[3])
 		}
 
-		params := ComputeParams{
+		params := &ComputeParams{
 			Type: TASK_INIT,
 			ith:  0,
 			nth:  uint32(node.TasksCount),
 		}
 
-		ComputeForward(graph, &params, node) // TASK_INIT
+		ComputeForward(graph, params, node) // TASK_INIT
 
 		// --- COMPUTE
 
@@ -1525,12 +1534,12 @@ func GraphCompute(ctx *Context, graph *Graph) {
 		//}
 
 		params.Type = TASK_COMPUTE
-		ComputeForward(graph, &params, node)
+		ComputeForward(graph, params, node)
 
 		// --- FINALIZE
 
 		params.Type = TASK_FINALIZE
-		ComputeForward(graph, &params, node)
+		ComputeForward(graph, params, node)
 	}
 
 }
@@ -1614,20 +1623,43 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 			return
 		}
 
-		//ComputeForwardMulMatFP32(params, tensor.src0, tensor.src1, tensor)
-		//return
+		// FIXME: Need better heuristic for how many threads to use there
+		// But not more than minimal dimension of tensors involved!
+		// Like if there dim = 8, it safe to use only 8 or less threads, not 12
+
+		// TODO: There might be small architectures where not reasonable to spin up
+		// all available threads, so better to limit parallelism here
+		// But that's not the case for LLMs and particularly LLaMA, thus commented
+
+		// totalRows := tensor.src0.NE[1] * tensor.src0.NE[2] * tensor.src0.NE[3]
+		// maxThreads := min(graph.MaxThreads, int(totalRows))
+
+		maxThreads := graph.MaxThreads
 
 		wg := new(sync.WaitGroup)
-		wg.Add(graph.ThreadsCount)
+		wg.Add(maxThreads)
 
-		for i := 0; i < graph.ThreadsCount; i++ {
+		for i := 0; i < maxThreads; i++ {
+
 			graph.Jobs <- &ComputeParams{
-				Type:   TASK_COMPUTE,
-				ith:    uint32(i),
-				nth:    uint32(graph.ThreadsCount),
-				tensor: tensor,
-				wg:     wg,
+				Type:    TASK_COMPUTE,
+				ith:     uint32(i),
+				nth:     uint32(maxThreads),
+				tensor:  tensor,
+				UseNEON: graph.UseNEON,
+				UseAVX:  graph.UseAVX,
+				wg:      wg,
 			}
+
+			/* go Do(&ComputeParams{
+				Type:    TASK_COMPUTE,
+				ith:     uint32(i),
+				nth:     uint32(maxThreads),
+				tensor:  tensor,
+				UseNEON: graph.UseNEON,
+				UseAVX:  graph.UseAVX,
+				wg:      wg,
+			}, i) */
 		}
 
 		wg.Wait()
@@ -1726,7 +1758,7 @@ func ComputeForwardGetRows(params *ComputeParams, src0, src1, dst *Tensor) {
 		// FIXME ASAP and double check!
 		// VecCopyFP32(nc, (*dst.Data)[i*dst.NE[0]:], (*src0.Data)[uint32(r)*src0.NE[0]:])
 		// VecCopyFP32(nc, dst.Data[i*dst.NB[1]/4:], src0.Data[r*src0.NB[1]/4:])
-		VecCopyFP32(nc, dst.Data[i*dst.NE[0]:], src0.Data[r*src0.NE[0]:])
+		VecCopyFP32(nc, dst.Data[i*dst.NE[0]:], src0.Data[r*src0.NE[0]:]) // TODO copy()
 	}
 }
 
@@ -1917,46 +1949,10 @@ func VecAccFP32(n uint32, y, x []float32) {
 	}
 }
 
-// ggml_compute_forward_mul_mat_f32
-func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
+// TODO: Implement all the tensor asserts BEFORE the real computing
+func CheckGraph() {
 
-	if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
-		return
-	}
-
-	ith := params.ith
-	nth := params.nth
-
-	ne00 := src0.NE[0]
-	ne01 := src0.NE[1]
-	ne02 := src0.NE[2]
-	ne03 := src0.NE[3]
-
-	//ne10 := src1.NE[0] // for BLAS only
-	ne11 := src1.NE[1]
-	//ne12 := src1.NE[2]
-	//ne13 := src1.NE[3]
-
-	//ne0 := dst.NE[0]
-	//ne1 := dst.NE[1]
-	//ne2 := dst.NE[2]
-	//ne3 := dst.NE[3]
-	//ne := ne0 * ne1 * ne2 * ne3
-
-	//nb00 := src0.NB[0]
-	nb01 := src0.NB[1] / 4
-	nb02 := src0.NB[2] / 4
-	nb03 := src0.NB[3] / 4
-
-	//nb10 := src1.NB[0]
-	nb11 := src1.NB[1] / 4
-	nb12 := src1.NB[2] / 4
-	nb13 := src1.NB[3] / 4
-
-	nb0 := dst.NB[0] / 4
-	nb1 := dst.NB[1] / 4
-	nb2 := dst.NB[2] / 4
-	nb3 := dst.NB[3] / 4
+	// --- ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor)
 
 	////assert(ne02 == ne12);
 	////assert(ne03 == ne13);
@@ -1980,51 +1976,6 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	// nb01 >= nb00 - src0 is not transposed
 	//   compute by src0 rows
 
-	/*
-		////#if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS)
-
-		////if (ggml_compute_forward_mul_mat_use_blas(src0, src1, dst)) {
-		////GGML_ASSERT(nb10 == sizeof(float));
-
-		if params.ith != 0 {
-		return
-		}
-
-		if params.Type == TASK_INIT {
-		return
-		}
-
-		if params.Type == TASK_FINALIZE {
-		return
-		}
-
-		for i03 := uint32(0); i03 < ne03; i03++ {
-		for i02 := uint32(0); i02 < ne02; i02++ {
-
-		const float * x = (float *) (src0->data);
-
-		////const float * y = (float *) ((char *) src1->data + i02*nb12 + i03*nb13);
-
-		////float * d = (float *) ((char *) dst->data + i02*nb2 + i03*nb3);
-
-		// zT = y * xT
-		////{
-		////cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
-		////ne11, ne01, ne10,
-		////1.0f,    y, ne10,
-		////         x, ne10,
-		////0.0f,    d, ne01);
-		////}
-		////}
-		////}
-
-		//printf("CBLAS F32 = %f ms, %d x %d x %d x %d\n", (ggml_perf_time_us() - t0)/1000.0, ne0, ne1, ne2, ne3);
-
-		////return;
-		////}
-		////#endif
-	*/
-
 	// TODO: do not support transposed src1
 	////assert(nb10 == sizeof(float));
 	////if nb10 == 4 {
@@ -2032,60 +1983,129 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	////	os.Exit(1)
 	////}
 
-	// parallelize by src0 rows using ggml_vec_dot_f32
+}
 
-	// total rows in src0
-	nr := ne01 * ne02 * ne03
+// ggml_compute_forward_mul_mat_f32
+func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
-	// rows per thread
-	dr := (nr + nth - 1) / nth
+	// This extra check is not needed (moved to control loop)
+	// if params.Type == TASK_INIT || params.Type == TASK_FINALIZE {
+	// 	return
+	// }
 
-	// row range for this thread
-	ir0 := dr * ith
-	ir1 := min32(ir0+dr, nr)
+	// TODO: Precompute some numbers like ir0..ir1 within main thread and pass them into Job threads?
+	// --- Copy tensor parameters to local vars for compact fitting in CPU cache lines
 
-	for ir := uint32(ir0); ir < ir1; ir++ {
+	ne00 := src0.NE[0]
+	ne01 := src0.NE[1]
+	ne02 := src0.NE[2]
+	ne03 := src0.NE[3]
 
-		// src0 indices
-		i03 := ir / (ne02 * ne01)
-		i02 := (ir - i03*ne02*ne01) / ne01
-		i01 := (ir - i03*ne02*ne01 - i02*ne01)
+	ne11 := src1.NE[1]
 
-		// src1 indices
-		i13 := i03
-		i12 := i02
-		//i11 := ic
+	nb01 := src0.NB[1]
+	nb02 := src0.NB[2]
+	nb03 := src0.NB[3]
 
-		// dst indices
-		i0 := i01
-		//i1 := i11
-		i2 := i02
-		i3 := i03
+	nb11 := src1.NB[1]
+	nb12 := src1.NB[2]
+	nb13 := src1.NB[3]
 
-		for ic := uint32(0); ic < ne11; ic++ {
+	nb0 := dst.NB[0]
+	nb1 := dst.NB[1]
+	nb2 := dst.NB[2]
+	nb3 := dst.NB[3]
 
-			//dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3] =
-			//	VecDotFP32(ne00,
-			//		src0.Data[i01*nb01+i02*nb02+i03*nb03:],
-			//		src1.Data[ic*nb11+i12*nb12+i13*nb13:])
+	src0Data := unsafe.Pointer(&src0.Data[0])
+	src1Data := unsafe.Pointer(&src1.Data[0])
+	dstData := unsafe.Pointer(&dst.Data[0])
 
-			// --- inline VecDotFP32
+	nr := ne01 * ne02 * ne03                 // total rows in src0
+	dr := (nr + params.nth - 1) / params.nth // rows per thread
+	ir0 := dr * params.ith                   // row range...
+	ir1 := min32(ir0+dr, nr)                 // ...for this thread
 
-			src0Ptr := src0.Data[i01*nb01+i02*nb02+i03*nb03:]
-			src1Ptr := src1.Data[ic*nb11+i12*nb12+i13*nb13:]
+	// Optimized math for x64 AVX2 and ARM NEON
+	// Works well both for 2D and 3D tensors (it's possible to remove extra math for 2D matrix)
 
-			sum := float32(0.0)
-			for i := uint32(0); i < ne00; i++ {
-				sum += src0Ptr[i] * src1Ptr[i]
+	if (params.UseAVX || params.UseNEON) && src0.IsContiguous() && src1.IsContiguous() {
+
+		srcStride := nb01 // common dimension size between src0 and src1
+		dstStride := nb1
+
+		for ir := ir0; ir < ir1; ir++ {
+
+			step3D := ir / ne01
+			stepPos := ir % ne01
+
+			src0Ptr := unsafe.Add(src0Data, ir*srcStride)
+			src1Ptr := unsafe.Add(src1Data, step3D*nb12)
+			dstPtr := unsafe.Add(dstData, step3D*nb2+stepPos*4)
+
+			for ic := uint32(0); ic < ne11; ic++ {
+				vdot(src0Ptr, src1Ptr, uint64(ne00), dstPtr)
+				src1Ptr = unsafe.Add(src1Ptr, srcStride)
+				dstPtr = unsafe.Add(dstPtr, dstStride)
 			}
+		}
 
-			dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3] = sum
+	} else {
+
+		mult := ne02 * ne01
+		for ir := ir0; ir < ir1; ir++ {
+
+			// original GGML indices math + bit optimizations
+			//i03 := ir / (ne02 * ne01)
+			i03 := ir / mult
+			//i02 := (ir - i03*ne02*ne01) / ne01
+			diff := ir - i03*mult
+			//i02 := (ir - i03*mult) / ne01
+			i02 := diff / ne01
+			//i01 := (ir - i03*ne02*ne01 - i02*ne01)
+			//i01 := ir - i03*mult - i02*ne01
+			i01 := diff - i02*ne01
+
+			src0Offset := i01*nb01 + i02*nb02 + i03*nb03
+
+			for ic := uint32(0); ic < ne11; ic++ {
+
+				//dst.Data[i0*nb0+ic*nb1+i2*nb2+i3*nb3] =
+				//	VecDotFP32(ne00,
+				//		src0.Data[i01*nb01+i02*nb02+i03*nb03:],
+				//		src1.Data[ic*nb11+i12*nb12+i13*nb13:])
+
+				// --- inline VecDotFP32
+
+				src1Offet := ic*nb11 + i02*nb12 + i03*nb13
+				dstOffset := i01*nb0 + ic*nb1 + i02*nb2 + i03*nb3
+
+				if params.UseAVX || params.UseNEON {
+
+					src0Ptr := unsafe.Add(src0Data, src0Offset)
+					src1Ptr := unsafe.Add(src1Data, src1Offet)
+					dstPtr := unsafe.Add(dstData, dstOffset)
+
+					vdot(src0Ptr, src1Ptr, uint64(ne00), dstPtr)
+
+				} else { // scalar CPU math
+
+					src0Ptr := src0.Data[src0Offset/4:]
+					src1Ptr := src1.Data[src1Offet/4:]
+
+					sum := float32(0.0)
+					for i := uint32(0); i < ne00; i++ {
+						sum += src0Ptr[i] * src1Ptr[i]
+					}
+
+					dst.Data[dstOffset/4] = sum
+				}
+			}
 		}
 	}
 
 	if DEBUG {
 		fmt.Printf("\n\n>>> ComputeForwardMulMatFP32 OUT <<<\n")
-		printTensor(dst, "DST")
+		printTensor(dst, "DST CPU")
 	}
 
 }

@@ -2,8 +2,6 @@
 
 ![](./assets/images/terminal.png?raw=true)
 
-[![Coverage](https://img.shields.io/badge/Coverage-0-red)](https://github.com/gotzmann/llama.go/actions/workflows/coverage.yml)
-
 ## The Goal
 
 We dream of a world where ML hackers are able to grok with **REALLY BIG GPT** models without having GPU clusters consuming a shit tons of **$$$** - using only machines in their own homelabs.
@@ -12,46 +10,64 @@ The code of the project is based on the legendary **[ggml.cpp](https://github.co
 
 We hope using our beloved Golang instead of *soo-powerful* but *too-low-level* language will allow much greater adoption of the **NoGPU** ideas.
 
-**NB!** The V1 supports only FP32 math, so you'll need at least 32GB RAM to work even with the smallest **LLaMA-7B** model. As a preliminary step you should have binary files converted from original LLaMA model locally.
+The V1 supports only FP32 math, so you'll need at least 32GB RAM to work even with the smallest **LLaMA-7B** model. As a preliminary step you should have binary files converted from original LLaMA model locally.
 
 ## V0 Roadmap
 
-- [x] Move FP32 tensor math from C++ to pure Golang package GoML
-- [x] Implement LLaMA neural net architecture and model loading in Golang
-- [x] Support smaller LLaMA-7B model
-- [x] Be sure Go inference works EXACT SAME way as C++ for static prompts
+- [x] Run tensor math in pure Golang based on C++ source
+- [x] Implement LLaMA neural net architecture and model loading
+- [x] Run smaller LLaMA-7B model
+- [x] Be sure Go inference works EXACT SAME way as C++
 - [x] Let Go shine! Enable multi-threading and boost performance
 
 ## V1 Roadmap
 
-- [x] Check cross-patform compatibility with Mac and Windows
+- [x] Cross-patform compatibility with Mac, Linux and Windows
 - [x] Release first stable version for ML hackers
-- [x] Support bigger LLaMA models: 13B, 30B, 60B
+- [x] Support bigger LLaMA models: 13B, 30B, 65B
+- [x] ARM NEON support on Apple Silicon (modern Macs) and ARM servers
+- [x] Performance boost with x64 AVX2 support for Intel and AMD
+- [ ] Speed-up AVX2 with memory aligned tensors
+- [ ] INT8 quantization to allow x4 bigger models fit the same memory
 - [ ] Enable interactive mode for real-time chat with GPT
 - [ ] Allow automatic download converted model weights from the Internet
 - [ ] Implement metrics for RAM and CPU usage
-- [ ] x8 performance boost with AVX2 support
-- [ ] INT8 quantization to allow x4 bigger models fit the same memory
-- [ ] Server Mode for use in clouds as part of microservice architecture
+- [ ] Server Mode for use in Clouds as part of Microservice Architecture
 
 ## V2 Roadmap
 
-- [ ] x2 performance boost with AVX512 support
-- [ ] ARM NEON support on Mac machines and ARM servers
-- [ ] FP16 and BF16 support where possible
+- [ ] Allow plugins and external APIs for complex projects
+- [ ] AVX512 support - yet another performance boost for AMD Epyc
+- [ ] FP16 and BF16 support when hardware support there
 - [ ] Support INT4 and GPTQ quantization 
 
 ## How to Run
 
 ```shell
-go run main.go --threads 8 --model ~/models/7B/ggml-model-f32.bin --temp 0.80 --context 128 --predict 128 --prompt "Why Golang is so popular?"
+go run main.go \
+    --model ~/models/7B/ggml-model-f32.bin \
+    --temp 0.80 \
+    --context 128 \
+    --predict 128 \
+    --prompt "Why Golang is so popular?"
 ```
 
-Or edit the Makefile and compile and run:
+Or build it with Makefile and then run binary.
+
+## Useful CLI parameters:
 
 ```shell
-make
-./llama --threads 8 --model ~/models/7B/ggml-model-f32.bin --temp 0.80 --context 128 --predict 128 --prompt "Why Golang is so popular?"
+--prompt   Text prompt from user to feed the model input
+--model    Path and file name of converted .bin LLaMA model
+--threads  Adjust to the number of CPU cores you want to use [ all cores by default ]
+--predict  Number of tokens to predict [ 64 by default ]
+--context  Context size in tokens [ 64 by default ]
+--temp     Model temperature hyper parameter [ 0.8 by default ]
+--silent   Hide welcome logo and other output [ show by default ]
+--chat     Chat with user in interactive mode instead of compute over static prompt
+--profile  Profe CPU performance while running and store results to [cpu.pprof] file
+--avx      Enable x64 AVX2 optimizations for Intel and AMD machines
+--neon     Enable ARM NEON optimizations for Apple Macs and ARM server
 ```
 
 ## FAQ
