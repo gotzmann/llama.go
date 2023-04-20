@@ -59,17 +59,17 @@ Or build it with Makefile and then run binary.
 ## Useful CLI parameters:
 
 ```shell
---prompt Text prompt from user to feed the model input
---model Path and file name of converted .bin LLaMA model
---threads Adjust to the number of CPU cores you want to use [ all cores by default ]
---predict Number of tokens to predict [ 64 by default ]
---context Context size in tokens [ 64 by default ]
---temp Model temperature hyper parameter [ 0.8 by default ]
---silent Hide welcome logo and other output [ show by default ]
---chat Chat with user in interactive mode instead of compute over static prompt
---profile Profe CPU performance while running and store results to [cpu.pprof] file
---avx Enable x64 AVX2 optimizations for Intel / AMD machines
---neon Enable ARM NEON optimizations for Apple / ARM machines
+--prompt   Text prompt from user to feed the model input
+--model    Path and file name of converted .bin LLaMA model
+--threads  Adjust to the number of CPU cores you want to use [ all cores by default ]
+--predict  Number of tokens to predict [ 64 by default ]
+--context  Context size in tokens [ 64 by default ]
+--temp     Model temperature hyper parameter [ 0.8 by default ]
+--silent   Hide welcome logo and other output [ show by default ]
+--chat     Chat with user in interactive mode instead of compute over static prompt
+--profile  Profe CPU performance while running and store results to [cpu.pprof] file
+--avx      Enable x64 AVX2 optimizations for Intel / AMD machines
+--neon     Enable ARM NEON optimizations for Apple / ARM machines
 ```
 
 ## FAQ
