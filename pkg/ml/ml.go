@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"runtime"
 	"sync"
 	"unsafe"
 
@@ -710,8 +709,8 @@ func CopyInplace(ctx *Context, a, b *Tensor) *Tensor {
 type Graph struct {
 	MaxThreads int
 
+	UseAVX  bool
 	UseNEON bool
-	UseAVX2 bool
 
 	NodesCount uint32
 	LeafsCount uint32
@@ -1372,8 +1371,8 @@ type ComputeParams struct {
 
 	wg *sync.WaitGroup
 
+	UseAVX  bool
 	UseNEON bool
-	UseAVX2 bool
 }
 
 // Golang doesn’t have unary Bitwise NOT(~) like other programming languages
@@ -1399,7 +1398,7 @@ func max(a, b int) int { // FIXME Not needed ?
 // The main purpose of the Job is to perform some part
 // of time consuming matrix multiplications
 func Job(listen <-chan *ComputeParams, id int) {
-	runtime.LockOSThread() // DEBUG MULTI-THREADING
+	//runtime.LockOSThread() // DEBUG MULTI-THREADING
 
 	//fmt.Printf("\nJOB STARTED...")
 	for params := range listen {
@@ -1423,6 +1422,31 @@ func Job(listen <-chan *ComputeParams, id int) {
 	//fmt.Printf("\nJOB FINISHED...")
 }
 
+func Do(params *ComputeParams, id int) {
+	//runtime.LockOSThread() // DEBUG MULTI-THREADING
+
+	//fmt.Printf("\nJOB STARTED...")
+	//for params := range listen {
+
+	//fmt.Printf("[JOB #%d]", id)
+	ComputeForwardMulMatFP32(
+		params,
+		params.tensor.src0,
+		params.tensor.src1,
+		params.tensor)
+
+	// DEBUG MULTI_THREAD
+	//if params.nth > 1 {
+	//	defer params.wg.Done()
+	//defer fmt.Printf("\nTHREAD #%d ... defer Done()", params.ith)
+	//}
+
+	//fmt.Printf("[END #%d]", id)
+	params.wg.Done()
+	//}
+	//fmt.Printf("\nJOB FINISHED...")
+}
+
 func GraphCompute(ctx *Context, graph *Graph) {
 
 	maxThreads := graph.MaxThreads
@@ -1431,7 +1455,7 @@ func GraphCompute(ctx *Context, graph *Graph) {
 
 	// --- init N job goroutines and channel to send tasks for them
 
-	graph.Jobs = make(chan *ComputeParams, maxThreads+1) // TODO Right place to init? +1 for safety?
+	graph.Jobs = make(chan *ComputeParams, maxThreads) // TODO Right place to init? +1 for safety?
 	//graph.Jobs = make(chan *ComputeParams) // TODO Right place to init? +1 for safety?
 	defer close(graph.Jobs)
 
@@ -1631,31 +1655,43 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 			return
 		}
 
-		//ComputeForwardMulMatFP32(params, tensor.src0, tensor.src1, tensor)
-		//return
-
 		// FIXME: Need better heuristic for how many threads to use there
 		// But not more than minimal dimension of tensors involved!
 		// Like if there dim = 8, it safe to use only 8 or less threads, not 12
 
-		maxThreads := min(int(tensor.src0.NE[0]), int(tensor.src1.NE[1]))
-		maxThreads = min(maxThreads, graph.MaxThreads)
+		// TODO: There might be small architectures where not reasonable to spin up
+		// all available threads, so better to limit parallelism here
+		// But that's not the case for LLMs and particularly LLaMA, thus commented
 
-		//fmt.Printf("\nOP_MUL_MAT :: maxThreads = %d", maxThreads)
+		// totalRows := tensor.src0.NE[1] * tensor.src0.NE[2] * tensor.src0.NE[3]
+		// maxThreads := min(graph.MaxThreads, int(totalRows))
+
+		maxThreads := graph.MaxThreads
 
 		wg := new(sync.WaitGroup)
 		wg.Add(maxThreads)
 
 		for i := 0; i < maxThreads; i++ {
+
 			graph.Jobs <- &ComputeParams{
 				Type:    TASK_COMPUTE,
 				ith:     uint32(i),
 				nth:     uint32(maxThreads),
 				tensor:  tensor,
 				UseNEON: graph.UseNEON,
-				UseAVX2: graph.UseAVX2,
+				UseAVX:  graph.UseAVX,
 				wg:      wg,
 			}
+
+			/* go Do(&ComputeParams{
+				Type:    TASK_COMPUTE,
+				ith:     uint32(i),
+				nth:     uint32(maxThreads),
+				tensor:  tensor,
+				UseNEON: graph.UseNEON,
+				UseAVX:  graph.UseAVX,
+				wg:      wg,
+			}, i) */
 		}
 
 		wg.Wait()
@@ -1945,10 +1981,6 @@ func VecAccFP32(n uint32, y, x []float32) {
 	}
 }
 
-//func MulMatFP32NEON(params *ComputeParams, src0, src1, dst *Tensor) {
-//func vdot(a, b, n, ret unsafe.Pointer)
-//}
-
 // TODO: Implement all the tensor asserts BEFORE the real computing
 func CheckGraph() {
 
@@ -2045,8 +2077,8 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 
 	// Optimized math for x64 AVX2 and ARM NEON
 	// Works well both for 2D and 3D tensors (it's possible to remove extra math for 2D matrix)
-	//params.UseNEON = true
-	if (params.UseAVX2 || params.UseNEON) && src0.IsContiguous() && src1.IsContiguous() {
+
+	if (params.UseAVX || params.UseNEON) && src0.IsContiguous() && src1.IsContiguous() {
 
 		srcStride := nb01 // common dimension size between src0 and src1
 		dstStride := nb1
@@ -2060,52 +2092,14 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 			src1Ptr := unsafe.Add(src1Data, step3D*nb12)
 			dstPtr := unsafe.Add(dstData, step3D*nb2+stepPos*4)
 
-			if src0.NE[0] == 8 && ir == 4095 {
-				//	fmt.Printf("HLT")
-			}
-
 			for ic := uint32(0); ic < ne11; ic++ {
-				//if params.UseAVX2 {
-				//	_mm256_dot(src0Ptr, src1Ptr, uint64(ne00), dstPtr)
-				//} else if params.UseNEON {
-				//  vdot(src0Ptr, src1Ptr, uint64(ne00), dstPtr)
-				//}
 				vdot(src0Ptr, src1Ptr, uint64(ne00), dstPtr)
 				src1Ptr = unsafe.Add(src1Ptr, srcStride)
 				dstPtr = unsafe.Add(dstPtr, dstStride)
 			}
 		}
 
-		//if src0.NE[0] == 8 {
-		//	printTensor(dst, "DST NEON")
-		//	os.Exit(0)
-		//}
-
-		//printTensor(dst, "DST NEON")
-		//os.Exit(0)
-
-		//if src0.NE[2] == 32 {
-		//	printTensor(dst, "DST NEON")
-		//	os.Exit(0)
-		//}
-
 		return
-	}
-
-	// DEBUG AVX2
-
-	//ne00Ptr := unsafe.Pointer(&ne00)
-	//ne00Ptr := unsafe.Pointer(uintptr(int(ne00)))
-	//src0Data := unsafe.Pointer(&src0.Data[0])
-	//src1Data := unsafe.Pointer(&src1.Data[0])
-	//dstData := unsafe.Pointer(&dst.Data[0])
-
-	//if ne01 == 128 || ne01 == 11008 {
-	//	fmt.Print("HLT")
-	//}
-
-	if src0.NE[0] == 8 {
-		fmt.Printf("HLT")
 	}
 
 	mult := ne02 * ne01
@@ -2252,8 +2246,8 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 			src1Offet := ic*nb11 + i02*nb12 + i03*nb13
 			dstOffset := i01*nb0 + ic*nb1 + i02*nb2 + i03*nb3
 
-			params.UseNEON = true
-			if params.UseAVX2 || params.UseNEON {
+			//params.UseNEON = true
+			if params.UseAVX || params.UseNEON {
 
 				src0Ptr := unsafe.Add(src0Data, src0Offset)
 				src1Ptr := unsafe.Add(src1Data, src1Offet)
@@ -2280,11 +2274,11 @@ func ComputeForwardMulMatFP32(params *ComputeParams, src0, src1, dst *Tensor) {
 	//	fmt.Printf("HALT")
 	//}
 
-	if src0.NE[0] == 8 {
-		fmt.Printf("\nsrc0 contiguous = %v | src1 contiguous = %v", src0.IsContiguous(), src1.IsContiguous())
-		printTensor(dst, "DST NEON+CPU")
-		os.Exit(0)
-	}
+	//if src0.NE[0] == 8 {
+	//	fmt.Printf("\nsrc0 contiguous = %v | src1 contiguous = %v", src0.IsContiguous(), src1.IsContiguous())
+	//	printTensor(dst, "DST NEON+CPU")
+	//	os.Exit(0)
+	//}
 
 	/*
 		if src0.NE[2] == 32 && params.UseNEON {

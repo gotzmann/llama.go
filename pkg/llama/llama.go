@@ -49,8 +49,8 @@ type ModelParams struct {
 
 	MaxThreads int
 
+	UseAVX  bool
 	UseNEON bool
-	UseAVX2 bool
 
 	Seed         int
 	PredictCount uint32 // new tokens to predict
@@ -275,7 +275,7 @@ func Eval(
 	graph := &ml.Graph{
 		MaxThreads: params.MaxThreads,
 		UseNEON:    params.UseNEON,
-		UseAVX2:    params.UseAVX2,
+		UseAVX:     params.UseAVX,
 	}
 
 	// Convert the tokens to a []float32 slice

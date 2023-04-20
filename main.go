@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 
 	flags "github.com/jessevdk/go-flags"
 	colorable "github.com/mattn/go-colorable"
@@ -30,8 +31,8 @@ func main() {
 		Silent  bool    `long:"silent" description:"Hide welcome logo and other output [ show by default ]"`
 		Chat    bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
 		Profile bool    `long:"profile" description:"Profe CPU performance while running and store results to [cpu.pprof] file"`
+		UseAVX  bool    `long:"avx" description:"Enable x64 AVX2 optimizations for Intel / AMD machines"`
 		UseNEON bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple / ARM machines"`
-		UseAVX2 bool    `long:"avx2" description:"Enable x64 AVX2 optimizations for Intel / AMD machines"`
 	}
 
 	_, err := flags.Parse(&opts)
@@ -44,7 +45,7 @@ func main() {
 	}
 
 	// DEBUG
-	opts.Threads = 1
+	//opts.Threads = 1
 	if opts.Model == "" {
 		//opts.Model = "C:\\models/7B/ggml-model-f32.bin"
 		opts.Model = "/Users/me/models/7B/ggml-model-f32.bin"
@@ -58,17 +59,17 @@ func main() {
 
 	// Allow to use ALL cores for the program itself and CLI specified number of cores for the parallel tensor math
 	// TODO Optimize default settings for CPUs with P and E cores like M1 Pro = 8 performant and 2 energy cores
-	runtime.GOMAXPROCS(runtime.NumCPU())
-	if opts.Threads == 0 || opts.Threads > runtime.NumCPU() {
+	// runtime.GOMAXPROCS(runtime.NumCPU())
+	if opts.Threads == 0 {
 		opts.Threads = runtime.NumCPU()
 	}
 
 	if opts.Context == 0 {
-		opts.Context = 512
+		opts.Context = 64
 	}
 
 	if opts.Predict == 0 {
-		opts.Predict = 128
+		opts.Predict = 64
 	}
 
 	if opts.Temp == 0 {
@@ -94,8 +95,8 @@ func main() {
 
 		MaxThreads: opts.Threads,
 
+		UseAVX:  opts.UseAVX,
 		UseNEON: opts.UseNEON,
-		UseAVX2: opts.UseAVX2,
 
 		Interactive: opts.Chat,
 
@@ -149,6 +150,7 @@ func main() {
 	pastCount := uint32(0)
 	remainCount := params.PredictCount
 	consumedCount := uint32(0)
+	evalPerformance := make([]int64, 0, opts.Predict)
 
 	for remainCount != 0 || params.Interactive {
 
@@ -170,10 +172,12 @@ func main() {
 				embd = append(llama.ExtractTokens(lastNTokens.Move(-int(leftCount/2)), int(leftCount/2)), embd...)
 			}
 
+			start := time.Now().UnixNano()
 			if err := llama.Eval(ctx, embd, uint32(len(embd)), pastCount, params); err != nil {
 				fmt.Printf("\n[ERROR] Failed to eval")
 				os.Exit(1)
 			}
+			evalPerformance = append(evalPerformance, time.Now().UnixNano()-start)
 		}
 
 		pastCount += uint32(len(embd))
@@ -274,6 +278,16 @@ func main() {
 			}
 		}
 	}
+
+	Colorize("\n\n=== TOKEN EVAL TIMINGS ===\n\n")
+	avgEval := int64(0)
+	for _, time := range evalPerformance {
+		avgEval += time / 1_000_000
+		Colorize("%d | ", time/1_000_000)
+	}
+	avgEval /= int64(len(evalPerformance))
+
+	Colorize("\n\n[light_magenta][ HALT ][white] Time per token: [light_cyan]%d[white] ms | Tokens per second: [light_cyan]%.2f\n\n", avgEval, float64(1000)/float64(avgEval))
 }
 
 // Colorize is a wrapper for colorstring.Color() and fmt.Fprintf()
