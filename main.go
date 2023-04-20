@@ -46,16 +46,6 @@ func main() {
 		defer profile.Start(profile.ProfilePath(".")).Stop()
 	}
 
-	// DEBUG
-	//opts.Threads = 1
-	if opts.Model == "" {
-		//opts.Model = "C:\\models/7B/ggml-model-f32.bin"
-		opts.Model = "/Users/me/models/7B/ggml-model-f32.bin"
-	}
-	if opts.Prompt == "" {
-		opts.Prompt = "Why Golang is so popular?"
-	}
-
 	prompt := " " + opts.Prompt // add a space to match LLaMA tokenizer behavior
 	final := ""                 // accumulate model output
 
@@ -271,11 +261,16 @@ func main() {
 		}
 	}
 
-	Colorize("\n\n=== TOKEN EVAL TIMINGS ===\n\n")
+	if ml.DEBUG {
+		Colorize("\n\n=== TOKEN EVAL TIMINGS ===\n\n")
+		for _, time := range evalPerformance {
+			Colorize("%d | ", time/1_000_000)
+		}
+	}
+
 	avgEval := int64(0)
 	for _, time := range evalPerformance {
 		avgEval += time / 1_000_000
-		Colorize("%d | ", time/1_000_000)
 	}
 	avgEval /= int64(len(evalPerformance))
 
