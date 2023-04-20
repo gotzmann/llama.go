@@ -3,6 +3,11 @@ package llama
 import (
 	"container/ring"
 	"fmt"
+	"github.com/mattn/go-colorable"
+	"github.com/mitchellh/colorstring"
+	"github.com/schollz/progressbar/v3"
+	"github.com/x448/float16"
+	"golang.org/x/exp/slices"
 	"io"
 	"math"
 	"math/rand"
@@ -12,12 +17,6 @@ import (
 	"sort"
 	"time"
 	"unsafe"
-
-	"github.com/mattn/go-colorable"
-	"github.com/mitchellh/colorstring"
-	"github.com/schollz/progressbar/v3"
-	"github.com/x448/float16"
-	"golang.org/x/exp/slices"
 
 	"github.com/gotzmann/llama.go/pkg/ml"
 )
@@ -87,11 +86,13 @@ type ModelParams struct {
 	VerbosePrompt bool
 }
 
+// pair is a C++ inspired struct
 type pair struct {
 	first  float32
 	second uint32
 }
 
+// Context is the context of the model.
 type Context struct {
 	Model *Model
 	Vocab *ml.Vocab
@@ -104,6 +105,7 @@ type Context struct {
 	Embedding []float32
 }
 
+// NewContext creates a new context.
 func NewContext() *Context {
 	return &Context{
 		Model:     NewModel(),
@@ -113,6 +115,7 @@ func NewContext() *Context {
 	}
 }
 
+// ContextParams are the parameters for the context.
 // struct llama_context_params {
 type ContextParams struct {
 	CtxSize    uint32 // text context
@@ -124,6 +127,7 @@ type ContextParams struct {
 	Embedding  bool   // embedding mode only
 }
 
+// Layer is a single layer of the model.
 type Layer struct {
 
 	// normalization
@@ -144,6 +148,7 @@ type Layer struct {
 	w3 *ml.Tensor
 }
 
+// HParams are the hyperparameters of the model.
 // default hparams (LLaMA 7B)
 type HParams struct {
 	ctxSize     uint32 // 512
@@ -156,6 +161,7 @@ type HParams struct {
 	f16         uint32 // 1
 }
 
+// ModelType is the type of the model.
 type ModelType uint8
 
 // available llama models
@@ -167,6 +173,7 @@ const (
 	MODEL_65B
 )
 
+// KVCache is a key-value cache for the self attention.
 type KVCache struct {
 	K *ml.Tensor
 	V *ml.Tensor
@@ -174,6 +181,7 @@ type KVCache struct {
 	N uint32 // number of tokens currently in the cache
 }
 
+// Model is the main llama model.
 type Model struct {
 	Type    ModelType
 	ctx     *ml.Context
@@ -190,6 +198,7 @@ type Model struct {
 	tensors     map[string]*ml.Tensor
 }
 
+// NewModel creates a new model with default hyperparameters.
 func NewModel() *Model {
 	return &Model{
 		hparams: HParams{
@@ -211,6 +220,7 @@ func NewModel() *Model {
 	}
 }
 
+// min returns the minimum of a and b.
 func min(a, b int) int {
 	if a <= b {
 		return a
@@ -241,16 +251,13 @@ func ResizeInplace(slice *[]float32, size int) {
 	}
 }
 
-// evaluate the transformer
+// Eval evaluates the transformer
 //
 //   - lctx:      llama context
 //   - tokens:    new batch of tokens to process
 //   - n_past:    the context size so far
 //   - n_threads: number of threads to use
-//
-
 func Eval(
-
 	lctx *Context,
 	tokens []uint32,
 	tokensCount uint32,
@@ -514,6 +521,7 @@ func Eval(
 	return nil
 }
 
+// printTensor prints a tensor
 func printTensor(tensor *ml.Tensor, name string) {
 	var dt string
 	if tensor.Type == ml.TYPE_F16 {
@@ -576,13 +584,11 @@ func sampleTopK(logitsID []pair, topK uint32) []pair {
 	return ret
 }
 
+// SampleTopPTopK samples next token given probabilities for each embedding
 // llama_sample_top_p_top_k
-// sample next token given probabilities for each embedding
-//
 //   - consider only the top K tokens
 //   - from them, consider only the top tokens with cumulative probability > P
 //
-
 // std::mt19937 = A Mersenne Twister pseudo-random generator of 32-bit numbers with a state size of 19937 bits.
 func SampleTopPTopK(
 	lctx *Context,
@@ -729,22 +735,16 @@ func SampleTopPTopK(
 		}
 	}
 
-	// FIXME Why loop? We've already SORTED logitsID and the MAX is just the FIRST element
-	////double maxl = -INFINITY;
-	maxl := float32(math.Inf(-1))
-	for _, kv := range logitsID {
-		//// maxl = std::max(maxl, kv.first);
-		maxl = max(maxl, kv.first)
-	}
+	// Since logitsID is already sorted, the max value is the first element
+	maxl := logitsID[0].first
 
-	// compute probs for the top k tokens
-	////probs.reserve(logits_id.size());
-	probs := make([]float32, 0, len(logitsID)) // FIXME LEN vs CAP
+	// Compute probabilities for the top k tokens
+	probs := make([]float32, len(logitsID))
 
-	sum := float64(0.0)
-	for _, kv := range logitsID {
+	sum := 0.0
+	for i, kv := range logitsID {
 		p := math.Exp(float64(kv.first - maxl))
-		probs = append(probs, float32(p))
+		probs[i] = float32(p)
 		sum += p
 	}
 
@@ -811,24 +811,19 @@ func SampleTopPTopK(
 	////return logits_id[idx].second;
 
 	// --- discrete distribution
-	//     TODO Do we need something better than hand-crafted math here?
 
 	seed := time.Now().UnixNano()
 	source := rand.NewSource(seed)
+	rng := rand.New(source)
 
-	for i := 0; i < len(probs); i++ {
-		f := float32(source.Int63()) / (1 << 63)
-		probs[i] = probs[i] * probs[i] * f * f
-	}
-
-	idx := 0
-	maxProb := probs[0]
+	cumulative := make([]float32, len(probs))
+	cumulative[0] = probs[0]
 	for i := 1; i < len(probs); i++ {
-		if probs[i] > maxProb {
-			idx = i
-			maxProb = probs[i]
-		}
+		cumulative[i] = cumulative[i-1] + probs[i]
 	}
+
+	target := rng.Float32() * cumulative[len(cumulative)-1]
+	idx := sort.Search(len(cumulative), func(i int) bool { return cumulative[i] >= target })
 
 	if ml.DEBUG {
 		fmt.Printf("\nidx = %d", idx)
@@ -838,10 +833,9 @@ func SampleTopPTopK(
 	return logitsID[idx].second
 }
 
+// LoadModel loads a model's weights from a file
 // llama_model_load
-// load the model's weights from a file
 // see convert-pth-to-ggml.py for details on format
-
 func LoadModel(
 	fileName string,
 	//partsCount int,
@@ -1039,10 +1033,8 @@ func LoadModel(
 		}))
 
 	// --- load weights
-
 	var tensorsCount uint32
 	for {
-
 		dims := readInt(file)
 		if dims < 1 || dims > 2 { // TODO Check for EOF
 			break
@@ -1059,7 +1051,8 @@ func LoadModel(
 		}
 
 		name := readString(file, nameLength)
-		if _, ok := model.tensors[name]; !ok {
+		tensor, ok := model.tensors[name]
+		if !ok {
 			fmt.Printf("\n[ERROR] Unknown tensor '%s' in model file", name)
 			os.Exit(1)
 		}
@@ -1073,58 +1066,39 @@ func LoadModel(
 			fmt.Printf("\n=== LAYER #%d === %s | %s | %s ===", tensorsCount, typeStr, name, memStr)
 		}
 
-		/* The latest GGJT format is always ONE-PART-NO-SPLIT-TENSORS binary file, so the parsing is really streamlined
-
-		    partsCount := LLAMA_N_PARTS[embdSize]
-			splitType := SPLIT_NONE
-			if partsCount > 1 && dims > 1 {
-				splitType = SPLIT_BY_COLUMNS
-				if strings.Contains(name, "output") {
-					splitType = SPLIT_NONE
-				} else if strings.Contains(name, "layers") &&
-					!strings.Contains(name, "attention.wo.weight") &&
-					!strings.Contains(name, "feed_forward.w2.weight") {
-					splitType = SPLIT_NONE
-				}
-			}
-		*/
-
-		tensor := model.tensors[name]
 		tensorSize := tensor.Nelements()
 
-		// --- all tensors in file are aligned for 32 bytes
-
+		// Align all tensors in the file to 32 bytes
 		alignment := int64(32)
 		offset, _ := file.Seek(0, io.SeekCurrent)
 		for ; offset%alignment != 0; offset++ {
 		}
-		file.Seek(offset, io.SeekStart)
+		_, err2 := file.Seek(offset, io.SeekStart)
+		if err2 != nil {
+			return nil, err2
+		}
 
-		// --- read tensor into memory
-
-		if shardType == ml.TYPE_F16 {
-			// FIXME Single-dimension tensors always presented as FP32
-			// after conversion from PyTorch even for FP16 models
+		// Read tensor into memory
+		switch shardType {
+		case ml.TYPE_F16:
 			for n := uint32(0); n < tensorSize; n++ {
 				tensor.Data[n] = readFP16ToFP32(file)
 			}
-		} else if shardType == ml.TYPE_F32 {
+		case ml.TYPE_F32:
 			var fake []byte
 			fakeHeader := (*reflect.SliceHeader)(unsafe.Pointer(&fake))
-			// NB! unsafe.Pointer(tensor.Data) for *Data VS unsafe.Pointer(&tensor.Data) for Data
 			dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&tensor.Data))
 
 			fakeHeader.Data = dataHeader.Data
 			fakeHeader.Len = int(tensorSize * 4)
 			fakeHeader.Cap = int(tensorSize * 4)
 
-			//fmt.Printf("\n== FAKE []BYTE LEN = %d", len(fake))
 			if count, err := io.ReadFull(file, fake); err != nil || count != int(tensorSize*4) {
 				fmt.Printf("\n[ERROR] Failed to read BIG FP32 chunk from model!")
 				fmt.Printf("\n[ERROR] COUNT = %d | ERR = %s", count, err.Error())
 				os.Exit(1)
 			}
-		} else {
+		default:
 			fmt.Printf("\n[ERROR] Tensor data type is not supported yet!")
 			os.Exit(0)
 		}
@@ -1143,6 +1117,7 @@ func LoadModel(
 	return lctx, nil
 }
 
+// max returns the maximum of two float32 values
 func max(a, b float32) float32 {
 	if a >= b {
 		return a
@@ -1150,6 +1125,7 @@ func max(a, b float32) float32 {
 	return b
 }
 
+// readInt reads an integer from the file
 // NB! INT = 32 bits
 func readInt(file *os.File) uint32 {
 	buf := make([]byte, 4)
@@ -1159,6 +1135,7 @@ func readInt(file *os.File) uint32 {
 	return uint32(buf[3])<<24 | uint32(buf[2])<<16 | uint32(buf[1])<<8 | uint32(buf[0])
 }
 
+// readString reads a string from the file
 func readString(file *os.File, len uint32) string {
 	buf := make([]byte, len)
 	if count, err := file.Read(buf); err != nil || count != int(len) {
@@ -1167,6 +1144,7 @@ func readString(file *os.File, len uint32) string {
 	return string(buf)
 }
 
+// readFP16ToFP32 reads a 16-bit float from the file and converts it to 32-bit
 func readFP16ToFP32(file *os.File) float32 {
 	buf := make([]byte, 2)
 	if count, err := file.Read(buf); err != nil || count != 2 {
@@ -1177,6 +1155,7 @@ func readFP16ToFP32(file *os.File) float32 {
 	return f16.Float32()
 }
 
+// readFP32 reads a 32-bit float from the file
 func readFP32(file *os.File) float32 {
 	buf := make([]byte, 4)
 	if count, err := file.Read(buf); err != nil || count != 4 {
@@ -1196,6 +1175,7 @@ func ExtractTokens(r *ring.Ring, count int) []uint32 {
 	return tokens
 }
 
+// Colorize is a function to print colored text to the console
 func Colorize(format string, opts ...interface{}) (n int, err error) {
 	var DefaultOutput = colorable.NewColorableStdout()
 	return fmt.Fprintf(DefaultOutput, colorstring.Color(format), opts...)
