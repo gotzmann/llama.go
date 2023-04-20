@@ -2,8 +2,6 @@
 
 ![](./assets/images/terminal.png?raw=true)
 
-[![Coverage](https://img.shields.io/badge/Coverage-0-red)](https://github.com/gotzmann/llama.go/actions/workflows/coverage.yml)
-
 ## The Goal
 
 We dream of a world where ML hackers are able to grok with **REALLY BIG GPT** models without having GPU clusters consuming a shit tons of **$$$** - using only machines in their own homelabs.
@@ -12,7 +10,7 @@ The code of the project is based on the legendary **[ggml.cpp](https://github.co
 
 We hope using our beloved Golang instead of *soo-powerful* but *too-low-level* language will allow much greater adoption of the **NoGPU** ideas.
 
-**NB!** The V1 supports only FP32 math, so you'll need at least 32GB RAM to work even with the smallest **LLaMA-7B** model. As a preliminary step you should have binary files converted from original LLaMA model locally.
+The V1 supports only FP32 math, so you'll need at least 32GB RAM to work even with the smallest **LLaMA-7B** model. As a preliminary step you should have binary files converted from original LLaMA model locally.
 
 ## V0 Roadmap
 
@@ -68,8 +66,8 @@ Or build it with Makefile and then run binary.
 --silent   Hide welcome logo and other output [ show by default ]
 --chat     Chat with user in interactive mode instead of compute over static prompt
 --profile  Profe CPU performance while running and store results to [cpu.pprof] file
---avx      Enable x64 AVX2 optimizations for Intel / AMD machines
---neon     Enable ARM NEON optimizations for Apple / ARM machines
+--avx      Enable x64 AVX2 optimizations for Intel and AMD machines
+--neon     Enable ARM NEON optimizations for Apple Macs and ARM server
 ```
 
 ## FAQ
