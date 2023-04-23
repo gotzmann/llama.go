@@ -27,14 +27,14 @@ func main() {
 		Prompt  string  `long:"prompt" description:"Text prompt from user to feed the model input"`
 		Model   string  `long:"model" description:"Path and file name of converted .bin LLaMA model"`
 		Threads int     `long:"threads" description:"Adjust to the number of CPU cores you want to use [ all cores by default ]"`
-		Predict uint32  `long:"predict" description:"Number of tokens to predict [ 64 by default ]"`
-		Context uint32  `long:"context" description:"Context size in tokens [ 64 by default ]"`
-		Temp    float32 `long:"temp" description:"Model temperature hyper parameter [ 0.80 by default ]"`
+		Context uint32  `long:"context" description:"Context size in tokens [ 1024 by default ]"`
+		Predict uint32  `long:"predict" description:"Number of tokens to predict [ 512 by default ]"`
+		Temp    float32 `long:"temp" description:"Model temperature hyper parameter [ 0.50 by default ]"`
 		Silent  bool    `long:"silent" description:"Hide welcome logo and other output [ show by default ]"`
 		Chat    bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
 		Profile bool    `long:"profile" description:"Profe CPU performance while running and store results to [cpu.pprof] file"`
-		UseAVX  bool    `long:"avx" description:"Enable x64 AVX2 optimizations for Intel / AMD machines"`
-		UseNEON bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple / ARM machines"`
+		UseAVX  bool    `long:"avx" description:"Enable x64 AVX2 optimizations for Intel and AMD machines"`
+		UseNEON bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple and ARM machines"`
 	}
 
 	_, err := flags.Parse(&opts)
