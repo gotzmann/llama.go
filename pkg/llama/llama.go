@@ -27,20 +27,6 @@ const (
 	LLAMA_FILE_MAGIC             = 0x67676a74 // 'ggjt' in hex
 	LLAMA_FILE_MAGIC_OLD         = 0x67676d66 // 'ggmf' in hex
 	LLAMA_FILE_MAGIC_UNVERSIONED = 0x67676d6c // 'ggml' pre-versioned files
-
-	SPLIT_NONE       = 0
-	SPLIT_BY_COLUMNS = 1
-	SPLIT_BY_ROWS    = 2
-)
-
-var (
-	// determine number of model parts based on the dimension
-	LLAMA_N_PARTS = map[uint32]int{
-		4096: 1,
-		5120: 2,
-		6656: 4,
-		8192: 8,
-	}
 )
 
 type ModelParams struct {
@@ -104,15 +90,18 @@ type Context struct {
 
 	// input embedding (1-dimensional array: [n_embd])
 	Embedding []float32
+
+	MLContext *ml.Context
 }
 
 // NewContext creates a new context.
-func NewContext() *Context {
+func NewContext(params ModelParams) *Context {
 	return &Context{
-		Model:     NewModel(),
+		Model:     NewModel(params),
 		Vocab:     ml.NewVocab(0),
-		Logits:    make([]float32, 0, 0), // NewFloatSlice(0, 0),
-		Embedding: make([]float32, 0, 0), // NewFloatSlice(0, 0),
+		Logits:    make([]float32, 0, 0),
+		Embedding: make([]float32, 0, 0),
+		MLContext: ml.NewContext(),
 	}
 }
 
@@ -149,17 +138,16 @@ type Layer struct {
 	w3 *ml.Tensor
 }
 
-// HParams are the hyperparameters of the model.
-// default hparams (LLaMA 7B)
+// HParams are the hyperparameters of the model (LLaMA-7B commented as example).
 type HParams struct {
-	ctxSize     uint32 // 512
+	ctxSize     uint32
 	vocabSize   uint32 // 32000
 	embdSize    uint32 // 4096
 	multSize    uint32 // 256
 	headsCount  uint32 // 32
 	layersCount uint32 // 32
 	rotCount    uint32 // 64
-	f16         uint32 // 1
+	f16         uint32
 }
 
 // ModelType is the type of the model.
@@ -200,17 +188,10 @@ type Model struct {
 }
 
 // NewModel creates a new model with default hyperparameters.
-func NewModel() *Model {
+func NewModel(params ModelParams) *Model {
 	return &Model{
 		hparams: HParams{
-			ctxSize:     512,
-			vocabSize:   32000,
-			embdSize:    4096,
-			multSize:    256,
-			headsCount:  32,
-			layersCount: 32,
-			rotCount:    64,
-			f16:         1,
+			ctxSize: params.CtxSize,
 		},
 		layers:  make([]Layer, 0),
 		tensors: make(map[string]*ml.Tensor),
@@ -221,51 +202,14 @@ func NewModel() *Model {
 	}
 }
 
-// min returns the minimum of a and b.
-func min(a, b int) int {
-	if a <= b {
-		return a
-	}
-	return b
-}
+// Eval runs one inference iteration over the LLaMA model
+// lctx = model context with all LLaMA data
+// tokens = new batch of tokens to process
+// pastCount = the context size so far
+// params = all other parameters like max threads allowed, etc
+func Eval(lctx *Context, tokens []uint32, pastCount uint32, params ModelParams) error {
 
-// Resize() (safe) for using instead of C++ std::vector:resize()
-// https://go.dev/play/p/VlQ7N75E5AD
-func Resize(slice []float32, size int) []float32 {
-	newSlice := make([]float32, size)
-	for i := 0; i < min(size, len(slice)); i++ {
-		newSlice[i] = slice[i]
-	}
-	return newSlice
-}
-
-// NB! This do not clear the underlying array when resizing
-// https://go.dev/play/p/DbK4dFqwrZn
-func ResizeInplace(slice *[]float32, size int) {
-	if len(*slice) == size {
-		return
-	} else if size < len(*slice) {
-		*slice = (*slice)[:size]
-	} else {
-		*slice = slices.Grow(*slice, size)
-		*slice = (*slice)[:size]
-	}
-}
-
-// Eval evaluates the transformer
-//
-//   - lctx:      llama context
-//   - tokens:    new batch of tokens to process
-//   - n_past:    the context size so far
-//   - n_threads: number of threads to use
-func Eval(
-	lctx *Context,
-	tokens []uint32,
-	tokensCount uint32,
-	pastCount uint32,
-	params ModelParams) error {
-
-	N := tokensCount
+	N := uint32(len(tokens))
 	model := lctx.Model
 	kvSelf := model.kvSelf
 
@@ -276,7 +220,7 @@ func Eval(
 	vocabSize := model.hparams.vocabSize
 	rotCount := model.hparams.embdSize / model.hparams.headsCount
 
-	ctx0 := &ml.Context{} //ctx0 := ml.Init(ml.InitParams{})
+	ctx0 := lctx.MLContext
 
 	// for big prompts, if BLAS is enabled, it is better to use only one thread
 	// otherwise, the threads are spin-lock waiting for the BLAS calls and are degrading the performance
@@ -286,14 +230,12 @@ func Eval(
 		UseAVX:     params.UseAVX,
 	}
 
-	// Convert the tokens to a []float32 slice
-	tokensFloat32 := make([]float32, len(tokens))
+	// Initialize the embd tensor with the tokensFloat32 data
+	embd := ml.NewTensor1D(ctx0, ml.TYPE_F32, uint32(len(tokens))) // Reusable OK
 	for i, token := range tokens {
-		tokensFloat32[i] = float32(token)
+		embd.Data[i] = float32(token)
 	}
 
-	// Initialize the embd tensor with the tokensFloat32 data
-	embd := ml.NewTensor(ctx0, ml.TYPE_F32, 1, uint32(len(tokens)), 1, 1, 1, tokensFloat32)
 	inpL := ml.GetRows(ctx0, model.tokEmbeddings, embd)
 
 	for il := uint32(0); il < layersCount; il++ {
@@ -303,14 +245,12 @@ func Eval(
 		//}
 
 		inpSA := inpL
-		cur := &ml.Tensor{}
 
 		// norm
-		cur = ml.RMSNorm(ctx0, inpL)
+		cur := ml.RMSNorm(ctx0, inpL)
 
 		// cur = attention_norm*cur
 		rep := ml.Repeat(ctx0, model.layers[il].attentionNorm, cur)
-
 		cur = ml.Mul(ctx0, rep, cur)
 
 		// self-attention
@@ -325,9 +265,6 @@ func Eval(
 				////struct ggml_tensor * k = ggml_view_1d(ctx0, kv_self.k, N*n_embd, (ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past));
 				////struct ggml_tensor * v = ggml_view_1d(ctx0, kv_self.v, N*n_embd, (ggml_element_size(kv_self.v)*n_embd)*(il*n_ctx + n_past));
 
-				////ggml_build_forward_expand(&graph, ggml_cpy(ctx0, Kcur, k));
-				////ggml_build_forward_expand(&graph, ggml_cpy(ctx0, Vcur, v));
-
 				// NB! ggml_element_size(kv_self.k) = 2 for FP16
 				k := ml.View1D(ctx0, kvSelf.K, N*embdSize, embdSize*(il*ctxSize+pastCount))
 				v := ml.View1D(ctx0, kvSelf.V, N*embdSize, embdSize*(il*ctxSize+pastCount))
@@ -336,30 +273,25 @@ func Eval(
 				ml.BuildForwardExpand(graph, ml.Copy(ctx0, Vcur, v))
 			}
 
-			// Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)
 			Q :=
 				ml.Permute(ctx0,
 					ml.Rope(ctx0,
 						ml.Copy(ctx0,
 							Qcur,
-							ml.NewTensor3D(ctx0, ml.TYPE_F32, embdSize/headsCount, headsCount, N)),
+							ml.NewTensor3D(ctx0, ml.TYPE_F32, embdSize/headsCount, headsCount, N)), // Reusable OK
 						pastCount, rotCount, 0),
 					0, 2, 1, 3)
 
-			// K = Kmem.view(n_embd/n_head, n_head, n_past + N).permute(0, 2, 1, 3)
 			K :=
 				ml.Permute(ctx0,
 					ml.Rope(ctx0,
 						ml.Reshape3D(ctx0,
-							////ggml_view_1d(ctx0, kv_self.k, (n_past + N)*n_embd, il*n_ctx*ggml_element_size(kv_self.k)*n_embd),
-							////n_embd/n_head, n_head, n_past + N),
 							ml.View1D(ctx0, kvSelf.K, (pastCount+N)*embdSize, il*ctxSize*embdSize),
 							embdSize/headsCount, headsCount, pastCount+N),
 						pastCount, rotCount, 1),
 					0, 2, 1, 3)
 
 			// K * Q
-			////struct ggml_tensor * KQ = ggml_mul_mat(ctx0, K, Q);
 			KQ := ml.MulMat(ctx0, K, Q)
 
 			// KQ_scaled = KQ / sqrt(n_embd/n_head)
@@ -370,14 +302,11 @@ func Eval(
 				)
 
 			// KQ_masked = mask_past(KQ_scaled)
-			////struct ggml_tensor * KQ_masked = ggml_diag_mask_inf(ctx0, KQ_scaled, n_past);
 			KQMasked := ml.DiagMaskInf(ctx0, KQScaled, pastCount)
 
 			// KQ = soft_max(KQ_masked)
-			////struct ggml_tensor * KQ_soft_max = ggml_soft_max(ctx0, KQ_masked);
 			KQSoftMax := ml.SoftMax(ctx0, KQMasked)
 
-			// V_trans = Vmem.view(n_embd/n_head, n_head, n_past + N).permute(1, 2, 0, 3).contiguous()
 			VTrans :=
 				ml.Copy(ctx0,
 					ml.Permute(ctx0,
@@ -396,12 +325,11 @@ func Eval(
 			// cur = KQV_merged.contiguous().view(n_embd, N)
 			cur = ml.Copy(ctx0,
 				KQVMerged,
-				ml.NewTensor2D(ctx0, ml.TYPE_F32, embdSize, N))
+				ml.NewTensor2D(ctx0, ml.TYPE_F32, embdSize, N)) // Reusable OK
 
 			// projection (no bias)
-			cur = ml.MulMat(ctx0,
-				model.layers[il].wo,
-				cur)
+			cur = ml.MulMat(ctx0, model.layers[il].wo, cur)
+
 		}
 
 		inpFF := ml.Add(ctx0, cur, inpSA)
@@ -418,33 +346,23 @@ func Eval(
 					cur)
 			}
 
-			tmp := ml.MulMat(ctx0,
-				model.layers[il].w3,
-				cur)
+			tmp := ml.MulMat(ctx0, model.layers[il].w3, cur)
 
-			cur = ml.MulMat(ctx0,
-				model.layers[il].w1,
-				cur)
+			cur = ml.MulMat(ctx0, model.layers[il].w1, cur)
 
 			// SILU activation
 			cur = ml.Silu(ctx0, cur)
 
 			cur = ml.Mul(ctx0, cur, tmp)
 
-			cur = ml.MulMat(ctx0,
-				model.layers[il].w2,
-				cur)
+			cur = ml.MulMat(ctx0, model.layers[il].w2, cur)
 		}
 
 		cur = ml.Add(ctx0, cur, inpFF)
 
 		// input for next layer
 		inpL = cur
-
 	}
-
-	// used at the end to optionally extract the embeddings
-	////var embeddings *ml.Tensor
 
 	// --- norm
 
@@ -515,9 +433,13 @@ func Eval(
 	if len(lctx.Embedding) > 0 {
 		////memcpy(embedding_out.data(), (float *) ggml_get_data(embeddings) + (n_embd*(N - 1)), sizeof(float)*n_embd);
 		for i := uint32(0); i < embdSize; i++ {
-			lctx.Embedding[i] = embeddings.Data[(embdSize*(N-1))+i] // FIXME ASAP
+			lctx.Embedding[i] = embeddings.Data[(embdSize*(N-1))+i]
 		}
 	}
+
+	// It really helps to eliminate degradation of performance when
+	// the garbage collector do it job more often
+	runtime.GC()
 
 	return nil
 }
@@ -546,64 +468,19 @@ func printTensor(tensor *ml.Tensor, name string) {
 	}
 }
 
-func sampleTopK(logitsID []pair, topK uint32) []pair {
-	// find the top K tokens
-
-	// std::partial_sort
-	// Rearranges elements such that the range [first, middle) contains
-	// the sorted middle − first smallest elements in the range [first, last).
-	// The order of equal elements is not guaranteed to be preserved.
-	// The order of the remaining elements in the range [middle, last) is unspecified.
-
-	/*std::partial_sort(
-	        logits_id.begin(),
-	        logits_id.begin() + top_k, logits_id.end(),
-	        [](const std::pair<double, gpt_vocab::id> & a, const std::pair<double, gpt_vocab::id> & b) {
-	    return a.first > b.first;
-	});*/
-
-	//keys := make([]double, 0, len(logitsID))
-	//for k := range logitsID {
-	//	keys = append(keys, k)
-	//}
-	//sort.Float64s(keys)
-
-	sort.Slice(
-		logitsID[:topK],
-		func(i, j int) bool {
-			return logitsID[i].first < logitsID[j].first // FIXME ASAP We need bigger elements first
-		})
-
-	// logits_id.resize(top_k);
-	//for i := uint32(0); i < len(keys)-topK; i++ {
-	//delete(logitsID, keys[i])
-	//}
-
-	ret := make([]pair, 0, topK)
-	copy(ret, logitsID)
-
-	return ret
-}
-
-// SampleTopPTopK samples next token given probabilities for each embedding
-// llama_sample_top_p_top_k
+// SampleTopPTopK samples next token given probabilities for each embedding:
 //   - consider only the top K tokens
 //   - from them, consider only the top tokens with cumulative probability > P
-//
-// std::mt19937 = A Mersenne Twister pseudo-random generator of 32-bit numbers with a state size of 19937 bits.
 func SampleTopPTopK(
 	lctx *Context,
-	// lastNTokens []uint32,
 	lastNTokens *ring.Ring,
-	lastNTokensSize uint32, // FIXME Remove
+	lastNTokensSize uint32, // TODO: Remove
 	topK uint32,
 	topP float32,
 	temp float32,
 	repeatPenalty float32,
 ) uint32 {
 
-	////auto & rng = lctx.rng;
-	////logitsCount := uint32(len(vocab.ID2Token))
 	logitsCount := lctx.Model.hparams.vocabSize
 	logits := lctx.Logits
 
@@ -644,13 +521,7 @@ func SampleTopPTopK(
 	////    return max_id;
 	////}
 
-	////const auto * plogits = logits.data() + logits.size() - n_logits;
-	//plogits := logits[len(logits)-int(logitsCount):] // FIXME ASAP
-	plogits := logits[:]
-
-	////std::vector<std::pair<double, llama_vocab::id>> logits_id;
-	////logits_id.reserve(n_logits);
-	logitsID := make([]pair, 0, logitsCount) // FIXME LEN vs CAP
+	logitsID := make([]pair, 0, logitsCount)
 
 	{
 		scale := float32(1.0 / temp)
@@ -670,14 +541,14 @@ func SampleTopPTopK(
 			// If lastNTokens already contains i-th token, append it with repeat penalty
 			if tokenExists {
 				// If score < 0, then repetition penalty has to be multiplied to reduce the previous token probability
-				if plogits[i] < 0.0 {
-					logitsID = append(logitsID, pair{plogits[i] * scale * repeatPenalty, i})
+				if logits[i] < 0.0 {
+					logitsID = append(logitsID, pair{logits[i] * scale * repeatPenalty, i})
 				} else {
-					logitsID = append(logitsID, pair{plogits[i] * scale / repeatPenalty, i})
+					logitsID = append(logitsID, pair{logits[i] * scale / repeatPenalty, i})
 				}
 				// Else append pair to logitsID, scaling probability
 			} else {
-				logitsID = append(logitsID, pair{plogits[i] * scale, i})
+				logitsID = append(logitsID, pair{logits[i] * scale, i})
 			}
 		}
 	}
@@ -693,18 +564,13 @@ func SampleTopPTopK(
 		}
 	}
 
-	// sort logitsID slice and return only top K elements
-	//// sampleTopK(logitsID, topK)
+	// --- sort logitsID slice and return only top K elements
 
-	// NB! Inline logic for [sampleTopK] right here
-
-	//// std::partial_sort(
-	////	logits_id.begin(),
-	////	logits_id.begin() + top_k, logits_id.end(),
-	////	[](const std::pair<float, llama_vocab::id> & a, const std::pair<float, llama_vocab::id> & b) {
-	//// return a.first > b.first;
-	//// });
-	//// logits_id.resize(top_k);
+	// std::partial_sort
+	// Rearranges elements such that the range [first, middle) contains
+	// the sorted middle − first smallest elements in the range [first, last).
+	// The order of equal elements is not guaranteed to be preserved.
+	// The order of the remaining elements in the range [middle, last) is unspecified.
 
 	sort.Slice(
 		logitsID, // logitsID[:topK],
@@ -809,7 +675,9 @@ func SampleTopPTopK(
 
 	// --- Hand-crafted Discrete Distribution math - do we need something better?
 
-	// Original C++ version
+	// Original C++ version with rng = std::mt19937
+	// Mersenne Twister pseudo-random generator of 32-bit numbers with a state size of 19937 bits.
+
 	// std::discrete_distribution<> dist(probs.begin(), probs.end());
 	// int idx = dist(rng);
 	// return logits_id[idx].second;
@@ -867,9 +735,7 @@ func SampleTopPTopK(
 
 // LoadModel loads a model's weights from a file
 // See convert-pth-to-ggml.py for details on format
-func LoadModel(fileName string, silent bool) (*Context, error) {
-
-	lctx := NewContext()
+func LoadModel(fileName string, params ModelParams, silent bool) (*Context, error) {
 
 	file, err := os.Open(fileName)
 	if err != nil {
@@ -898,6 +764,8 @@ func LoadModel(fileName string, silent bool) (*Context, error) {
 		return nil, fmt.Errorf("invalid model file")
 	}
 
+	lctx := NewContext(params) // creates new ML context and mem allocator as well
+
 	// --- load hparams
 
 	vocabSize := readInt(file)   // vocab_size
@@ -908,6 +776,7 @@ func LoadModel(fileName string, silent bool) (*Context, error) {
 	rotCount := readInt(file)    // rot = dim // n_heads [obsolete]
 	f16 := readInt(file)         // ftype
 
+	ctx := lctx.MLContext
 	model := lctx.Model
 
 	model.hparams.vocabSize = vocabSize
@@ -918,20 +787,21 @@ func LoadModel(fileName string, silent bool) (*Context, error) {
 	model.hparams.rotCount = rotCount
 	model.hparams.f16 = f16
 
+	ffSize := ((2*(4*embdSize)/3 + multSize - 1) / multSize) * multSize
+
 	// --- init cache
 	//KVCacheInit(&lctx.Model.hparams, &lctx.Model.kvSelf, ml.TYPE_F32)
 	dt := ml.TYPE_F32
-	size := embdSize * layersCount * 512 /*ctxSize*/ // FIXME ctxSize
-	lctx.Model.kvSelf.K = ml.NewTensor1D(nil, dt, size)
-	lctx.Model.kvSelf.V = ml.NewTensor1D(nil, dt, size)
+	size := embdSize * layersCount * params.CtxSize
+	lctx.Model.kvSelf.K = ml.NewTensor1D(ctx, dt, size) // Fixed OK
+	lctx.Model.kvSelf.V = ml.NewTensor1D(ctx, dt, size) // Fixed OK
 
 	// NB! Do not try to resize / relocate secondary pointers
 	lctx.Vocab = ml.NewVocab(vocabSize)
 	vocab := lctx.Vocab
 
 	// FIXME Reserve extra space for tokensCount (N) = 8 (as with LogitsAll == true)
-	//lctx.Logits = make([]float32, vocabSize*8, vocabSize*8) // NewFloatSlice(vocabSize, vocabSize) // FIXME ASAP
-	lctx.Logits = make([]float32, vocabSize, vocabSize) // use just vocab size as CPP version does by default
+	lctx.Logits = make([]float32, vocabSize, vocabSize)
 
 	if ml.DEBUG {
 		fmt.Printf("\nvocab  = %d", vocabSize)
@@ -939,14 +809,10 @@ func LoadModel(fileName string, silent bool) (*Context, error) {
 		fmt.Printf("\nmult   = %d", multSize)
 		fmt.Printf("\nheads  = %d", headsCount)
 		fmt.Printf("\nlayers = %d", layersCount)
+		fmt.Printf("\nff     = %d", ffSize)
 		fmt.Printf("\nrot    = %d", rotCount)
 		fmt.Printf("\nf16    = %d", f16)
 	}
-
-	//fmt.Printf("\nctx   = %d", hparamsCtx)
-	//fmt.Printf("\nn_ff    = %d", n_ff)
-
-	n_ff := ((2*(4*embdSize)/3 + multSize - 1) / multSize) * multSize
 
 	// --- load vocab
 
@@ -989,14 +855,12 @@ func LoadModel(fileName string, silent bool) (*Context, error) {
 		fmt.Printf("\n")
 	}
 
-	ctx := model.ctx
-
 	// --- prepare memory for the weights
 	{
-		model.tokEmbeddings = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize)
+		model.tokEmbeddings = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize) // Fixed OK
 
-		model.norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize)
-		model.output = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize)
+		model.norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize)                        // Fixed OK
+		model.output = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize) // Fixed OK
 
 		// map by name
 		model.tensors["tok_embeddings.weight"] = model.tokEmbeddings
@@ -1008,18 +872,18 @@ func LoadModel(fileName string, silent bool) (*Context, error) {
 		for i := uint32(0); i < layersCount; i++ {
 			//auto & layer = model.layers[i];
 
-			model.layers[i].attentionNorm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize)
+			model.layers[i].attentionNorm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize) // Fixed OK
 
-			model.layers[i].wq = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize)
-			model.layers[i].wk = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize)
-			model.layers[i].wv = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize)
-			model.layers[i].wo = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize)
+			model.layers[i].wq = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
+			model.layers[i].wk = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
+			model.layers[i].wv = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
+			model.layers[i].wo = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
 
 			model.layers[i].ffn_norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize)
 
-			model.layers[i].w1 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, n_ff)
-			model.layers[i].w2 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, n_ff, embdSize)
-			model.layers[i].w3 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, n_ff)
+			model.layers[i].w1 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, ffSize) // Fixed OK
+			model.layers[i].w2 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, ffSize, embdSize) // Fixed OK
+			model.layers[i].w3 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, ffSize) // Fixed OK
 
 			// map by name
 			prefix := fmt.Sprintf("layers.%d.", i)
@@ -1207,4 +1071,35 @@ func ExtractTokens(r *ring.Ring, count int) []uint32 {
 func Colorize(format string, opts ...interface{}) (n int, err error) {
 	var DefaultOutput = colorable.NewColorableStdout()
 	return fmt.Fprintf(DefaultOutput, colorstring.Color(format), opts...)
+}
+
+// min returns the minimum of a and b.
+func min(a, b int) int {
+	if a <= b {
+		return a
+	}
+	return b
+}
+
+// Resize() (safe) for using instead of C++ std::vector:resize()
+// https://go.dev/play/p/VlQ7N75E5AD
+func Resize(slice []float32, size int) []float32 {
+	newSlice := make([]float32, size)
+	for i := 0; i < min(size, len(slice)); i++ {
+		newSlice[i] = slice[i]
+	}
+	return newSlice
+}
+
+// NB! This do not clear the underlying array when resizing
+// https://go.dev/play/p/DbK4dFqwrZn
+func ResizeInplace(slice *[]float32, size int) {
+	if len(*slice) == size {
+		return
+	} else if size < len(*slice) {
+		*slice = (*slice)[:size]
+	} else {
+		*slice = slices.Grow(*slice, size)
+		*slice = (*slice)[:size]
+	}
 }
