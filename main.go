@@ -273,17 +273,17 @@ func main() {
 		}
 	}
 
-	//if ml.DEBUG {
-	//Colorize("\n\n=== TOKEN EVAL TIMINGS ===\n\n")
-	//for _, time := range evalPerformance {
-	//	Colorize("%d | ", time/1_000_000)
-	//}
+	if ml.DEBUG {
+		//Colorize("\n\n=== TOKEN EVAL TIMINGS ===\n\n")
+		//for _, time := range evalPerformance {
+		//	Colorize("%d | ", time/1_000_000)
+		//}
 
-	Colorize("\n\n=== FULL TIMINGS ===\n\n")
-	for _, time := range fullPerformance {
-		Colorize("%d | ", time/1_000_000)
+		Colorize("\n\n=== FULL TIMINGS ===\n\n")
+		for _, time := range fullPerformance {
+			Colorize("%d | ", time/1_000_000)
+		}
 	}
-	//}
 
 	avgEval := int64(0)
 	for _, time := range fullPerformance {
