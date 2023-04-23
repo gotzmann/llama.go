@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"reflect"
+	"runtime"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/x448/float16"
@@ -23,6 +26,36 @@ const (
 	TOKEN_BOS = 1
 	TOKEN_EOS = 2
 )
+
+// computation graph
+type Graph struct {
+	MaxThreads int
+
+	UseAVX  bool
+	UseNEON bool
+
+	NodesCount uint32
+	LeafsCount uint32
+
+	Jobs chan *ComputeParams
+
+	Nodes [MAX_NODES]*Tensor
+	Grads [MAX_NODES]*Tensor
+	Leafs [MAX_NODES]*Tensor
+}
+
+type InitParams struct {
+}
+
+type Context struct {
+	Allocator *Allocator
+}
+
+func NewContext() *Context {
+	return &Context{
+		Allocator: NewAllocator(),
+	}
+}
 
 type DType uint8
 
@@ -125,9 +158,12 @@ const (
 type Tensor struct {
 	Type DType
 
+	Reusable bool // this tensor Data buffer might be reused with pooling
+
 	Dims uint32
-	NE   [MAX_DIMS]uint32 // number of elements
-	NB   [MAX_DIMS]uint32 // stride in bytes
+
+	NE [MAX_DIMS]uint32 // number of elements
+	NB [MAX_DIMS]uint32 // stride in bytes
 
 	op optype
 
@@ -136,23 +172,16 @@ type Tensor struct {
 	grad *Tensor
 	src0 *Tensor
 	src1 *Tensor
-	opt  [MAX_OPT]*Tensor // FIXME Do we need this?
+
+	opt [MAX_OPT]*Tensor // FIXME: Do we need this?
 
 	TasksCount int
 
-	// performance
-	//perfRuns   uint32
-	//perfCycles uint32
-	//perfTime   uint64
-
 	Data []float32
-	//padding [8]byte
 }
 
-// static inline bool ggml_is_contiguous(const struct ggml_tensor * tensor) {
+// ggml_is_contiguous
 func (tensor *Tensor) IsContiguous() bool {
-	//    static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
-	//
 	return tensor.NB[0] == TYPE_SIZE[tensor.Type] &&
 		tensor.NB[1] == tensor.NB[0]*tensor.NE[0]/BLCK_SIZE[tensor.Type] &&
 		tensor.NB[2] == tensor.NB[1]*tensor.NE[1] &&
@@ -160,34 +189,30 @@ func (tensor *Tensor) IsContiguous() bool {
 }
 
 func AreSameShape(a, b *Tensor) bool {
-	////static_assert(MAX_DIMS == 4, "MAX_DIMS is not 4 - update this function");
 	return (a.NE[0] == b.NE[0]) && (a.NE[1] == b.NE[1]) && (a.NE[2] == b.NE[2]) && (a.NE[3] == b.NE[3])
 }
 
 func (t *Tensor) Nelements() uint32 {
-	////static_assert(MAX_DIMS == 4, "MAX_DIMS is not 4 - update this function");
 	return t.NE[0] * t.NE[1] * t.NE[2] * t.NE[3]
 }
 
 func (t *Tensor) Nrows() uint32 {
-	////static_assert(MAX_DIMS == 4, "MAX_DIMS is not 4 - update this function");
 	return t.NE[1] * t.NE[2] * t.NE[3]
 }
 
-// size_t ggml_nbytes(const struct ggml_tensor * tensor) {
+// ggml_nbytes
 func (t *Tensor) Nbytes() uint32 {
-	////static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
 	return (t.Nelements() * TYPE_SIZE[t.Type]) / BLCK_SIZE[t.Type]
 }
 
-// struct ggml_tensor * ggml_view_tensor(
+// ggml_view_tensor
 func ViewTensor(ctx *Context, src *Tensor) *Tensor {
 	return NewTensor(ctx, src.Type, src.Dims, src.NE[0], src.NE[1], src.NE[2], src.NE[3], src.Data)
 }
 
-// ggml.c : ggml_dup_tensor
+// ggml_dup_tensor
 func DupTensor(ctx *Context, src *Tensor) *Tensor {
-	return NewTensor(ctx, src.Type, src.Dims, src.NE[0], src.NE[1], src.NE[2], src.NE[3], nil)
+	return NewTensor(ctx, src.Type, src.Dims, src.NE[0], src.NE[1], src.NE[2], src.NE[3], nil) // Reusbale OK
 }
 
 // struct ggml_tensor * Mul(
@@ -241,7 +266,6 @@ func MulImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 
 // ggml_can_mul_mat
 func CanMulMat(t0, t1 *Tensor) bool {
-	////static_assert(MAX_DIMS == 4, "MAX_DIMS is not 4 - update this function");
 	return (t0.NE[0] == t1.NE[0]) && (t0.NE[2] == t1.NE[2]) && (t0.NE[3] == t1.NE[3])
 }
 
@@ -256,7 +280,7 @@ func MulMat(ctx *Context, a, b *Tensor) *Tensor {
 		isNode = true
 	}
 
-	result := NewTensor(ctx, TYPE_F32, min32(a.Dims, b.Dims), a.NE[1], b.NE[1], a.NE[2], b.NE[3], nil)
+	result := NewTensor(ctx, TYPE_F32, min32(a.Dims, b.Dims), a.NE[1], b.NE[1], a.NE[2], b.NE[3], nil) // Reusable OK
 
 	result.op = OP_MUL_MAT
 	result.src0 = a
@@ -272,7 +296,6 @@ func MulMat(ctx *Context, a, b *Tensor) *Tensor {
 }
 
 // ggml_add
-
 func AddImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	////ASSERT(ggml_are_same_shape(a, b));
 
@@ -308,7 +331,6 @@ func AddInplace(ctx *Context, a, b *Tensor) *Tensor {
 }
 
 // ggml_sum
-
 func Sum(ctx *Context, a *Tensor) *Tensor {
 	isNode := false
 
@@ -316,7 +338,7 @@ func Sum(ctx *Context, a *Tensor) *Tensor {
 		isNode = true
 	}
 
-	result := NewTensor1D(ctx, a.Type, 1)
+	result := NewTensor1D(ctx, a.Type, 1) // Reusable OK
 
 	result.op = OP_SUM
 	result.src0 = a
@@ -332,7 +354,6 @@ func Sum(ctx *Context, a *Tensor) *Tensor {
 }
 
 // ggml_sub
-
 func SubImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	////ASSERT(ggml_are_same_shape(a, b));
 
@@ -367,7 +388,6 @@ func SubInplace(ctx *Context, a, b *Tensor) *Tensor {
 }
 
 // ggml_div
-
 func DivImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 	////ASSERT(ggml_are_same_shape(a, b));
 
@@ -406,7 +426,6 @@ func DivInplace(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 }
 
 // ggml_sgn
-
 func SgnImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 	isNode := false
 
@@ -442,8 +461,6 @@ func SgnInplace(ctx *Context, a *Tensor) *Tensor {
 	return SgnImpl(ctx, a, true)
 }
 
-// Repeat
-
 // struct ggml_tensor * Repeat(
 func Repeat(ctx *Context, a, b *Tensor) *Tensor {
 	////ASSERT(ggml_can_repeat(a, b));
@@ -458,8 +475,7 @@ func Repeat(ctx *Context, a, b *Tensor) *Tensor {
 		return a
 	}
 
-	//struct ggml_tensor * result = ggml_new_tensor(ctx, a.type, b.n_dims, b.ne);
-	result := NewTensor(ctx, a.Type, b.Dims, b.NE[0], b.NE[1], b.NE[2], b.NE[3], nil)
+	result := NewTensor(ctx, a.Type, b.Dims, b.NE[0], b.NE[1], b.NE[2], b.NE[3], nil) // Reusable OK
 
 	result.op = OP_REPEAT
 	result.src0 = a
@@ -475,27 +491,24 @@ func Repeat(ctx *Context, a, b *Tensor) *Tensor {
 }
 
 func IsScalar(tensor *Tensor) bool {
-	////static_assert(MAX_DIMS == 4, "MAX_DIMS is not 4 - update this function");
 	return tensor.NE[0] == 1 && tensor.NE[1] == 1 && tensor.NE[2] == 1 && tensor.NE[3] == 1
 }
 
 func IsVector(tensor *Tensor) bool {
-	////static_assert(MAX_DIMS == 4, "MAX_DIMS is not 4 - update this function");
 	return tensor.NE[1] == 1 && tensor.NE[2] == 1 && tensor.NE[3] == 1
 }
 
 func IsMatrix(tensor *Tensor) bool {
-	////static_assert(MAX_DIMS == 4, "MAX_DIMS is not 4 - update this function");
 	return tensor.NE[2] == 1 && tensor.NE[3] == 1
 }
 
 // ggml_get_rows
 func GetRows(ctx *Context, a, b *Tensor) *Tensor {
 	////ASSERT(ggml_is_matrix(a) && ggml_is_vector(b) && b.type == TYPE_I32);
-	if !IsMatrix(a) || !IsVector(b) /* || b.Type != TYPE_I32 */ {
-		fmt.Printf("\n[ERROR] GetRows fail basic assertions")
-		os.Exit(1)
-	}
+	//if !IsMatrix(a) || !IsVector(b) /* || b.Type != TYPE_I32 */ {
+	//	fmt.Printf("\n[ERROR] GetRows fail basic assertions")
+	//	os.Exit(1)
+	//}
 
 	isNode := false
 
@@ -506,9 +519,7 @@ func GetRows(ctx *Context, a, b *Tensor) *Tensor {
 		os.Exit(1)
 	}
 
-	// TODO: implement non F32 return
-	//struct ggml_tensor * result = ggml_new_tensor_2d(ctx, a.type, a.ne[0], b.ne[0]);
-	result := NewTensor2D(ctx, TYPE_F32, a.NE[0], b.NE[0])
+	result := NewTensor2D(ctx, TYPE_F32, a.NE[0], b.NE[0]) // Reusable OK
 
 	result.op = OP_GET_ROWS
 	if isNode {
@@ -531,7 +542,7 @@ func RMSNormInplace(ctx *Context, a *Tensor) *Tensor {
 	return RMSNormImpl(ctx, a, true)
 }
 
-// //struct ggml_tensor * ggml_rms_norm_impl(
+// ggml_rms_norm_impl
 func RMSNormImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 	isNode := false
 
@@ -667,10 +678,10 @@ func VisitParents(graph *Graph, node *Tensor) {
 func CopyImpl(ctx *Context, a, b *Tensor, inplace bool) *Tensor {
 
 	////ASSERT(ggml_nelements(a) == ggml_nelements(b));
-	if a.Nelements() != b.Nelements() {
-		fmt.Printf("\n[HALT] Copy tensors of different dimensions!")
-		os.Exit(1)
-	}
+	//if a.Nelements() != b.Nelements() {
+	//	fmt.Printf("\n[HALT] Copy tensors of different dimensions!")
+	//	os.Exit(1)
+	//}
 
 	isNode := false
 
@@ -705,36 +716,6 @@ func CopyInplace(ctx *Context, a, b *Tensor) *Tensor {
 	return CopyImpl(ctx, a, b, true)
 }
 
-// computation graph
-type Graph struct {
-	MaxThreads int
-
-	UseAVX  bool
-	UseNEON bool
-
-	NodesCount uint32
-	LeafsCount uint32
-
-	Jobs chan *ComputeParams
-
-	Nodes [MAX_NODES]*Tensor
-	Grads [MAX_NODES]*Tensor
-	Leafs [MAX_NODES]*Tensor
-
-	// performance
-	//perfRuns   uint64
-	//perfCycles uint64
-	////int64_t perf_time_us;
-}
-
-type InitParams struct {
-}
-
-// ml/ggml.c:2248
-// TODO Do we need this?
-type Context struct {
-}
-
 // ggml_new_tensor_1d
 func NewTensor1D(ctx *Context, dt DType, ne0 uint32) *Tensor {
 	return NewTensor(ctx, dt, 1, ne0, 1, 1, 1, nil)
@@ -756,40 +737,27 @@ func NewTensor4D(ctx *Context, dt DType, ne0, ne1, ne2, ne3 uint32) *Tensor {
 // ggml_new_tensor_impl
 func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
 
-	if dt != TYPE_F32 && dt != TYPE_I32 {
-		fmt.Printf("\n[ERROR] NewTensorImpl got not supported type : %d", dt)
-		os.Exit(1)
-	}
+	// TODO: Check allowed data types on graph creation
+	//if dt != TYPE_F32 && dt != TYPE_I32 {
+	//	fmt.Printf("\n[ERROR] NewTensorImpl got not supported type : %d", dt)
+	//	os.Exit(1)
+	//}
 
 	////ggml_assert_aligned(result);
 
-	result := Tensor{
+	if data == nil {
+		total := ne0 * ne1 * ne2 * ne3
+		data = make([]float32, total, total)
+	}
+
+	return &Tensor{
 		Type: dt,
 		Dims: dims,
 		NE:   [4]uint32{ne0, ne1, ne2, ne3},
+		NB:   [4]uint32{4, ne0 * 4, ne0 * ne1 * 4, ne0 * ne1 * ne2 * 4},
 		op:   OP_NONE,
+		Data: data,
 	}
-
-	////result->nb[0] = GGML_TYPE_SIZE[type];
-	////result->nb[1] = result->nb[0]*(result->ne[0]/GGML_BLCK_SIZE[type]);
-	////for (int i = 2; i < GGML_MAX_DIMS; i++) {
-	////    result->nb[i] = result->nb[i - 1]*result->ne[i - 1];
-	////}
-
-	result.NB[0] = TYPE_SIZE[dt]
-	result.NB[1] = TYPE_SIZE[dt] * (result.NE[0] / BLCK_SIZE[dt])
-	result.NB[2] = result.NB[1] * result.NE[1]
-	result.NB[3] = result.NB[2] * result.NE[2]
-
-	total := ne0 * ne1 * ne2 * ne3
-
-	if data == nil {
-		result.Data = make([]float32, total, total) // &newData
-	} else {
-		result.Data = data
-	}
-
-	return &result
 }
 
 // ggml_permute
@@ -893,15 +861,15 @@ func Reshape3D(ctx *Context, a *Tensor, ne0, ne1, ne2 uint32) *Tensor {
 	////ASSERT(ggml_is_contiguous(a));
 	////ASSERT(ggml_nelements(a) == ne0*ne1*ne2);
 
-	if !a.IsContiguous() {
-		fmt.Printf("\n[STOP] Reshape3D : tensor is NOT contiguous!")
-		os.Exit(1)
-	}
+	//if !a.IsContiguous() {
+	//	fmt.Printf("\n[STOP] Reshape3D : tensor is NOT contiguous!")
+	//	os.Exit(1)
+	//}
 
-	if a.Nelements() != ne0*ne1*ne2 {
-		fmt.Printf("\n[STOP] Reshape3D : different elements number!")
-		os.Exit(1)
-	}
+	//if a.Nelements() != ne0*ne1*ne2 {
+	//	fmt.Printf("\n[STOP] Reshape3D : different elements number!")
+	//	os.Exit(1)
+	//}
 
 	////bool is_node = false;
 
@@ -910,8 +878,7 @@ func Reshape3D(ctx *Context, a *Tensor, ne0, ne1, ne2 uint32) *Tensor {
 	////    is_node = true;
 	////}
 
-	//ne := [3]uint32{ ne0, ne1, ne2 }
-	result := NewTensor(ctx, a.Type, 3, ne0, ne1, ne2, 1, a.Data)
+	result := NewTensor(ctx, a.Type, 3, ne0, ne1, ne2, 1, a.Data) // Reusable OK
 
 	result.op = OP_RESHAPE
 	////result.grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
@@ -924,7 +891,7 @@ func Reshape3D(ctx *Context, a *Tensor, ne0, ne1, ne2 uint32) *Tensor {
 
 // ggml_new_f32
 func NewFP32(ctx *Context, value float32) *Tensor {
-	result := NewTensor1D(ctx, TYPE_F32, 1)
+	result := NewTensor1D(ctx, TYPE_F32, 1) // Reusable OK
 	SetFP32(result, value)
 	return result
 }
@@ -1058,7 +1025,6 @@ func SiluInplace(ctx *Context, a *Tensor) *Tensor {
 }
 
 // ggml_step
-
 func StepImpl(ctx *Context, a *Tensor, inplace bool) *Tensor {
 	isNode := false
 
@@ -2884,3 +2850,252 @@ func Init(params InitParams) {
 	////const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
 
 }
+
+// Allocator is an experimental memory pool for FP32 slices
+type Allocator struct {
+	sync.Mutex
+
+	// TODO: [][]float32 vs []*[]float32
+	// Used map[uint32][]*[]float32
+	// Free map[uint32][]*[]float32
+
+	PoolSize int
+	MemSize  int
+
+	Pool []byte
+	Mem  []byte
+}
+
+// TODO: Precompute max needed RAM size
+const MaxPool = 0 // 2_000_000_000
+const MaxMem = 0  // 28_000_000_000
+
+func NewAllocator() *Allocator {
+	return &Allocator{
+		// Used: make(map[uint32][]*[]float32),
+		// Free: make(map[uint32][]*[]float32),
+		Pool: make([]byte, MaxPool),
+		Mem:  make([]byte, MaxMem),
+	}
+}
+
+// Get new or reuse memory buffer of size bytes
+func (a *Allocator) Get(size uint32) *[]float32 {
+	//gcSlice := make([]float32, size, size)
+	//return &gcSlice
+
+	a.Lock()
+	byteSize := int(size * 4)
+
+	if a.PoolSize+byteSize >= MaxPool {
+		fmt.Printf("[ HALT ] Allocator go over free POOL MEM")
+		os.Exit(0)
+	}
+
+	cur := a.PoolSize
+	a.PoolSize += byteSize
+	a.Unlock()
+
+	var slice []float32
+	head := (*reflect.SliceHeader)(unsafe.Pointer(&slice))
+	head.Len = int(size)
+	head.Cap = int(size)
+	head.Data = uintptr(unsafe.Pointer(&a.Pool[cur]))
+
+	return &slice
+
+	/*
+		head := reflect.SliceHeader{
+			Len:  size,
+			Cap:  size,
+			Data: (*[]float32)(unsafe.Pointer(&a.Mem[cur])),
+		}*/
+
+	/*
+	   _, ok := a.Free[size]
+
+	   	if !ok {
+	   		a.Used[size] = make([]*[]float32, 0, 1024) // Which CAP default?
+	   		a.Free[size] = make([]*[]float32, 0, 1024) // Which CAP default?
+	   	}
+
+	   available := len(a.Free[size])
+
+	   	if available > 0 {
+	   		slice := a.Free[size][available-1]
+	   		a.Free[size] = a.Free[size][:available-1]
+	   		a.Used[size] = append(a.Used[size], slice)
+	   		return slice
+	   	}
+
+	   ///slice := make([]float32, size, size)
+	   a.Used[size] = append(a.Used[size], &slice)
+	   return &slice
+	*/
+}
+
+// Get fixed memory buffer of size bytes
+func (a *Allocator) GetFixed(size uint32) *[]float32 {
+	//gcSlice := make([]float32, size, size)
+	//return &gcSlice
+
+	a.Lock()
+	byteSize := int(size * 4)
+
+	if a.MemSize+byteSize >= MaxMem {
+		fmt.Printf("[ HALT ] Allocator go over free FIXED MEM")
+		os.Exit(0)
+	}
+
+	cur := a.MemSize
+	a.MemSize += byteSize
+	a.Unlock()
+
+	var slice []float32
+	head := (*reflect.SliceHeader)(unsafe.Pointer(&slice))
+	head.Len = int(size)
+	head.Cap = int(size)
+	head.Data = uintptr(unsafe.Pointer(&a.Mem[cur]))
+
+	return &slice
+
+	/*
+		head := reflect.SliceHeader{
+			Len:  size,
+			Cap:  size,
+			Data: (*[]float32)(unsafe.Pointer(&a.Mem[cur])),
+		}*/
+}
+
+func (a *Allocator) Reset() {
+	a.Lock()
+	a.PoolSize = 0
+	a.Unlock()
+	runtime.GC()
+
+	// var rtm runtime.MemStats
+	// runtime.ReadMemStats(&rtm)
+	// printMemStats("Start", rtm)
+
+	/*
+	   	for size, _ := range a.Used {
+	   		a.Free[size] = append(a.Free[size], a.Used[size]...)
+	   		a.Used[size] = a.Used[size][:0]
+	   	}
+
+	   fmt.Printf("")
+	*/
+}
+
+func printMemStats(message string, rtm runtime.MemStats) {
+	fmt.Println("\n===", message, "===")
+	fmt.Println("Mallocs: ", rtm.Mallocs)
+	fmt.Println("Frees: ", rtm.Frees)
+	fmt.Println("LiveObjects: ", rtm.Mallocs-rtm.Frees)
+	fmt.Println("PauseTotalNs: ", rtm.PauseTotalNs)
+	fmt.Println("NumGC: ", rtm.NumGC)
+	fmt.Println("LastGC: ", time.UnixMilli(int64(rtm.LastGC/1_000_000)))
+	fmt.Println("HeapObjects: ", rtm.HeapObjects)
+	fmt.Println("HeapAlloc: ", rtm.HeapAlloc)
+}
+
+/*
+// Release memory buffer back
+func (a *Allocator) Put(size uint32, slice []float32) {
+
+}
+
+// Release memory buffer back
+func (a Allocator) PutTensor(tensor *Tensor) {
+	size := tensor.NE[0] * tensor.NE[1] * tensor.NE[2] * tensor.NE[3]
+	_, ok := a.Pool[size]
+	if !ok {
+		a.Pool[size] = make([][]float32, 0, 64) // Which CAP default?
+	}
+	a.Pool[size] = append(a.Pool[size], tensor.Data)
+	tensor.Data = nil
+}
+*/
+
+/*
+func NewReusableTensor1D(ctx *Context, dt DType, ne0 uint32) *Tensor {
+	return NewTensor(ctx, dt, 1, ne0, 1, 1, 1, nil) // Reusable OK
+}
+
+func NewReusableTensor2D(ctx *Context, dt DType, ne0, ne1 uint32) *Tensor {
+	return NewTensor(ctx, dt, 2, ne0, ne1, 1, 1, nil) // Reusable OK
+}
+
+func NewReusableTensor3D(ctx *Context, dt DType, ne0, ne1, ne2 uint32) *Tensor {
+	return NewTensor(ctx, dt, 3, ne0, ne1, ne2, 1, nil) // Reusable OK
+}
+
+func NewFixedTensor1D(ctx *Context, dt DType, ne0 uint32) *Tensor {
+	return NewFixedTensor(ctx, dt, 1, ne0, 1, 1, 1, nil)
+}
+
+func NewFixedTensor2D(ctx *Context, dt DType, ne0, ne1 uint32) *Tensor {
+	return NewFixedTensor(ctx, dt, 2, ne0, ne1, 1, 1, nil)
+}
+*/
+/*
+// ggml_new_tensor_impl
+func NewReusableTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
+
+	fmt.Printf("NewReusableTensor")
+	os.Exit(1)
+
+	// Reusable OK
+	if data == nil {
+		data = *ctx.Allocator.Get(ne0 * ne1 * ne2 * ne3)
+	}
+
+	//if data == nil {
+	//	total := ne0 * ne1 * ne2 * ne3
+	//	data = make([]float32, total, total)
+	//}
+
+	return &Tensor{
+		Type:     dt,
+		Reusable: true,
+		Dims:     dims,
+		NE:       [4]uint32{ne0, ne1, ne2, ne3},
+		NB:       [4]uint32{4, ne0 * 4, ne0 * ne1 * 4, ne0 * ne1 * ne2 * 4},
+		op:       OP_NONE,
+		Data:     data,
+	}
+}
+*/
+/*
+// ggml_new_tensor_impl
+func NewFixedTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, data []float32) *Tensor {
+
+	fmt.Printf("NewFixedTensor")
+	os.Exit(1)
+
+	// TODO: Check allowed data types on graph creation
+	//if dt != TYPE_F32 && dt != TYPE_I32 {
+	//	fmt.Printf("\n[ERROR] NewTensorImpl got not supported type : %d", dt)
+	//	os.Exit(1)
+	//}
+
+	////ggml_assert_aligned(result);
+
+	if data == nil {
+		total := ne0 * ne1 * ne2 * ne3
+		data = make([]float32, total, total)
+
+		// Reusable OK ???
+		// data = *ctx.Allocator.GetFixed(ne0 * ne1 * ne2 * ne3)
+	}
+
+	return &Tensor{
+		Type: dt,
+		Dims: dims,
+		NE:   [4]uint32{ne0, ne1, ne2, ne3},
+		NB:   [4]uint32{4, ne0 * 4, ne0 * ne1 * 4, ne0 * ne1 * ne2 * 4},
+		op:   OP_NONE,
+		Data: data,
+	}
+}
+*/

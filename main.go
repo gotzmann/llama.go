@@ -57,15 +57,15 @@ func main() {
 	}
 
 	if opts.Context == 0 {
-		opts.Context = 64
+		opts.Context = 1024
 	}
 
 	if opts.Predict == 0 {
-		opts.Predict = 64
+		opts.Predict = 512
 	}
 
 	if opts.Temp == 0 {
-		opts.Temp = 0.8
+		opts.Temp = 0.5
 	}
 
 	repeatLastN := uint32(64)
@@ -97,7 +97,7 @@ func main() {
 		PredictCount: opts.Predict,
 		RepeatLastN:  repeatLastN,
 		PartsCount:   -1,
-		BatchSize:    8,
+		BatchSize:    opts.Context, // TODO: What's the better size?
 
 		TopK:          40,
 		TopP:          0.95,
@@ -109,7 +109,7 @@ func main() {
 
 	// --- load the model
 
-	ctx, err := llama.LoadModel(params.Model, opts.Silent)
+	ctx, err := llama.LoadModel(params.Model, params, opts.Silent)
 	if err != nil {
 		Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.Model)
 		os.Exit(0)
@@ -139,9 +139,14 @@ func main() {
 	pastCount := uint32(0)
 	remainCount := params.PredictCount
 	consumedCount := uint32(0)
+
+	tokenCounter := 0
 	evalPerformance := make([]int64, 0, opts.Predict)
+	fullPerformance := make([]int64, 0, opts.Predict)
 
 	for remainCount != 0 || params.Interactive {
+
+		start := time.Now().UnixNano()
 
 		// --- predict
 
@@ -161,12 +166,12 @@ func main() {
 				embd = append(llama.ExtractTokens(lastNTokens.Move(-int(leftCount/2)), int(leftCount/2)), embd...)
 			}
 
-			start := time.Now().UnixNano()
-			if err := llama.Eval(ctx, embd, uint32(len(embd)), pastCount, params); err != nil {
+			evalStart := time.Now().UnixNano()
+			if err := llama.Eval(ctx, embd, pastCount, params); err != nil {
 				fmt.Printf("\n[ERROR] Failed to eval")
 				os.Exit(1)
 			}
-			evalPerformance = append(evalPerformance, time.Now().UnixNano()-start)
+			evalPerformance = append(evalPerformance, time.Now().UnixNano()-evalStart)
 		}
 
 		pastCount += uint32(len(embd))
@@ -257,22 +262,34 @@ func main() {
 				}
 
 				Colorize("[white]" + token)
+
+				tokenCounter++
+				fullPerformance = append(fullPerformance, time.Now().UnixNano()-start)
+
+				if ml.DEBUG {
+					fmt.Printf(" [ #%d | %d ] ", tokenCounter, fullPerformance[len(fullPerformance)-1]/1_000_000)
+				}
 			}
 		}
 	}
 
-	if ml.DEBUG {
-		Colorize("\n\n=== TOKEN EVAL TIMINGS ===\n\n")
-		for _, time := range evalPerformance {
-			Colorize("%d | ", time/1_000_000)
-		}
+	//if ml.DEBUG {
+	//Colorize("\n\n=== TOKEN EVAL TIMINGS ===\n\n")
+	//for _, time := range evalPerformance {
+	//	Colorize("%d | ", time/1_000_000)
+	//}
+
+	Colorize("\n\n=== FULL TIMINGS ===\n\n")
+	for _, time := range fullPerformance {
+		Colorize("%d | ", time/1_000_000)
 	}
+	//}
 
 	avgEval := int64(0)
-	for _, time := range evalPerformance {
+	for _, time := range fullPerformance {
 		avgEval += time / 1_000_000
 	}
-	avgEval /= int64(len(evalPerformance))
+	avgEval /= int64(len(fullPerformance))
 
 	Colorize(
 		"\n\n[light_magenta][ HALT ][white] Time per token: [light_cyan]%d[white] ms | Tokens per second: [light_cyan]%.2f\n\n",
