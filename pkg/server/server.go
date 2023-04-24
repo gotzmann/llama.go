@@ -24,13 +24,13 @@ var (
 
 	// TODO: sync.Map
 	// TODO: Helicopter View - how to work with balancers and multi-pod architectures?
-	Jobs  map[string]*Job   // ID -> Job
-	Queue map[string]string // ID -> Status
+	Jobs  map[string]*Job // ID -> Job
+	Queue map[string]*Job // ID -> Status
 )
 
 func init() {
 	Jobs = make(map[string]*Job)
-	Queue = make(map[string]string)
+	Queue = make(map[string]*Job)
 }
 
 func Run() {
@@ -39,15 +39,43 @@ func Run() {
 		DisableStartupMessage: true,
 	})
 
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendString("Hello, World 👋!")
-	})
-
+	//app.Get("/", func(c *fiber.Ctx) error {
+	//	return c.SendString("Hello, World 👋!")
+	//})
 	app.Get("/jobs/status/:id", GetStatus)
-
 	app.Post("/jobs/", NewJob)
 
+	go Engine()
+
 	app.Listen(Host + ":" + Port)
+}
+
+func Engine() {
+	for {
+
+		if len(Queue) == 0 {
+			fmt.Printf(" [ SLEEP ] ")
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		for id, job := range Queue {
+			fmt.Printf("\n[ ENGINE ] Moving job id # %s from Queue to Jobs", id)
+			Jobs[id].Status = "processing"
+			delete(Queue, id)
+			go Do(job)
+		}
+	}
+}
+
+func Do(job *Job) {
+	Jobs[job.ID].StartedAt = time.Now().Unix()
+	fmt.Printf("\n[ PROCESSING ] Starting job # %s", job.ID)
+	time.Sleep(10 * time.Second)
+	Jobs[job.ID].FinishedAt = time.Now().Unix()
+	fmt.Printf("\n[ PROCESSING ] Finishing job # %s", job.ID)
+	Jobs[job.ID].Status = "finished"
+
 }
 
 // POST /jobs
@@ -97,16 +125,21 @@ func NewJob(ctx *fiber.Ctx) error {
 		CreatedAt: time.Now().Unix(),
 	}
 
+	Queue[payload.ID] = &Job{
+		ID:        payload.ID,
+		Status:    "queued",
+		CreatedAt: time.Now().Unix(),
+	}
+
 	return ctx.JSON(fiber.Map{
 		"id":       payload.ID,
-		"received": time.Now().Unix(),
-		"started":  time.Now().Unix(),
+		"created":  Jobs[payload.ID].CreatedAt,
+		"started":  Jobs[payload.ID].StartedAt,
 		"finished": "2023-04-24 13:47:00 GMT+00", // time.Now().Unix(),
 		"model":    "mira-beta-7B",
 		"source":   "web",
-		"status":   "processing",
+		"status":   Jobs[payload.ID].Status,
 	})
-	//return c.SendString("Hello, World 👋!")
 }
 
 // GET /jobs/status/:id
@@ -116,13 +149,15 @@ func GetStatus(ctx *fiber.Ctx) error {
 	//config := ctx.App().Config()
 	//fmt.Printf("%+v", config)
 
-	if _, err := uuid.Parse(ctx.Params("id")); err != nil {
+	id := ctx.Params("id")
+
+	if _, err := uuid.Parse(id); err != nil {
 		return ctx.
 			Status(fiber.StatusBadRequest).
 			SendString("Wrong UUID4 id for request!")
 	}
 
-	if _, ok := Jobs[ctx.Params("id")]; !ok {
+	if _, ok := Jobs[id]; !ok {
 		return ctx.
 			Status(fiber.StatusBadRequest).
 			SendString("Request ID was not found!")
@@ -130,13 +165,12 @@ func GetStatus(ctx *fiber.Ctx) error {
 
 	return ctx.JSON(fiber.Map{
 		"id":       ctx.Params("id"),
-		"received": time.Now().Unix(),
-		"started":  time.Now().Unix(),
-		"finished": time.Now().Unix(),
+		"created":  Jobs[id].CreatedAt,
+		"started":  Jobs[id].StartedAt,
+		"finished": Jobs[id].FinishedAt,
 		"model":    "mira-beta-7B",
-		"status":   "processing",
+		"status":   Jobs[ctx.Params("id")].Status,
 	})
-	//return c.SendString("Hello, World 👋!" + "/jobs/status/:id")
 }
 
 // GET /jobs/:id
