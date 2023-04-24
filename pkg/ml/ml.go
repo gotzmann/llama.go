@@ -2852,6 +2852,7 @@ func Init(params InitParams) {
 }
 
 // Allocator is an experimental memory pool for FP32 slices
+// TODO: Investigate https://github.com/valyala/bytebufferpool
 type Allocator struct {
 	sync.Mutex
 

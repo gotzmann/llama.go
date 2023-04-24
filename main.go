@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	flags "github.com/jessevdk/go-flags"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/gotzmann/llama.go/pkg/llama"
 	"github.com/gotzmann/llama.go/pkg/ml"
+	"github.com/gotzmann/llama.go/pkg/server"
 )
 
 const VERSION = "1.3.0"
@@ -32,6 +34,8 @@ func main() {
 		Temp    float32 `long:"temp" description:"Model temperature hyper parameter [ 0.50 by default ]"`
 		Silent  bool    `long:"silent" description:"Hide welcome logo and other output [ show by default ]"`
 		Chat    bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
+		Server  bool    `long:"server" description:"Start in Server Mode acting as REST API endpoint"`
+		Port    string  `long:"port" description:"Port listen to in Server Mode [ 8080 by default ]"`
 		Profile bool    `long:"profile" description:"Profe CPU performance while running and store results to [cpu.pprof] file"`
 		UseAVX  bool    `long:"avx" description:"Enable x64 AVX2 optimizations for Intel and AMD machines"`
 		UseNEON bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple and ARM machines"`
@@ -54,6 +58,10 @@ func main() {
 	// runtime.GOMAXPROCS(runtime.NumCPU())
 	if opts.Threads == 0 {
 		opts.Threads = runtime.NumCPU()
+	}
+
+	if opts.Port == "" {
+		opts.Port = "8080"
 	}
 
 	if opts.Context == 0 {
@@ -105,6 +113,16 @@ func main() {
 		RepeatPenalty: 1.10,
 
 		MemoryFP16: true,
+	}
+
+	if opts.Server {
+		var wg sync.WaitGroup
+		server.Host = "localhost"
+		server.Port = opts.Port
+		server.CtxSize = params.CtxSize
+		server.Run()
+		wg.Wait()
+		return
 	}
 
 	// --- load the model
