@@ -494,12 +494,6 @@ func SampleTopPTopK(
 		for i := int(len(logits)) - 1; i >= int(len(logits))-8; i-- {
 			fmt.Printf("%.4f ", logits[i])
 		}
-		/*
-			fmt.Printf("\n=== LAST N TOKENS | %d ===\n", len(lastNTokens))
-			for i := 0; i < int(lastNTokensSize); i++ {
-				fmt.Printf("%d ", lastNTokens[i])
-			}
-		*/
 		extractedTokens := ExtractTokens(lastNTokens.Move(-int(lastNTokensSize)), int(lastNTokensSize))
 		fmt.Printf("\n=== LAST N TOKENS | %d ===\n", len(extractedTokens))
 		for i := 0; i < int(lastNTokensSize); i++ {
@@ -523,33 +517,32 @@ func SampleTopPTopK(
 
 	logitsID := make([]pair, 0, logitsCount)
 
-	{
-		scale := float32(1.0 / temp)
-		for i := uint32(0); i < logitsCount; i++ {
+	scale := float32(1.0 / temp)
+	for i := uint32(0); i < logitsCount; i++ {
 
-			// Repetition penalty from ctrl paper (https://arxiv.org/abs/1909.05858)
-			// Credit https://github.com/facebookresearch/llama/compare/main...shawwn:llama:main
+		// Repetition penalty from ctrl paper (https://arxiv.org/abs/1909.05858)
+		// Credit https://github.com/facebookresearch/llama/compare/main...shawwn:llama:main
 
-			// Check if the i-th token is present in the last_n_tokens ring buffer
-			tokenExists := false
-			lastNTokens.Do(func(p interface{}) {
-				if p.(uint32) == i {
-					tokenExists = true
-				}
-			})
-
-			// If lastNTokens already contains i-th token, append it with repeat penalty
-			if tokenExists {
-				// If score < 0, then repetition penalty has to be multiplied to reduce the previous token probability
-				if logits[i] < 0.0 {
-					logitsID = append(logitsID, pair{logits[i] * scale * repeatPenalty, i})
-				} else {
-					logitsID = append(logitsID, pair{logits[i] * scale / repeatPenalty, i})
-				}
-				// Else append pair to logitsID, scaling probability
-			} else {
-				logitsID = append(logitsID, pair{logits[i] * scale, i})
+		// Check if the i-th token is present in the last_n_tokens ring buffer
+		tokenExists := false
+		// TODO: Ompimize [ 32,000 * 512 == 15 ms ] loop with better data structure for lastNTokens
+		lastNTokens.Do(func(p interface{}) {
+			if p.(uint32) == i {
+				tokenExists = true
 			}
+		})
+
+		// If lastNTokens already contains i-th token, append it with repeat penalty
+		if tokenExists {
+			// If score < 0, then repetition penalty has to be multiplied to reduce the previous token probability
+			if logits[i] < 0.0 {
+				logitsID = append(logitsID, pair{logits[i] * scale * repeatPenalty, i})
+			} else {
+				logitsID = append(logitsID, pair{logits[i] * scale / repeatPenalty, i})
+			}
+			// Else append pair to logitsID, scaling probability
+		} else {
+			logitsID = append(logitsID, pair{logits[i] * scale, i})
 		}
 	}
 

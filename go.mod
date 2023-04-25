@@ -4,6 +4,9 @@ go 1.20
 
 require (
 	github.com/gofiber/fiber/v2 v2.44.0
+	github.com/google/uuid v1.3.0
+	github.com/gotzmann/llama.go/llama v0.0.0-20230412160549-c20730f209a3
+	github.com/gotzmann/llama.go/ml v0.0.0-20230412160549-c20730f209a3
 	github.com/jessevdk/go-flags v1.5.0
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
@@ -17,7 +20,6 @@ require (
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/felixge/fgprof v0.9.3 // indirect
 	github.com/google/pprof v0.0.0-20211214055906-6f57359322fd // indirect
-	github.com/google/uuid v1.3.0 // indirect
 	github.com/klauspost/compress v1.16.3 // indirect
 	github.com/mattn/go-isatty v0.0.18 // indirect
 	github.com/mattn/go-runewidth v0.0.14 // indirect

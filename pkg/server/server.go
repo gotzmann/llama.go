@@ -1,16 +1,27 @@
 package server
 
 import (
+	"container/ring"
 	"fmt"
+	"sync"
 	"time"
 
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	colorable "github.com/mattn/go-colorable"
+	"github.com/mitchellh/colorstring"
+
+	"github.com/gotzmann/llama.go/pkg/llama"
+	"github.com/gotzmann/llama.go/pkg/ml"
 )
+
+// TODO: Helicopter View - how to work with balancers and multi-pod architectures?
 
 type Job struct {
 	ID         string
 	Status     string
+	Prompt     string
+	Output     string
 	CreatedAt  int64
 	StartedAt  int64
 	FinishedAt int64
@@ -20,12 +31,13 @@ var (
 	Host string
 	Port string
 
-	CtxSize uint32
+	Ctx    *llama.Context
+	Params llama.ModelParams
 
-	// TODO: sync.Map
-	// TODO: Helicopter View - how to work with balancers and multi-pod architectures?
-	Jobs  map[string]*Job // ID -> Job
-	Queue map[string]*Job // ID -> Status
+	mu sync.Mutex // guards any Jobs change
+
+	Jobs  map[string]*Job
+	Queue map[string]*Job
 )
 
 func init() {
@@ -39,55 +51,229 @@ func Run() {
 		DisableStartupMessage: true,
 	})
 
-	//app.Get("/", func(c *fiber.Ctx) error {
-	//	return c.SendString("Hello, World 👋!")
-	//})
-	app.Get("/jobs/status/:id", GetStatus)
 	app.Post("/jobs/", NewJob)
+	app.Get("/jobs/status/:id", GetStatus)
+	app.Get("/jobs/:id", GetJob)
 
 	go Engine()
 
 	app.Listen(Host + ":" + Port)
 }
 
+// TODO: Some internal sync with channels, not time.Sleep()
+// TODO: Background watcher wich will make waiting jobs obsolete after some deadline
 func Engine() {
 	for {
 
 		if len(Queue) == 0 {
-			fmt.Printf(" [ SLEEP ] ")
 			time.Sleep(1 * time.Second)
 			continue
 		}
 
-		for id, job := range Queue {
-			fmt.Printf("\n[ ENGINE ] Moving job id # %s from Queue to Jobs", id)
-			Jobs[id].Status = "processing"
-			delete(Queue, id)
-			go Do(job)
+		for jobID, _ := range Queue {
+			fmt.Printf("\n[ ENGINE ] Moving job id # %s from Queue to Jobs", jobID)
+			mu.Lock()
+			Jobs[jobID].Status = "processing"
+			delete(Queue, jobID)
+			mu.Unlock()
+			go Do(jobID)
 		}
 	}
 }
 
-func Do(job *Job) {
-	Jobs[job.ID].StartedAt = time.Now().Unix()
-	fmt.Printf("\n[ PROCESSING ] Starting job # %s", job.ID)
-	time.Sleep(10 * time.Second)
-	Jobs[job.ID].FinishedAt = time.Now().Unix()
-	fmt.Printf("\n[ PROCESSING ] Finishing job # %s", job.ID)
-	Jobs[job.ID].Status = "finished"
+// TODO: Store total time of evaluation and average per token + token count
+func Do(jobID string) {
 
+	// TODO: Proper logging
+	fmt.Printf("\n[ PROCESSING ] Starting job # %s", jobID)
+
+	mu.Lock()
+	Jobs[jobID].StartedAt = time.Now().Unix()
+	mu.Unlock()
+
+	prompt := " " + Jobs[jobID].Prompt // add a space to match LLaMA tokenizer behavior
+	final := ""                        // accumulate model output
+
+	// --------------------------------------------------------------------
+
+	// tokenize the prompt
+	embdPrompt := ml.Tokenize(Ctx.Vocab, prompt, true)
+
+	// ring buffer for last N tokens
+	lastNTokens := ring.New(int(Params.CtxSize))
+
+	// method to append a token to the ring buffer
+	appendToken := func(token uint32) {
+		lastNTokens.Value = token
+		lastNTokens = lastNTokens.Next()
+	}
+
+	// zeroing the ring buffer
+	for i := 0; i < int(Params.CtxSize); i++ {
+		appendToken(0)
+	}
+
+	tokenCounter := 0
+	pastCount := uint32(0)
+	consumedCount := uint32(0)
+	remainedCount := Params.PredictCount
+	embd := make([]uint32, 0, Params.BatchSize)
+	evalPerformance := make([]int64, 0, Params.PredictCount)
+	samplePerformance := make([]int64, 0, Params.PredictCount)
+	fullPerformance := make([]int64, 0, Params.PredictCount)
+
+	for remainedCount > 0 {
+
+		start := time.Now().UnixNano()
+
+		if len(embd) > 0 {
+
+			// infinite text generation via context swapping
+			// if we run out of context:
+			// - take the n_keep first tokens from the original prompt (via n_past)
+			// - take half of the last (n_ctx - n_keep) tokens and recompute the logits in a batch
+
+			if pastCount+uint32(len(embd)) > Params.CtxSize {
+				leftCount := pastCount - Params.KeepCount
+				pastCount = Params.KeepCount
+
+				// insert n_left/2 tokens at the start of embd from last_n_tokens
+				// embd = append(lastNTokens[:leftCount/2], embd...)
+				embd = append(llama.ExtractTokens(lastNTokens.Move(-int(leftCount/2)), int(leftCount/2)), embd...)
+			}
+
+			evalStart := time.Now().UnixNano()
+			if err := llama.Eval(Ctx, embd, pastCount, Params); err != nil {
+				// TODO: Finish job properly with [failed] status
+			}
+			evalPerformance = append(evalPerformance, time.Now().UnixNano()-evalStart)
+		}
+
+		pastCount += uint32(len(embd))
+		embd = embd[:0]
+
+		if int(consumedCount) < len(embdPrompt) {
+
+			for len(embdPrompt) > int(consumedCount) && len(embd) < int(Params.BatchSize) {
+
+				embd = append(embd, embdPrompt[consumedCount])
+				appendToken(embdPrompt[consumedCount])
+				consumedCount++
+			}
+
+		} else {
+
+			//if Params.IgnoreEOS {
+			//	Ctx.Logits[ml.TOKEN_EOS] = 0
+			//}
+
+			sampleStart := time.Now().UnixNano()
+			id := llama.SampleTopPTopK(Ctx,
+				lastNTokens, Params.RepeatLastN,
+				Params.TopK, Params.TopP,
+				Params.Temp, Params.RepeatPenalty)
+			samplePerformance = append(samplePerformance, time.Now().UnixNano()-sampleStart)
+
+			appendToken(id)
+
+			// replace end of text token with newline token when in interactive mode
+			//if id == ml.TOKEN_EOS && Params.Interactive && !Params.Instruct {
+			//	id = ml.NewLineToken
+			//}
+
+			embd = append(embd, id) // add to the context
+
+			remainedCount-- // decrement remaining sampling budget
+		}
+
+		// --- assemble the final ouptut, which will include the prompt as well
+
+		for _, id := range embd {
+
+			tokenCounter++
+			token := ml.Token2Str(Ctx.Vocab, id) // TODO: Simplify
+			final += token
+
+			mu.Lock()
+			Jobs[jobID].Output += token
+			mu.Unlock()
+
+			fmt.Printf("%s", token)
+		}
+
+		fullPerformance = append(fullPerformance, time.Now().UnixNano()-start)
+	}
+
+	//if ml.DEBUG {
+	Colorize("\n\n=== EVAL TIME | ms ===\n\n")
+	for _, time := range evalPerformance {
+		Colorize("%d | ", time/1_000_000)
+	}
+
+	Colorize("\n\n=== SAMPLING TIME | ms ===\n\n")
+	for _, time := range samplePerformance {
+		Colorize("%d | ", time/1_000_000)
+	}
+
+	Colorize("\n\n=== FULL TIME | ms ===\n\n")
+	for _, time := range fullPerformance {
+		Colorize("%d | ", time/1_000_000)
+	}
+	//}
+
+	avgEval := int64(0)
+	for _, time := range fullPerformance {
+		avgEval += time / 1_000_000
+	}
+	avgEval /= int64(len(fullPerformance))
+
+	Colorize(
+		"\n\n[light_magenta][ HALT ][white] Time per token: [light_cyan]%d[white] ms | Tokens per second: [light_cyan]%.2f\n\n",
+		avgEval,
+		float64(1000)/float64(avgEval))
+
+	// ---------------------------------------------------------------
+
+	mu.Lock()
+	Jobs[jobID].FinishedAt = time.Now().Unix()
+	Jobs[jobID].Status = "finished"
+	mu.Unlock()
+
+	// TODO: Proper logging
+	fmt.Printf("\n[ PROCESSING ] Finishing job # %s", jobID)
 }
 
-// POST /jobs
-// {
-//     "id": "",
-//     "prompt": ""
-// }
+// --- Place new job into queue
+
+func PlaceJob(jobID, prompt string) {
+
+	mu.Lock()
+
+	Jobs[jobID] = &Job{
+		ID:        jobID,
+		Prompt:    prompt,
+		Status:    "queued",
+		CreatedAt: time.Now().Unix(),
+	}
+
+	Queue[jobID] = &Job{
+		ID:        jobID,
+		Prompt:    prompt,
+		Status:    "queued",
+		CreatedAt: time.Now().Unix(),
+	}
+
+	mu.Unlock()
+}
+
+// --- POST /jobs
+//
+//	{
+//	    "id": "",
+//	    "prompt": ""
+//	}
 
 func NewJob(ctx *fiber.Ctx) error {
-
-	//config := ctx.App().Config()
-	//fmt.Printf("%+v", config)
 
 	payload := struct {
 		ID     string `json:"id"`
@@ -95,7 +281,7 @@ func NewJob(ctx *fiber.Ctx) error {
 	}{}
 
 	if err := ctx.BodyParser(&payload); err != nil {
-		//return err
+		// TODO: Proper error handling
 	}
 
 	if _, err := uuid.Parse(payload.ID); err != nil {
@@ -111,43 +297,31 @@ func NewJob(ctx *fiber.Ctx) error {
 	}
 
 	// TODO: Proper chack for max chars in request
-	if len(payload.Prompt) >= int(CtxSize) {
+	if len(payload.Prompt) >= int(Params.CtxSize) {
 		return ctx.
 			Status(fiber.StatusBadRequest).
-			SendString(fmt.Sprintf("Prompt length %d is more than allowed %d chars!", len(payload.Prompt), CtxSize))
+			SendString(fmt.Sprintf("Prompt length %d is more than allowed %d chars!", len(payload.Prompt), Params.CtxSize))
 	}
 
 	// TODO: Tokenize and check for max tokens
 
-	Jobs[payload.ID] = &Job{
-		ID:        payload.ID,
-		Status:    "queued",
-		CreatedAt: time.Now().Unix(),
-	}
-
-	Queue[payload.ID] = &Job{
-		ID:        payload.ID,
-		Status:    "queued",
-		CreatedAt: time.Now().Unix(),
-	}
+	PlaceJob(payload.ID, payload.Prompt)
 
 	return ctx.JSON(fiber.Map{
 		"id":       payload.ID,
+		"prompt":   payload.Prompt,
 		"created":  Jobs[payload.ID].CreatedAt,
 		"started":  Jobs[payload.ID].StartedAt,
-		"finished": "2023-04-24 13:47:00 GMT+00", // time.Now().Unix(),
-		"model":    "mira-beta-7B",
-		"source":   "web",
+		"finished": "2023-04-24 13:47:00 GMT+00", // FIXME: time.Now().Unix(),
+		"model":    "model-xx-parameters",
+		"source":   "api",
 		"status":   Jobs[payload.ID].Status,
 	})
 }
 
-// GET /jobs/status/:id
+// --- GET /jobs/status/:id
 
 func GetStatus(ctx *fiber.Ctx) error {
-
-	//config := ctx.App().Config()
-	//fmt.Printf("%+v", config)
 
 	id := ctx.Params("id")
 
@@ -164,13 +338,44 @@ func GetStatus(ctx *fiber.Ctx) error {
 	}
 
 	return ctx.JSON(fiber.Map{
-		"id":       ctx.Params("id"),
-		"created":  Jobs[id].CreatedAt,
-		"started":  Jobs[id].StartedAt,
-		"finished": Jobs[id].FinishedAt,
-		"model":    "mira-beta-7B",
-		"status":   Jobs[ctx.Params("id")].Status,
+		"status": Jobs[id].Status,
 	})
 }
 
-// GET /jobs/:id
+// --- GET /jobs/:id
+
+func GetJob(ctx *fiber.Ctx) error {
+
+	id := ctx.Params("id")
+
+	if _, err := uuid.Parse(id); err != nil {
+		return ctx.
+			Status(fiber.StatusBadRequest).
+			SendString("Wrong UUID4 id for request!")
+	}
+
+	if _, ok := Jobs[id]; !ok {
+		return ctx.
+			Status(fiber.StatusBadRequest).
+			SendString("Request ID was not found!")
+	}
+
+	return ctx.JSON(fiber.Map{
+		"id":       id,
+		"prompt":   Jobs[id].Prompt,
+		"output":   Jobs[id].Output,
+		"created":  Jobs[id].CreatedAt,
+		"started":  Jobs[id].StartedAt,
+		"finished": Jobs[id].FinishedAt,
+		"model":    "model-xx-params",
+		"status":   Jobs[id].Status,
+	})
+}
+
+// Colorize is a wrapper for colorstring.Color() and fmt.Fprintf()
+// Join colorstring and go-colorable to allow colors both on Mac and Windows
+// TODO: Implement as a small library
+func Colorize(format string, opts ...interface{}) (n int, err error) {
+	var DefaultOutput = colorable.NewColorableStdout()
+	return fmt.Fprintf(DefaultOutput, colorstring.Color(format), opts...)
+}

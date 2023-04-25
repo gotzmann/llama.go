@@ -2733,6 +2733,8 @@ func TryAddBigram(vocab *Vocab, symbols []Symbol, workQueue *[]Bigram, left, rig
 	*workQueue = append(*workQueue, bigram)
 }
 
+const NewLineToken = 13 // ml.Tokenize(Ctx.Vocab, "\n", false)[0]
+
 // void tokenize(const std::string & text, std::vector<llama_vocab::id> & output) {
 func Tokenize(vocab *Vocab, text string, bos bool) []uint32 {
 

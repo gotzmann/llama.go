@@ -60,9 +60,9 @@ Or build it with Makefile and then run binary.
 --prompt   Text prompt from user to feed the model input
 --model    Path and file name of converted .bin LLaMA model
 --threads  Adjust to the number of CPU cores you want to use [ all cores by default ]
---predict  Number of tokens to predict [ 64 by default ]
---context  Context size in tokens [ 64 by default ]
---temp     Model temperature hyper parameter [ 0.8 by default ]
+--context  Context size in tokens [ 1024 by default ]
+--predict  Number of tokens to predict [ 512 by default ]
+--temp     Model temperature hyper parameter [ 0.5 by default ]
 --silent   Hide welcome logo and other output [ show by default ]
 --chat     Chat with user in interactive mode instead of compute over static prompt
 --profile  Profe CPU performance while running and store results to [cpu.pprof] file
