@@ -4,6 +4,7 @@ import (
 	"container/ring"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	fiber "github.com/gofiber/fiber/v2"
@@ -21,6 +22,7 @@ import (
 // https://dev.to/stripe/how-stripe-designs-for-dates-and-times-in-the-api-3eoh
 // TODO: UUID vs string for job ID
 // TODO: Unix timestamp vs ISO for date and time
+
 type Job struct {
 	ID         string
 	Status     string
@@ -35,19 +37,28 @@ var (
 	Host string
 	Port string
 
+	Vocab *ml.Vocab
+	Model *llama.Model
+
 	Ctx    *llama.Context
-	Params llama.ModelParams
+	Params *llama.ModelParams
+
+	MaxPods     int64
+	RunningPods int64 // number of pods running right now in parallel
 
 	mu sync.Mutex // guards any Jobs change
 
-	Jobs  map[string]*Job
-	Queue map[string]*Job
+	// TODO: Background watcher which will make waiting jobs obsolete after some deadline
+	Jobs  map[string]*Job     // all seen jobs in any state
+	Queue map[string]struct{} // queue of job IDs waiting for start
 )
 
 func init() {
 	Jobs = make(map[string]*Job)
-	Queue = make(map[string]*Job)
+	Queue = make(map[string]struct{})
 }
+
+// --- init and run Fiber server
 
 func Run() {
 
@@ -64,27 +75,37 @@ func Run() {
 	app.Listen(Host + ":" + Port)
 }
 
-// TODO: Some internal sync with channels, not time.Sleep()
-// TODO: Background watcher wich will make waiting jobs obsolete after some deadline
+// --- our evergreen Engine looking for job queue and starting up to MaxPods workers
+
 func Engine() {
+
 	for {
 
 		for jobID, _ := range Queue {
-			fmt.Printf("\n[ ENGINE ] Moving job id # %s from Queue to Jobs", jobID)
+
+			if RunningPods >= MaxPods {
+				continue
+			}
+
 			mu.Lock()
-			// TODO: Check jobID still avaiable again
 			Jobs[jobID].Status = "processing"
 			delete(Queue, jobID)
 			mu.Unlock()
+
+			atomic.AddInt64(&RunningPods, 1)
 			go Do(jobID)
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		// TODO: Some internal sync with channels, not time.Sleep()
+		time.Sleep(1000 * time.Millisecond)
 	}
 }
 
-// TODO: Store total time of evaluation and average per token + token count
+// --- worker doing the "job" of transforming boring prompt into magic output
+
 func Do(jobID string) {
+
+	defer atomic.AddInt64(&RunningPods, -1)
 
 	// TODO: Proper logging
 	// fmt.Printf("\n[ PROCESSING ] Starting job # %s", jobID)
@@ -95,7 +116,7 @@ func Do(jobID string) {
 	mu.Unlock()
 
 	// tokenize the prompt
-	embdPrompt := ml.Tokenize(Ctx.Vocab, prompt, true)
+	embdPrompt := ml.Tokenize(Vocab, prompt, true)
 
 	// ring buffer for last N tokens
 	lastNTokens := ring.New(int(Params.CtxSize))
@@ -120,8 +141,11 @@ func Do(jobID string) {
 	samplePerformance := make([]int64, 0, Params.PredictCount)
 	fullPerformance := make([]int64, 0, Params.PredictCount)
 
+	ctx := llama.NewContext(Model, Params)
+
 	for remainedCount > 0 {
 
+		// TODO: Store total time of evaluation and average per token + token count
 		start := time.Now().UnixNano()
 
 		if len(embd) > 0 {
@@ -141,7 +165,7 @@ func Do(jobID string) {
 			}
 
 			evalStart := time.Now().UnixNano()
-			if err := llama.Eval(Ctx, embd, pastCount, Params); err != nil {
+			if err := llama.Eval(ctx, Vocab, Model, embd, pastCount, Params); err != nil {
 				// TODO: Finish job properly with [failed] status
 			}
 			evalPerformance = append(evalPerformance, time.Now().UnixNano()-evalStart)
@@ -166,7 +190,7 @@ func Do(jobID string) {
 			//}
 
 			sampleStart := time.Now().UnixNano()
-			id := llama.SampleTopPTopK(Ctx,
+			id := llama.SampleTopPTopK( /*ctx,*/ ctx.Logits,
 				lastNTokens, Params.RepeatLastN,
 				Params.TopK, Params.TopP,
 				Params.Temp, Params.RepeatPenalty)
@@ -189,7 +213,7 @@ func Do(jobID string) {
 		for _, id := range embd {
 
 			tokenCounter++
-			token := ml.Token2Str(Ctx.Vocab, id) // TODO: Simplify
+			token := ml.Token2Str(Vocab, id) // TODO: Simplify
 
 			mu.Lock()
 			Jobs[jobID].Output += token
@@ -216,7 +240,6 @@ func Do(jobID string) {
 	for _, time := range fullPerformance {
 		Colorize("%d | ", time/1_000_000)
 	}
-	//}
 
 	avgEval := int64(0)
 	for _, time := range fullPerformance {
@@ -228,8 +251,7 @@ func Do(jobID string) {
 		"\n\n[light_magenta][ HALT ][white] Time per token: [light_cyan]%d[white] ms | Tokens per second: [light_cyan]%.2f\n\n",
 		avgEval,
 		float64(1000)/float64(avgEval))
-
-	// ---------------------------------------------------------------
+	//}
 
 	mu.Lock()
 	Jobs[jobID].FinishedAt = time.Now().Unix()
@@ -255,12 +277,7 @@ func PlaceJob(jobID, prompt string) {
 		CreatedAt: timing,
 	}
 
-	Queue[jobID] = &Job{
-		ID:        jobID,
-		Prompt:    prompt,
-		Status:    "queued",
-		CreatedAt: timing,
-	}
+	Queue[jobID] = struct{}{}
 
 	mu.Unlock()
 }
@@ -268,8 +285,8 @@ func PlaceJob(jobID, prompt string) {
 // --- POST /jobs
 //
 //	{
-//	    "id": "",
-//	    "prompt": ""
+//	    "id": "5fb8ebd0-e0c9-4759-8f7d-35590f6c9fcb",
+//	    "prompt": "Why Golang is so popular?"
 //	}
 
 func NewJob(ctx *fiber.Ctx) error {

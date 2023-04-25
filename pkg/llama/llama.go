@@ -15,7 +15,7 @@ import (
 
 	"github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
-	"github.com/schollz/progressbar/v3"
+	progressbar "github.com/schollz/progressbar/v3"
 	"github.com/x448/float16"
 	"golang.org/x/exp/slices"
 
@@ -81,14 +81,14 @@ type pair struct {
 
 // Context is the context of the model.
 type Context struct {
-	Model *Model
-	Vocab *ml.Vocab
+	//Model *Model
+	//Vocab *ml.Vocab
 
 	kvSelf KVCache // KeyValue store for the self attention
 
 	// decode output (2-dimensional array: [n_tokens][n_vocab])
-	Logits    []float32
-	LogitsAll bool
+	Logits []float32
+	//LogitsAll bool
 
 	// input embedding (1-dimensional array: [n_embd])
 	Embedding []float32
@@ -97,16 +97,26 @@ type Context struct {
 }
 
 // NewContext creates a new context.
-func NewContext(params ModelParams) *Context {
+func NewContext(model *Model, params *ModelParams) *Context {
+	// FIXME Reserve extra space for tokensCount (N) = 8 (as with LogitsAll == true)
+	//lctx.Logits = make([]float32, vocabSize, vocabSize)
+	//ctx.Logits = make([]float32, vocabSize, vocabSize)
+	// --- init cache
+	dt := ml.TYPE_F32
+	size := model.hparams.embdSize * model.hparams.layersCount * params.CtxSize
+	//lctx.kvSelf.K = ml.NewTensor1D(ctx, dt, size) // Fixed OK
+	//lctx.kvSelf.V = ml.NewTensor1D(ctx, dt, size) // Fixed OK
 	return &Context{
-		Model: NewModel(params),
-		Vocab: ml.NewVocab(0),
+		//Model: NewModel(params),
+		//Vocab: ml.NewVocab(0),
 		kvSelf: KVCache{
-			K: &ml.Tensor{},
-			V: &ml.Tensor{},
+			//K: &ml.Tensor{},
+			K: ml.NewTensor1D(nil, dt, size), // Fixed OK
+			//V: &ml.Tensor{},
+			V: ml.NewTensor1D(nil, dt, size), // Fixed OK
 		},
-		Logits:    make([]float32, 0, 0),
-		Embedding: make([]float32, 0, 0),
+		Logits:    make([]float32, model.hparams.vocabSize, model.hparams.vocabSize),
+		Embedding: make([]float32, 0, 0), // FIXME: vocab.Size ?
 		MLContext: ml.NewContext(),
 	}
 }
@@ -180,7 +190,7 @@ type KVCache struct {
 type Model struct {
 	Type    ModelType
 	ctx     *ml.Context
-	hparams HParams
+	hparams *HParams
 
 	tokEmbeddings *ml.Tensor
 	norm          *ml.Tensor
@@ -188,14 +198,13 @@ type Model struct {
 
 	layers []Layer
 
-	//loadedCount uint32
 	tensors map[string]*ml.Tensor
 }
 
 // NewModel creates a new model with default hyperparameters.
-func NewModel(params ModelParams) *Model {
+func NewModel(params *ModelParams) *Model {
 	return &Model{
-		hparams: HParams{
+		hparams: &HParams{
 			ctxSize: params.CtxSize,
 		},
 		layers:  make([]Layer, 0),
@@ -208,10 +217,17 @@ func NewModel(params ModelParams) *Model {
 // tokens = new batch of tokens to process
 // pastCount = the context size so far
 // params = all other parameters like max threads allowed, etc
-func Eval(lctx *Context, tokens []uint32, pastCount uint32, params ModelParams) error {
+func Eval(
+	lctx *Context,
+	vocab *ml.Vocab,
+	model *Model,
+	tokens []uint32,
+	pastCount uint32,
+	params *ModelParams,
+) error {
 
 	N := uint32(len(tokens))
-	model := lctx.Model
+	//model := lctx.Model
 	kvSelf := lctx.kvSelf
 
 	embdSize := model.hparams.embdSize
@@ -394,30 +410,14 @@ func Eval(lctx *Context, tokens []uint32, pastCount uint32, params ModelParams) 
 	//	fmt.Printf("%.4f  ", inpL.Data[ii])
 	//}
 
-	if lctx.LogitsAll {
-		fmt.Print("\n[HALT] Not Expected: lctx.LogitsAll == true")
-		os.Exit(1)
-
-		/*
-			// Copy inpL.Data to lctx.Logits
-			for i := uint32(0); i < vocabSize*N; i++ {
-				if i >= uint32(len(lctx.Logits)) || i >= uint32(len(inpL.Data)) {
-					fmt.Println("Error: Index out of bounds during Logits copy")
-					os.Exit(1)
-				}
-				lctx.Logits[i] = inpL.Data[i]
-			}
-		*/
-	} else {
-		// Copy only the relevant part of inpL.Data to lctx.Logits
-		for i := uint32(0); i < vocabSize; i++ {
-			srcIndex := vocabSize*(N-1) + i
-			if i >= uint32(len(lctx.Logits)) || srcIndex >= uint32(len(inpL.Data)) {
-				fmt.Println("Error: Index out of bounds during Logits copy")
-				os.Exit(1)
-			}
-			lctx.Logits[i] = inpL.Data[srcIndex]
+	// Copy only the relevant part of inpL.Data to lctx.Logits
+	for i := uint32(0); i < vocabSize; i++ {
+		srcIndex := vocabSize*(N-1) + i
+		if i >= uint32(len(lctx.Logits)) || srcIndex >= uint32(len(inpL.Data)) {
+			fmt.Println("Error: Index out of bounds during Logits copy")
+			os.Exit(1)
 		}
+		lctx.Logits[i] = inpL.Data[srcIndex]
 	}
 
 	if ml.DEBUG {
@@ -473,8 +473,9 @@ func printTensor(tensor *ml.Tensor, name string) {
 //   - consider only the top K tokens
 //   - from them, consider only the top tokens with cumulative probability > P
 func SampleTopPTopK(
-	lctx *Context,
-	lastNTokens *ring.Ring,
+	//lctx *Context,
+	logits []float32,
+	lastNTokens *ring.Ring, // TODO: Use custom performant container
 	lastNTokensSize uint32, // TODO: Remove
 	topK uint32,
 	topP float32,
@@ -482,8 +483,9 @@ func SampleTopPTopK(
 	repeatPenalty float32,
 ) uint32 {
 
-	logitsCount := lctx.Model.hparams.vocabSize
-	logits := lctx.Logits
+	//logitsCount := lctx.Model.hparams.vocabSize
+	logitsCount := uint32(len(logits))
+	//logits := lctx.Logits
 
 	if ml.DEBUG {
 		fmt.Printf("\n\n>>> SampleTopPTopK <<<\n")
@@ -729,11 +731,12 @@ func SampleTopPTopK(
 
 // LoadModel loads a model's weights from a file
 // See convert-pth-to-ggml.py for details on format
-func LoadModel(fileName string, params ModelParams, silent bool) (*Context, error) {
+// func LoadModel(fileName string, params ModelParams, silent bool) (*Context, error) {
+func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *Model, error) {
 
 	file, err := os.Open(fileName)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer file.Close()
 
@@ -743,22 +746,22 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 
 	if magic == LLAMA_FILE_MAGIC_UNVERSIONED || magic == LLAMA_FILE_MAGIC_OLD {
 		fmt.Printf("\n[ERROR] Invalid model file '%s'! Too old, regenerate!", fileName)
-		return nil, fmt.Errorf("invalid model file")
+		return nil, nil, fmt.Errorf("invalid model file")
 	}
 
 	if magic != LLAMA_FILE_MAGIC {
 		fmt.Printf("\n[ERROR] Invalid model file '%s'! Wrong MAGIC in header", fileName)
-		return nil, fmt.Errorf("invalid model file")
+		return nil, nil, fmt.Errorf("invalid model file")
 	}
 
 	version := readInt(file)
 
 	if version != LLAMA_FILE_VERSION {
 		fmt.Printf("\n[ERROR] Invalid model file '%s'! Unsupported version", fileName)
-		return nil, fmt.Errorf("invalid model file")
+		return nil, nil, fmt.Errorf("invalid model file")
 	}
 
-	lctx := NewContext(params) // creates new ML context and mem allocator as well
+	//lctx := NewContext(params) // creates new ML context and mem allocator as well
 
 	// --- load hparams
 
@@ -770,8 +773,10 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 	rotCount := readInt(file)    // rot = dim // n_heads [obsolete]
 	f16 := readInt(file)         // ftype
 
-	ctx := lctx.MLContext
-	model := lctx.Model
+	//ctx := lctx.MLContext
+	ctx := ml.NewContext()
+	//model := lctx.Model
+	model := NewModel(params)
 
 	model.hparams.vocabSize = vocabSize
 	model.hparams.embdSize = embdSize
@@ -784,18 +789,20 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 	ffSize := ((2*(4*embdSize)/3 + multSize - 1) / multSize) * multSize
 
 	// --- init cache
-	//KVCacheInit(&lctx.Model.hparams, &lctx.Model.kvSelf, ml.TYPE_F32)
-	dt := ml.TYPE_F32
-	size := embdSize * layersCount * params.CtxSize
-	lctx.kvSelf.K = ml.NewTensor1D(ctx, dt, size) // Fixed OK
-	lctx.kvSelf.V = ml.NewTensor1D(ctx, dt, size) // Fixed OK
+
+	//dt := ml.TYPE_F32
+	//size := embdSize * layersCount * params.CtxSize
+	//lctx.kvSelf.K = ml.NewTensor1D(ctx, dt, size) // Fixed OK
+	//lctx.kvSelf.V = ml.NewTensor1D(ctx, dt, size) // Fixed OK
 
 	// NB! Do not try to resize / relocate secondary pointers
-	lctx.Vocab = ml.NewVocab(vocabSize)
-	vocab := lctx.Vocab
+	//lctx.Vocab = ml.NewVocab(vocabSize)
+	//vocab := lctx.Vocab
+	vocab := ml.NewVocab(vocabSize)
 
 	// FIXME Reserve extra space for tokensCount (N) = 8 (as with LogitsAll == true)
-	lctx.Logits = make([]float32, vocabSize, vocabSize)
+	//lctx.Logits = make([]float32, vocabSize, vocabSize)
+	//ctx.Logits = make([]float32, vocabSize, vocabSize)
 
 	if ml.DEBUG {
 		fmt.Printf("\nvocab  = %d", vocabSize)
@@ -961,7 +968,7 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 		}
 		_, err = file.Seek(offset, io.SeekStart)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		// --- Read tensor into memory
@@ -1001,7 +1008,8 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 		bar.Finish()
 	}
 
-	return lctx, nil
+	//return lctx, nil
+	return vocab, model, nil
 }
 
 // max returns the maximum of two float32 values

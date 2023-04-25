@@ -2630,6 +2630,7 @@ type TokenScore struct {
 }
 
 type Vocab struct {
+	Size     uint32
 	Token2ID map[string]uint32
 	ID2Token []TokenScore
 }

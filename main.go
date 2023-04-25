@@ -21,6 +21,7 @@ const VERSION = "1.3.0"
 type Options struct {
 	Prompt  string  `long:"prompt" description:"Text prompt from user to feed the model input"`
 	Model   string  `long:"model" description:"Path and file name of converted .bin LLaMA model"`
+	Pods    int64   `long:"pods" description:"Maximum 'pods' of parallel execution allowed in Server Mode [ 1 by default ]"`
 	Threads int     `long:"threads" description:"Adjust to the number of CPU cores you want to use [ all cores by default ]"`
 	Context uint32  `long:"context" description:"Context size in tokens [ 1024 by default ]"`
 	Predict uint32  `long:"predict" description:"Number of tokens to predict [ 512 by default ]"`
@@ -39,13 +40,17 @@ func main() {
 
 	opts := parseOptions()
 
+	if opts.Profile {
+		defer profile.Start(profile.ProfilePath(".")).Stop()
+	}
+
 	if !opts.Silent {
 		showLogo()
 	}
 
 	// --- set model parameters from user settings and safe defaults
 
-	params := llama.ModelParams{
+	params := &llama.ModelParams{
 		Model: opts.Model,
 
 		MaxThreads: opts.Threads,
@@ -70,9 +75,9 @@ func main() {
 		MemoryFP16: true,
 	}
 
-	// --- load the model
+	// --- load the model and vocab
 
-	ctx, err := llama.LoadModel(params.Model, params, opts.Silent)
+	vocab, model, err := llama.LoadModel(params.Model, params, opts.Silent)
 	if err != nil {
 		Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.Model)
 		os.Exit(0)
@@ -80,9 +85,11 @@ func main() {
 
 	// --- set up internal REST server
 
-	server.Ctx = ctx
+	server.MaxPods = opts.Pods
 	server.Host = opts.Host
 	server.Port = opts.Port
+	server.Vocab = vocab
+	server.Model = model
 	server.Params = params
 
 	if !opts.Silent {
@@ -302,8 +309,8 @@ func parseOptions() *Options {
 		os.Exit(0)
 	}
 
-	if opts.Profile {
-		defer profile.Start(profile.ProfilePath(".")).Stop()
+	if opts.Pods == 0 {
+		opts.Pods = 1
 	}
 
 	// Allow to use ALL cores for the program itself and CLI specified number of cores for the parallel tensor math
