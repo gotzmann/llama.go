@@ -84,6 +84,8 @@ type Context struct {
 	Model *Model
 	Vocab *ml.Vocab
 
+	kvSelf KVCache // KeyValue store for the self attention
+
 	// decode output (2-dimensional array: [n_tokens][n_vocab])
 	Logits    []float32
 	LogitsAll bool
@@ -97,8 +99,12 @@ type Context struct {
 // NewContext creates a new context.
 func NewContext(params ModelParams) *Context {
 	return &Context{
-		Model:     NewModel(params),
-		Vocab:     ml.NewVocab(0),
+		Model: NewModel(params),
+		Vocab: ml.NewVocab(0),
+		kvSelf: KVCache{
+			K: &ml.Tensor{},
+			V: &ml.Tensor{},
+		},
 		Logits:    make([]float32, 0, 0),
 		Embedding: make([]float32, 0, 0),
 		MLContext: ml.NewContext(),
@@ -181,10 +187,9 @@ type Model struct {
 	output        *ml.Tensor
 
 	layers []Layer
-	kvSelf KVCache // key + value cache for the self attention
 
-	loadedCount uint32
-	tensors     map[string]*ml.Tensor
+	//loadedCount uint32
+	tensors map[string]*ml.Tensor
 }
 
 // NewModel creates a new model with default hyperparameters.
@@ -195,10 +200,6 @@ func NewModel(params ModelParams) *Model {
 		},
 		layers:  make([]Layer, 0),
 		tensors: make(map[string]*ml.Tensor),
-		kvSelf: KVCache{
-			K: &ml.Tensor{},
-			V: &ml.Tensor{},
-		},
 	}
 }
 
@@ -211,7 +212,7 @@ func Eval(lctx *Context, tokens []uint32, pastCount uint32, params ModelParams) 
 
 	N := uint32(len(tokens))
 	model := lctx.Model
-	kvSelf := model.kvSelf
+	kvSelf := lctx.kvSelf
 
 	embdSize := model.hparams.embdSize
 	layersCount := model.hparams.layersCount
@@ -786,8 +787,8 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 	//KVCacheInit(&lctx.Model.hparams, &lctx.Model.kvSelf, ml.TYPE_F32)
 	dt := ml.TYPE_F32
 	size := embdSize * layersCount * params.CtxSize
-	lctx.Model.kvSelf.K = ml.NewTensor1D(ctx, dt, size) // Fixed OK
-	lctx.Model.kvSelf.V = ml.NewTensor1D(ctx, dt, size) // Fixed OK
+	lctx.kvSelf.K = ml.NewTensor1D(ctx, dt, size) // Fixed OK
+	lctx.kvSelf.V = ml.NewTensor1D(ctx, dt, size) // Fixed OK
 
 	// NB! Do not try to resize / relocate secondary pointers
 	lctx.Vocab = ml.NewVocab(vocabSize)
@@ -990,7 +991,7 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 		}
 
 		tensorsCount++
-		model.loadedCount++
+		//model.loadedCount++
 		if !silent && runtime.GOOS != "windows" {
 			bar.Add(1)
 		}

@@ -17,6 +17,10 @@ import (
 
 // TODO: Helicopter View - how to work with balancers and multi-pod architectures?
 
+// Unix timestamps VS ISO-8601 Stripe perspective:
+// https://dev.to/stripe/how-stripe-designs-for-dates-and-times-in-the-api-3eoh
+// TODO: UUID vs string for job ID
+// TODO: Unix timestamp vs ISO for date and time
 type Job struct {
 	ID         string
 	Status     string
@@ -65,19 +69,17 @@ func Run() {
 func Engine() {
 	for {
 
-		if len(Queue) == 0 {
-			time.Sleep(1 * time.Second)
-			continue
-		}
-
 		for jobID, _ := range Queue {
 			fmt.Printf("\n[ ENGINE ] Moving job id # %s from Queue to Jobs", jobID)
 			mu.Lock()
+			// TODO: Check jobID still avaiable again
 			Jobs[jobID].Status = "processing"
 			delete(Queue, jobID)
 			mu.Unlock()
 			go Do(jobID)
 		}
+
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
@@ -85,16 +87,12 @@ func Engine() {
 func Do(jobID string) {
 
 	// TODO: Proper logging
-	fmt.Printf("\n[ PROCESSING ] Starting job # %s", jobID)
+	// fmt.Printf("\n[ PROCESSING ] Starting job # %s", jobID)
 
 	mu.Lock()
 	Jobs[jobID].StartedAt = time.Now().Unix()
-	mu.Unlock()
-
 	prompt := " " + Jobs[jobID].Prompt // add a space to match LLaMA tokenizer behavior
-	final := ""                        // accumulate model output
-
-	// --------------------------------------------------------------------
+	mu.Unlock()
 
 	// tokenize the prompt
 	embdPrompt := ml.Tokenize(Ctx.Vocab, prompt, true)
@@ -192,7 +190,6 @@ func Do(jobID string) {
 
 			tokenCounter++
 			token := ml.Token2Str(Ctx.Vocab, id) // TODO: Simplify
-			final += token
 
 			mu.Lock()
 			Jobs[jobID].Output += token
@@ -240,12 +237,14 @@ func Do(jobID string) {
 	mu.Unlock()
 
 	// TODO: Proper logging
-	fmt.Printf("\n[ PROCESSING ] Finishing job # %s", jobID)
+	// fmt.Printf("\n[ PROCESSING ] Finishing job # %s", jobID)
 }
 
 // --- Place new job into queue
 
 func PlaceJob(jobID, prompt string) {
+
+	timing := time.Now().Unix()
 
 	mu.Lock()
 
@@ -253,14 +252,14 @@ func PlaceJob(jobID, prompt string) {
 		ID:        jobID,
 		Prompt:    prompt,
 		Status:    "queued",
-		CreatedAt: time.Now().Unix(),
+		CreatedAt: timing,
 	}
 
 	Queue[jobID] = &Job{
 		ID:        jobID,
 		Prompt:    prompt,
 		Status:    "queued",
-		CreatedAt: time.Now().Unix(),
+		CreatedAt: timing,
 	}
 
 	mu.Unlock()
@@ -307,14 +306,15 @@ func NewJob(ctx *fiber.Ctx) error {
 
 	PlaceJob(payload.ID, payload.Prompt)
 
+	// TODO: Guard with mutex
 	return ctx.JSON(fiber.Map{
 		"id":       payload.ID,
 		"prompt":   payload.Prompt,
 		"created":  Jobs[payload.ID].CreatedAt,
 		"started":  Jobs[payload.ID].StartedAt,
-		"finished": "2023-04-24 13:47:00 GMT+00", // FIXME: time.Now().Unix(),
-		"model":    "model-xx-parameters",
-		"source":   "api",
+		"finished": Jobs[payload.ID].FinishedAt,
+		"model":    "model-xx", // TODO: Real model ID
+		"source":   "api",      // TODO: Enum for sources
 		"status":   Jobs[payload.ID].Status,
 	})
 }
@@ -337,6 +337,7 @@ func GetStatus(ctx *fiber.Ctx) error {
 			SendString("Request ID was not found!")
 	}
 
+	// TODO: Guard with mutex
 	return ctx.JSON(fiber.Map{
 		"status": Jobs[id].Status,
 	})
@@ -360,6 +361,7 @@ func GetJob(ctx *fiber.Ctx) error {
 			SendString("Request ID was not found!")
 	}
 
+	// TODO: Guard with mutex
 	return ctx.JSON(fiber.Map{
 		"id":       id,
 		"prompt":   Jobs[id].Prompt,
@@ -367,7 +369,7 @@ func GetJob(ctx *fiber.Ctx) error {
 		"created":  Jobs[id].CreatedAt,
 		"started":  Jobs[id].StartedAt,
 		"finished": Jobs[id].FinishedAt,
-		"model":    "model-xx-params",
+		"model":    "model-xx", // TODO: Real model ID
 		"status":   Jobs[id].Status,
 	})
 }

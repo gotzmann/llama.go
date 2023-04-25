@@ -23,19 +23,21 @@ The V1 supports only FP32 math, so you'll need at least 32GB RAM to work even wi
 ## V1 Roadmap
 
 - [x] Cross-patform compatibility with Mac, Linux and Windows
-- [x] Release first stable version for ML hackers
-- [x] Support bigger LLaMA models: 13B, 30B, 65B
-- [x] ARM NEON support on Apple Silicon (modern Macs) and ARM servers
-- [x] Performance boost with x64 AVX2 support for Intel and AMD
+- [x] Release first stable version for ML hackers - v1.0
+- [x] Support bigger LLaMA models: 13B, 30B, 65B - v1.1
+- [x] ARM NEON support on Apple Silicon (modern Macs) and ARM servers - v1.2
+- [x] Performance boost with x64 AVX2 support for Intel and AMD - v1.2
+- [x] RAM and GC optimizations - v1.3
+- [ ] Server Mode (internal REST API) for use in real projects - v1.4
+- [ ] Allow download model weights from the Internet
 - [ ] Speed-up AVX2 with memory aligned tensors
 - [ ] INT8 quantization to allow x4 bigger models fit the same memory
 - [ ] Enable interactive mode for real-time chat with GPT
-- [ ] Allow automatic download converted model weights from the Internet
 - [ ] Implement metrics for RAM and CPU usage
-- [ ] Server Mode for use in Clouds as part of Microservice Architecture
 
 ## V2 Roadmap
 
+- [ ] Limited Nvidia GPU support (CUDA or Tensor Cores) 
 - [ ] Allow plugins and external APIs for complex projects
 - [ ] AVX512 support - yet another performance boost for AMD Epyc
 - [ ] FP16 and BF16 support when hardware support there
