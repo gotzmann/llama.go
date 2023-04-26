@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"runtime"
 	"sync"
@@ -21,7 +23,8 @@ const VERSION = "1.4.0"
 
 type Options struct {
 	Prompt  string  `long:"prompt" description:"Text prompt from user to feed the model input"`
-	Model   string  `long:"model" description:"Path and file name of converted .bin LLaMA model"`
+	Model   string  `long:"model" description:"Path and file name of specially converted .bin model"`
+	Dir     string  `long:"dir" description:"Directory used to download .bin model specified with --model parameter [ current by default ]"`
 	Pods    int64   `long:"pods" description:"Maximum pods or units of parallel execution allowed in Server Mode [ single by default ]"`
 	Threads int     `long:"threads" description:"Max number of CPU cores you allow to use for one pod [ all cores by default ]"`
 	Context uint32  `long:"context" description:"Context size in tokens [ 1024 by default ]"`
@@ -47,6 +50,19 @@ func main() {
 
 	if !opts.Silent {
 		showLogo()
+	}
+
+	// --- special command to load model file
+
+	if len(os.Args) > 1 && os.Args[1] == "load" {
+		Colorize("[magenta][ LOAD ][light_blue] Downloading model [light_magenta]%s[light_blue] into [light_magenta]%s[light_blue]", opts.Model, opts.Dir)
+		size, err := downloadModel(opts.Dir, opts.Model)
+		if err != nil {
+			Colorize("\n[magenta][ ERROR ][light_blue] Model [light_magenta]%s[light_blue] was not downloaded: [light_red]%s!\n\n", opts.Model, err.Error())
+		} else {
+			Colorize("\n[magenta][ LOAD ][light_blue] Model [light_magenta]%s[light_blue] of size [light_magenta]%d Gb[light_blue] was successfully downloaded!\n\n", opts.Model, size/1024/1024/1024)
+		}
+		os.Exit(0)
 	}
 
 	// --- set model parameters from user settings and safe defaults
@@ -328,7 +344,7 @@ func parseOptions() *Options {
 		os.Exit(0)
 	}
 
-	if opts.Server == false && opts.Prompt == "" {
+	if opts.Server == false && opts.Prompt == "" && len(os.Args) > 1 && os.Args[1] != "load" {
 		Colorize("\n[magenta][ ERROR ][white] Please specify correct prompt with [light_magenta]--prompt[white] parameter!\n\n")
 		os.Exit(0)
 	}
@@ -414,4 +430,34 @@ func showLogo() {
 		"\n\n   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v" +
 			VERSION +
 			" ] [light_blue][ LLaMA GPT in pure Golang - based on LLaMA C++ ] [magenta]▒▒▒▒\n\n")
+}
+
+func downloadModel(dir, model string) (int64, error) {
+
+	url := "https://nogpu.com/" + model
+	file := dir + "/" + model
+
+	// TODO: check file existence first with io.IsExist
+	output, err := os.Create(file)
+	if err != nil {
+		return 0, err
+	}
+	defer output.Close()
+
+	response, err := http.Get(url)
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+
+	n, err := io.Copy(output, response.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	if n < 1_000_000 {
+		return 0, fmt.Errorf("some problem with target file")
+	}
+
+	return n, nil
 }
