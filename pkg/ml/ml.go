@@ -29,10 +29,10 @@ const (
 
 // computation graph
 type Graph struct {
-	MaxThreads int
+	//MaxThreads int
 
-	UseAVX  bool
-	UseNEON bool
+	//UseAVX  bool
+	//UseNEON bool
 
 	NodesCount uint32
 	LeafsCount uint32
@@ -48,13 +48,35 @@ type InitParams struct {
 }
 
 type Context struct {
+	MaxThreads int
+	UseAVX     bool
+	UseNEON    bool
+	//Graph      *Graph
+	Compute   chan *ComputeParams
 	Allocator *Allocator
 }
 
-func NewContext() *Context {
-	return &Context{
-		Allocator: NewAllocator(),
+func NewContext(maxThreads int, useAVX, useNEON bool) *Context {
+
+	ch := make(chan *ComputeParams, maxThreads) // TODO: +1 for safety?
+
+	for i := 0; i < maxThreads; i++ {
+		go Job(ch, i)
 	}
+
+	return &Context{
+		MaxThreads: maxThreads,
+		UseAVX:     useAVX,
+		UseNEON:    useNEON,
+		Compute:    ch,
+		Allocator:  NewAllocator(),
+	}
+}
+
+// ReleaseContext frees all context resources - channel will be closed and goroutines stopped
+func (ctx *Context) ReleaseContext() {
+	close(ctx.Compute)
+	// TODO: Maybe some steps for Allocator too
 }
 
 type DType uint8
@@ -1365,7 +1387,7 @@ func max(a, b int) int { // FIXME Not needed ?
 // of time consuming matrix multiplications
 // TODO: Investigate https://pkg.go.dev/runtime#LockOSThread
 func Job(listen <-chan *ComputeParams, id int) {
-	//runtime.LockOSThread()
+	runtime.LockOSThread()
 	for params := range listen {
 		ComputeForwardMulMatFP32(
 			params,
@@ -1388,16 +1410,17 @@ func Do(params *ComputeParams, id int) {
 
 func GraphCompute(ctx *Context, graph *Graph) {
 
-	maxThreads := graph.MaxThreads
+	//maxThreads := graph.MaxThreads
+	maxThreads := ctx.MaxThreads
 
 	// --- init N job goroutines and channel to send tasks for them
 
-	graph.Jobs = make(chan *ComputeParams, maxThreads) // TODO Right place to init? +1 for safety?
-	defer close(graph.Jobs)
+	//graph.Jobs = make(chan *ComputeParams, maxThreads) // TODO Right place to init? +1 for safety?
+	//defer close(graph.Jobs)
 
-	for i := 0; i < maxThreads; i++ {
-		go Job(graph.Jobs, i)
-	}
+	//for i := 0; i < maxThreads; i++ {
+	//	go Job(graph.Jobs, i)
+	//}
 
 	// --- initialize tasks
 
@@ -1489,30 +1512,24 @@ func GraphCompute(ctx *Context, graph *Graph) {
 			nth:  uint32(node.TasksCount),
 		}
 
-		ComputeForward(graph, params, node) // TASK_INIT
+		ComputeForward(ctx, graph, params, node) // TASK_INIT
 
 		// --- COMPUTE
 
-		// BREAKPOINT DEBUG
-		//if i > 1300 {
-		//	fmt.Printf("\n\n=== HALT #%d ===", i)
-		//	os.Exit(0)
-		//}
-
 		params.Type = TASK_COMPUTE
-		ComputeForward(graph, params, node)
+		ComputeForward(ctx, graph, params, node)
 
 		// --- FINALIZE
 
 		params.Type = TASK_FINALIZE
-		ComputeForward(graph, params, node)
+		ComputeForward(ctx, graph, params, node)
 	}
 
 }
 
 // =======================================================================
 
-func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
+func ComputeForward(ctx *Context, graph *Graph, params *ComputeParams, tensor *Tensor) {
 
 	switch tensor.op {
 
@@ -1600,21 +1617,25 @@ func ComputeForward(graph *Graph, params *ComputeParams, tensor *Tensor) {
 		// totalRows := tensor.src0.NE[1] * tensor.src0.NE[2] * tensor.src0.NE[3]
 		// maxThreads := min(graph.MaxThreads, int(totalRows))
 
-		maxThreads := graph.MaxThreads
+		//maxThreads := graph.MaxThreads
+		maxThreads := ctx.MaxThreads
 
 		wg := new(sync.WaitGroup)
 		wg.Add(maxThreads)
 
 		for i := 0; i < maxThreads; i++ {
 
-			graph.Jobs <- &ComputeParams{
-				Type:    TASK_COMPUTE,
-				ith:     uint32(i),
-				nth:     uint32(maxThreads),
-				tensor:  tensor,
-				UseNEON: graph.UseNEON,
-				UseAVX:  graph.UseAVX,
-				wg:      wg,
+			//graph.Jobs <- &ComputeParams{
+			ctx.Compute <- &ComputeParams{
+				Type:   TASK_COMPUTE,
+				ith:    uint32(i),
+				nth:    uint32(maxThreads),
+				tensor: tensor,
+				//UseNEON: graph.UseNEON,
+				UseNEON: ctx.UseNEON,
+				//UseAVX:  graph.UseAVX,
+				UseAVX: ctx.UseAVX,
+				wg:     wg,
 			}
 
 			/* go Do(&ComputeParams{

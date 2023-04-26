@@ -81,44 +81,35 @@ type pair struct {
 
 // Context is the context of the model.
 type Context struct {
-	//Model *Model
-	//Vocab *ml.Vocab
-
-	kvSelf KVCache // KeyValue store for the self attention
-
-	// decode output (2-dimensional array: [n_tokens][n_vocab])
-	Logits []float32
-	//LogitsAll bool
-
-	// input embedding (1-dimensional array: [n_embd])
-	Embedding []float32
-
+	kvSelf    KVCache   // key-value store for the self attention
+	Logits    []float32 // decode output 2D array [tokensCount][vocabSize]
+	Embedding []float32 // input embedding 1D array [embdSize]
 	MLContext *ml.Context
 }
 
 // NewContext creates a new context.
 func NewContext(model *Model, params *ModelParams) *Context {
-	// FIXME Reserve extra space for tokensCount (N) = 8 (as with LogitsAll == true)
-	//lctx.Logits = make([]float32, vocabSize, vocabSize)
-	//ctx.Logits = make([]float32, vocabSize, vocabSize)
-	// --- init cache
 	dt := ml.TYPE_F32
 	size := model.hparams.embdSize * model.hparams.layersCount * params.CtxSize
-	//lctx.kvSelf.K = ml.NewTensor1D(ctx, dt, size) // Fixed OK
-	//lctx.kvSelf.V = ml.NewTensor1D(ctx, dt, size) // Fixed OK
 	return &Context{
-		//Model: NewModel(params),
-		//Vocab: ml.NewVocab(0),
 		kvSelf: KVCache{
-			//K: &ml.Tensor{},
 			K: ml.NewTensor1D(nil, dt, size), // Fixed OK
-			//V: &ml.Tensor{},
 			V: ml.NewTensor1D(nil, dt, size), // Fixed OK
 		},
 		Logits:    make([]float32, model.hparams.vocabSize, model.hparams.vocabSize),
 		Embedding: make([]float32, 0, 0), // FIXME: vocab.Size ?
-		MLContext: ml.NewContext(),
+		MLContext: ml.NewContext(params.MaxThreads, params.UseAVX, params.UseNEON),
 	}
+}
+
+func (ctx *Context) ReleaseContext() {
+	// not sure if it makes sense to nil explicitly
+	ctx.kvSelf.K = nil
+	ctx.kvSelf.V = nil
+	ctx.Logits = nil
+	ctx.Embedding = nil
+	// close sync channel and stop compute workers
+	ctx.MLContext.ReleaseContext()
 }
 
 // ContextParams are the parameters for the context.
@@ -227,7 +218,6 @@ func Eval(
 ) error {
 
 	N := uint32(len(tokens))
-	//model := lctx.Model
 	kvSelf := lctx.kvSelf
 
 	embdSize := model.hparams.embdSize
@@ -239,12 +229,10 @@ func Eval(
 
 	ctx0 := lctx.MLContext
 
-	// for big prompts, if BLAS is enabled, it is better to use only one thread
-	// otherwise, the threads are spin-lock waiting for the BLAS calls and are degrading the performance
 	graph := &ml.Graph{
-		MaxThreads: params.MaxThreads,
-		UseNEON:    params.UseNEON,
-		UseAVX:     params.UseAVX,
+		//MaxThreads: params.MaxThreads,
+		//UseNEON:    params.UseNEON,
+		//UseAVX:     params.UseAVX,
 	}
 
 	// Initialize the embd tensor with the tokensFloat32 data
@@ -395,20 +383,12 @@ func Eval(
 	// lm_head
 	inpL = ml.MulMat(ctx0, model.output, inpL)
 
-	// logits -> probs
-	// COMMENTED inpL = ggml_soft_max(ctx0, inpL);
-
 	// run the computation
 	ml.BuildForwardExpand(graph, inpL)
 
 	ml.GraphCompute(ctx0, graph)
 
 	// --- extract logits
-
-	//fmt.Printf("\n\n=== INPL 09 === [%d,%d,%d,%d] ===\n", inpL.NE[0], inpL.NE[1], inpL.NE[2], inpL.NE[3]) // DEBUG
-	//for ii := 0; ii < 12; ii++ {
-	//	fmt.Printf("%.4f  ", inpL.Data[ii])
-	//}
 
 	// Copy only the relevant part of inpL.Data to lctx.Logits
 	for i := uint32(0); i < vocabSize; i++ {
@@ -473,7 +453,6 @@ func printTensor(tensor *ml.Tensor, name string) {
 //   - consider only the top K tokens
 //   - from them, consider only the top tokens with cumulative probability > P
 func SampleTopPTopK(
-	//lctx *Context,
 	logits []float32,
 	lastNTokens *ring.Ring, // TODO: Use custom performant container
 	lastNTokensSize uint32, // TODO: Remove
@@ -483,9 +462,7 @@ func SampleTopPTopK(
 	repeatPenalty float32,
 ) uint32 {
 
-	//logitsCount := lctx.Model.hparams.vocabSize
 	logitsCount := uint32(len(logits))
-	//logits := lctx.Logits
 
 	if ml.DEBUG {
 		fmt.Printf("\n\n>>> SampleTopPTopK <<<\n")
@@ -528,7 +505,7 @@ func SampleTopPTopK(
 
 		// Check if the i-th token is present in the last_n_tokens ring buffer
 		tokenExists := false
-		// TODO: Ompimize [ 32,000 * 512 == 15 ms ] loop with better data structure for lastNTokens
+		// TODO: Ompimize [ 32,000 * 1024 ~ 100 ms ] loop with better data structure for lastNTokens
 		lastNTokens.Do(func(p interface{}) {
 			if p.(uint32) == i {
 				tokenExists = true
@@ -761,8 +738,6 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 		return nil, nil, fmt.Errorf("invalid model file")
 	}
 
-	//lctx := NewContext(params) // creates new ML context and mem allocator as well
-
 	// --- load hparams
 
 	vocabSize := readInt(file)   // vocab_size
@@ -770,12 +745,9 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 	multSize := readInt(file)    // multiple_of
 	headsCount := readInt(file)  // n_heads
 	layersCount := readInt(file) // n_layers
-	rotCount := readInt(file)    // rot = dim // n_heads [obsolete]
+	rotCount := readInt(file)    // [obsolete] rot = dim // n_heads
 	f16 := readInt(file)         // ftype
 
-	//ctx := lctx.MLContext
-	ctx := ml.NewContext()
-	//model := lctx.Model
 	model := NewModel(params)
 
 	model.hparams.vocabSize = vocabSize
@@ -788,21 +760,7 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 
 	ffSize := ((2*(4*embdSize)/3 + multSize - 1) / multSize) * multSize
 
-	// --- init cache
-
-	//dt := ml.TYPE_F32
-	//size := embdSize * layersCount * params.CtxSize
-	//lctx.kvSelf.K = ml.NewTensor1D(ctx, dt, size) // Fixed OK
-	//lctx.kvSelf.V = ml.NewTensor1D(ctx, dt, size) // Fixed OK
-
-	// NB! Do not try to resize / relocate secondary pointers
-	//lctx.Vocab = ml.NewVocab(vocabSize)
-	//vocab := lctx.Vocab
 	vocab := ml.NewVocab(vocabSize)
-
-	// FIXME Reserve extra space for tokensCount (N) = 8 (as with LogitsAll == true)
-	//lctx.Logits = make([]float32, vocabSize, vocabSize)
-	//ctx.Logits = make([]float32, vocabSize, vocabSize)
 
 	if ml.DEBUG {
 		fmt.Printf("\nvocab  = %d", vocabSize)
@@ -858,10 +816,10 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 
 	// --- prepare memory for the weights
 	{
-		model.tokEmbeddings = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize) // Fixed OK
+		model.tokEmbeddings = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize) // Fixed OK
 
-		model.norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize)                        // Fixed OK
-		model.output = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize) // Fixed OK
+		model.norm = ml.NewTensor1D(nil, ml.TYPE_F32, embdSize)                        // Fixed OK
+		model.output = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize) // Fixed OK
 
 		// map by name
 		model.tensors["tok_embeddings.weight"] = model.tokEmbeddings
@@ -871,20 +829,19 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 
 		model.layers = make([]Layer, layersCount)
 		for i := uint32(0); i < layersCount; i++ {
-			//auto & layer = model.layers[i];
 
-			model.layers[i].attentionNorm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize) // Fixed OK
+			model.layers[i].attentionNorm = ml.NewTensor1D(nil, ml.TYPE_F32, embdSize) // Fixed OK
 
-			model.layers[i].wq = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
-			model.layers[i].wk = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
-			model.layers[i].wv = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
-			model.layers[i].wo = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
+			model.layers[i].wq = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
+			model.layers[i].wk = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
+			model.layers[i].wv = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
+			model.layers[i].wo = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
 
-			model.layers[i].ffn_norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize)
+			model.layers[i].ffn_norm = ml.NewTensor1D(nil, ml.TYPE_F32, embdSize)
 
-			model.layers[i].w1 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, ffSize) // Fixed OK
-			model.layers[i].w2 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, ffSize, embdSize) // Fixed OK
-			model.layers[i].w3 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, ffSize) // Fixed OK
+			model.layers[i].w1 = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, ffSize) // Fixed OK
+			model.layers[i].w2 = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, ffSize, embdSize) // Fixed OK
+			model.layers[i].w3 = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, ffSize) // Fixed OK
 
 			// map by name
 			prefix := fmt.Sprintf("layers.%d.", i)
@@ -962,6 +919,7 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 
 		// --- All tensors in file are aligned for 32 bytes
 
+		// TODO: Align with one modulo operation
 		alignment := int64(32)
 		offset, _ := file.Seek(0, io.SeekCurrent)
 		for ; offset%alignment != 0; offset++ {
@@ -997,8 +955,8 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 			os.Exit(0)
 		}
 
+		// TODO: Implement just simple dots increasing count for Windows
 		tensorsCount++
-		//model.loadedCount++
 		if !silent && runtime.GOOS != "windows" {
 			bar.Add(1)
 		}
@@ -1008,7 +966,6 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 		bar.Finish()
 	}
 
-	//return lctx, nil
 	return vocab, model, nil
 }
 

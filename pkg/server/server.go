@@ -3,6 +3,7 @@ package server
 import (
 	"container/ring"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,6 +18,8 @@ import (
 )
 
 // TODO: Helicopter View - how to work with balancers and multi-pod architectures?
+// TODO: Rate Limiter based on end-user IP address
+// TODO: Guard access with API Tokens
 
 // Unix timestamps VS ISO-8601 Stripe perspective:
 // https://dev.to/stripe/how-stripe-designs-for-dates-and-times-in-the-api-3eoh
@@ -106,6 +109,7 @@ func Engine() {
 func Do(jobID string) {
 
 	defer atomic.AddInt64(&RunningPods, -1)
+	defer runtime.GC()
 
 	// TODO: Proper logging
 	// fmt.Printf("\n[ PROCESSING ] Starting job # %s", jobID)
@@ -141,6 +145,7 @@ func Do(jobID string) {
 	samplePerformance := make([]int64, 0, Params.PredictCount)
 	fullPerformance := make([]int64, 0, Params.PredictCount)
 
+	// new context opens sync channel and starts workers for tensor compute
 	ctx := llama.NewContext(Model, Params)
 
 	for remainedCount > 0 {
@@ -218,12 +223,18 @@ func Do(jobID string) {
 			mu.Lock()
 			Jobs[jobID].Output += token
 			mu.Unlock()
-
-			fmt.Printf("%s", token)
 		}
 
 		fullPerformance = append(fullPerformance, time.Now().UnixNano()-start)
 	}
+
+	// close sync channel and stop compute workers
+	ctx.ReleaseContext()
+
+	mu.Lock()
+	Jobs[jobID].FinishedAt = time.Now().Unix()
+	Jobs[jobID].Status = "finished"
+	mu.Unlock()
 
 	//if ml.DEBUG {
 	Colorize("\n\n=== EVAL TIME | ms ===\n\n")
@@ -252,11 +263,6 @@ func Do(jobID string) {
 		avgEval,
 		float64(1000)/float64(avgEval))
 	//}
-
-	mu.Lock()
-	Jobs[jobID].FinishedAt = time.Now().Unix()
-	Jobs[jobID].Status = "finished"
-	mu.Unlock()
 
 	// TODO: Proper logging
 	// fmt.Printf("\n[ PROCESSING ] Finishing job # %s", jobID)
