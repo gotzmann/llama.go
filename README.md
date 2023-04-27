@@ -14,13 +14,13 @@ The V1 supports only FP32 math, so you'll need at least 32GB RAM to work even wi
 
 ## V0 Roadmap
 
-- [x] Run tensor math in pure Golang based on C++ source
+- [x] Run tensor math in pure Golang - based on C++ source
 - [x] Implement LLaMA neural net architecture and model loading
 - [x] Run smaller LLaMA-7B model
 - [x] Be sure Go inference works EXACT SAME way as C++
 - [x] Let Go shine! Enable multi-threading and boost performance
 
-## V1 Roadmap
+## V1 Roadmap - Spring'23
 
 - [x] Cross-patform compatibility with Mac, Linux and Windows
 - [x] Release first stable version for ML hackers - v1.0
@@ -28,29 +28,35 @@ The V1 supports only FP32 math, so you'll need at least 32GB RAM to work even wi
 - [x] ARM NEON support on Apple Silicon (modern Macs) and ARM servers - v1.2
 - [x] Performance boost with x64 AVX2 support for Intel and AMD - v1.2
 - [x] RAM and GC optimizations - v1.3
-- [ ] Server Mode (internal REST API) for use in real projects - v1.4
-- [ ] Allow download model weights from the Internet
+- [x] Server Mode (embedded REST API) for use in real projects - v1.4
+- [x] Download model weights from the Internet - v1.4
 - [ ] Speed-up AVX2 with memory aligned tensors
 - [ ] INT8 quantization to allow x4 bigger models fit the same memory
-- [ ] Enable interactive mode for real-time chat with GPT
+- [ ] Extensive logging for production monitoring
+- [ ] Interactive mode for real-time chat with GPT
+- [ ] Support for popular models of LLaMA family: Vicuna, Alpaca, etc
+
+## V2 Roadmap - Summer'23
+
+- [ ] Automatic CPU / GPU features detection
 - [ ] Implement metrics for RAM and CPU usage
-
-## V2 Roadmap
-
-- [ ] Limited Nvidia GPU support (CUDA or Tensor Cores) 
-- [ ] Allow plugins and external APIs for complex projects
+- [ ] Support popular open models: BLOOM, Anthropic, etc.
 - [ ] AVX512 support - yet another performance boost for AMD Epyc
+- [ ] Limited Nvidia GPU support (CUDA or Tensor Cores)
+
+## V3 Roadmap - Fall'23
+
+- [ ] Allow plugins and external APIs for complex projects
+- [ ] Training capabilities - not inference only
+- [ ] Speed execution on GPU cluster
 - [ ] FP16 and BF16 support when hardware support there
-- [ ] Support INT4 and GPTQ quantization 
+- [ ] INT4 and GPTQ quantization 
 
 ## How to Run
 
 ```shell
 go run main.go \
-    --model ~/models/7B/ggml-model-f32.bin \
-    --temp 0.80 \
-    --context 128 \
-    --predict 128 \
+    --model ~/models/llama-7b-fp32.bin \
     --prompt "Why Golang is so popular?"
 ```
 

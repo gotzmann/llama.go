@@ -109,11 +109,11 @@ func main() {
 	server.Model = model
 	server.Params = params
 
-	if !opts.Silent {
-		Colorize("\n[light_magenta][ INIT ][light_blue] Starting REST Server...[light_cyan]")
-	}
-
 	go server.Run()
+
+	if !opts.Silent && opts.Server {
+		Colorize("\n[light_magenta][ INIT ][light_blue] REST server ready on [light_magenta]%s:%s", opts.Host, opts.Port)
+	}
 
 	// --- wait for API calls as REST server, or compute just the one prompt from user CLI
 

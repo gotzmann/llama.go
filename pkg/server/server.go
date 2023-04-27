@@ -4,6 +4,7 @@ import (
 	"container/ring"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -136,10 +137,11 @@ func Do(jobID string) {
 		appendToken(0)
 	}
 
+	evalCounter := 0
 	tokenCounter := 0
 	pastCount := uint32(0)
-	consumedCount := uint32(0)
-	remainedCount := Params.PredictCount
+	consumedCount := uint32(0)           // number of tokens, already processed from the user prompt
+	remainedCount := Params.PredictCount // how many tokens we still need to generate to achieve predictCount
 	embd := make([]uint32, 0, Params.BatchSize)
 	evalPerformance := make([]int64, 0, Params.PredictCount)
 	samplePerformance := make([]int64, 0, Params.PredictCount)
@@ -174,6 +176,7 @@ func Do(jobID string) {
 				// TODO: Finish job properly with [failed] status
 			}
 			evalPerformance = append(evalPerformance, time.Now().UnixNano()-evalStart)
+			evalCounter++
 		}
 
 		pastCount += uint32(len(embd))
@@ -213,7 +216,14 @@ func Do(jobID string) {
 			remainedCount-- // decrement remaining sampling budget
 		}
 
-		// --- assemble the final ouptut, which will include the prompt as well
+		fullPerformance = append(fullPerformance, time.Now().UnixNano()-start)
+
+		// skip adding the whole prompt to the output if processed at once
+		if evalCounter == 0 && int(consumedCount) == len(embdPrompt) {
+			continue
+		}
+
+		// --- assemble the final ouptut, EXCLUDING the prompt
 
 		for _, id := range embd {
 
@@ -224,8 +234,6 @@ func Do(jobID string) {
 			Jobs[jobID].Output += token
 			mu.Unlock()
 		}
-
-		fullPerformance = append(fullPerformance, time.Now().UnixNano()-start)
 	}
 
 	// close sync channel and stop compute workers
@@ -233,6 +241,7 @@ func Do(jobID string) {
 
 	mu.Lock()
 	Jobs[jobID].FinishedAt = time.Now().Unix()
+	Jobs[jobID].Output = strings.Trim(Jobs[jobID].Output, "\n ")
 	Jobs[jobID].Status = "finished"
 	mu.Unlock()
 
@@ -331,14 +340,14 @@ func NewJob(ctx *fiber.Ctx) error {
 
 	// TODO: Guard with mutex
 	return ctx.JSON(fiber.Map{
-		"id":       payload.ID,
-		"prompt":   payload.Prompt,
-		"created":  Jobs[payload.ID].CreatedAt,
-		"started":  Jobs[payload.ID].StartedAt,
-		"finished": Jobs[payload.ID].FinishedAt,
-		"model":    "model-xx", // TODO: Real model ID
-		"source":   "api",      // TODO: Enum for sources
-		"status":   Jobs[payload.ID].Status,
+		"id":      payload.ID,
+		"prompt":  payload.Prompt,
+		"created": Jobs[payload.ID].CreatedAt,
+		//"started":  Jobs[payload.ID].StartedAt,
+		//"finished": Jobs[payload.ID].FinishedAt,
+		//"model":    "model-xx", // TODO: Real model ID
+		//"source":   "api",      // TODO: Enum for sources
+		"status": Jobs[payload.ID].Status,
 	})
 }
 

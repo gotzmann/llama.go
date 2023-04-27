@@ -13,9 +13,9 @@ import (
 	"time"
 	"unsafe"
 
+	//progressbar "github.com/schollz/progressbar/v3"
 	"github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
-	progressbar "github.com/schollz/progressbar/v3"
 	"github.com/x448/float16"
 	"golang.org/x/exp/slices"
 
@@ -778,28 +778,29 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 	if !silent && runtime.GOOS == "windows" {
 		Colorize("[magenta][ INIT ][white] Loading vocab...")
 	}
-
-	vocabBar := progressbar.NewOptions(
-		int(vocabSize),
-		progressbar.OptionFullWidth(),
-		//progressbar.OptionSetWidth(40),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionSetPredictTime(false),
-		progressbar.OptionSetElapsedTime(false),
-		progressbar.OptionSetDescription("[light_magenta][ INIT ][light_blue] Loading model vocab...  [light_cyan]"),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[light_magenta]▒[reset]",
-			SaucerHead:    "[white]▒[reset]",
-			SaucerPadding: "[dark_gray]▒[reset]",
-			BarStart:      "[dark_gray]║[reset]",
-			BarEnd:        "[dark_gray]║[reset]",
-		}))
-
+	/*
+	       // https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
+	   	vocabBar := progressbar.NewOptions(
+	   		int(vocabSize),
+	   		progressbar.OptionFullWidth(),
+	   		//progressbar.OptionSetWidth(40),
+	   		progressbar.OptionEnableColorCodes(true),
+	   		progressbar.OptionSetPredictTime(false),
+	   		progressbar.OptionSetElapsedTime(false),
+	   		progressbar.OptionSetDescription("[light_magenta][ INIT ][light_blue] Loading model vocab...  [light_cyan]"),
+	   		progressbar.OptionSetTheme(progressbar.Theme{
+	   			Saucer:        "[light_magenta]▒[reset]",
+	   			SaucerHead:    "[white]▒[reset]",
+	   			SaucerPadding: "[dark_gray]▒[reset]",
+	   			BarStart:      "[dark_gray]║[reset]",
+	   			BarEnd:        "[dark_gray]║[reset]",
+	   		}))
+	*/
 	for i := uint32(0); i < vocabSize; i++ {
 
-		if !silent && runtime.GOOS != "windows" && i%100 == 0 {
-			vocabBar.Set(int(i))
-		}
+		//if !silent && runtime.GOOS != "windows" && i%100 == 0 {
+		//	vocabBar.Set(int(i))
+		//}
 
 		length := readInt(file)
 		token := readString(file, length)
@@ -809,10 +810,10 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 		vocab.ID2Token[i] = ml.TokenScore{Token: token, Score: score}
 	}
 
-	if !silent && runtime.GOOS != "windows" {
-		vocabBar.Finish()
-		fmt.Printf("\n")
-	}
+	//if !silent && runtime.GOOS != "windows" {
+	//	vocabBar.Finish()
+	//	fmt.Printf("\n")
+	//}
 
 	// --- prepare memory for the weights
 	{
@@ -861,25 +862,27 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 		}
 	}
 
-	if !silent && runtime.GOOS == "windows" {
-		Colorize("\n[magenta][ INIT ][white] Loading model - please wait ...")
+	if !silent /* && runtime.GOOS == "windows" */ {
+		//Colorize("[magenta][ INIT ][white] Loading model - please wait ...")
+		Colorize("[light_magenta][ INIT ][light_blue] Loading model, please wait ")
 	}
-
-	// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
-	bar := progressbar.NewOptions(int(layersCount*9),
-		progressbar.OptionFullWidth(),
-		//progressbar.OptionSetWidth(40),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionSetPredictTime(false),
-		progressbar.OptionSetElapsedTime(false),
-		progressbar.OptionSetDescription("[light_magenta][ INIT ][light_blue] Loading model weights...[light_cyan]"),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[light_magenta]▒[reset]",
-			SaucerHead:    "[white]▒[reset]",
-			SaucerPadding: "[dark_gray]▒[reset]",
-			BarStart:      "[dark_gray]║[reset]",
-			BarEnd:        "[dark_gray]║[reset]",
-		}))
+	/*
+		// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
+		bar := progressbar.NewOptions(int(layersCount*9),
+			progressbar.OptionFullWidth(),
+			//progressbar.OptionSetWidth(40),
+			progressbar.OptionEnableColorCodes(true),
+			progressbar.OptionSetPredictTime(false),
+			progressbar.OptionSetElapsedTime(false),
+			progressbar.OptionSetDescription("[light_magenta][ INIT ][light_blue] Loading model weights...[light_cyan]"),
+			progressbar.OptionSetTheme(progressbar.Theme{
+				Saucer:        "[light_magenta]▒[reset]",
+				SaucerHead:    "[white]▒[reset]",
+				SaucerPadding: "[dark_gray]▒[reset]",
+				BarStart:      "[dark_gray]║[reset]",
+				BarEnd:        "[dark_gray]║[reset]",
+			}))
+	*/
 
 	// --- load weights
 	var tensorsCount uint32
@@ -957,14 +960,17 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 
 		// TODO: Implement just simple dots increasing count for Windows
 		tensorsCount++
-		if !silent && runtime.GOOS != "windows" {
-			bar.Add(1)
+		if !silent && tensorsCount%10 == 0 {
+			Colorize("[light_blue].")
 		}
+		// if !silent && runtime.GOOS != "windows" {
+		// bar.Add(1)
+		// }
 	}
 
-	if !silent && runtime.GOOS != "windows" {
-		bar.Finish()
-	}
+	// if !silent && runtime.GOOS != "windows" {
+	// bar.Finish()
+	// }
 
 	return vocab, model, nil
 }
