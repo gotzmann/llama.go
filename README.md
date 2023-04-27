@@ -123,11 +123,11 @@ So for example, if you have machine with 16 hardware cores capable run 32 hyper-
 
 When there no capacity for arriving request, it will be placed into the queue and started when there will be free pod available.
 
-## REST API examples
+# REST API examples
 
-# Place new job
+## Place new job
 
-Send POST request to you server with JSON like this:
+Send POST request to you server with JSON containing unique UUID v4 and text prompt:
 
 ```json
 {
@@ -135,6 +135,16 @@ Send POST request to you server with JSON like this:
     "prompt": "Why Golang is so popular?"
 }
 ```
+
+## Check current status
+
+```json
+http://localhost:8080/jobs/status/5fb8ebd0-e0c9-4759-8f7d-35590f6c9fcb
+```
+
+## Get the results
+
+http://localhost:8080/jobs/5fb8ebd0-e0c9-4759-8f7d-35590f6c9fcb
 
 ## How to build by myself?
 
