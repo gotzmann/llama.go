@@ -87,7 +87,7 @@ llama-go-v1.4.0-macos \
 --server   Start in Server Mode acting as REST API endpoint
 --host     Host to allow requests from in Server Mode [ localhost by default ]
 --port     Port listen to in Server Mode [ 8080 by default ]
---pods     Maximum pods or units of parallel execution allowed in Server Mode [ single by default ]
+--pods     Maximum pods or units of parallel execution allowed in Server Mode [ 1 by default ]
 --threads  Adjust to the number of CPU cores you want to use [ all cores by default ]
 --context  Context size in tokens [ 1024 by default ]
 --predict  Number of tokens to predict [ 512 by default ]
