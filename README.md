@@ -42,7 +42,7 @@ We hope using Golang instead of *soo-powerful* but *too-low-level* language will
 - [ ] Standalone GUI or web interface for better access to framework
 - [ ] Support popular open models: Open Assistant, StableLM, BLOOM, Anthropic, etc.
 - [ ] AVX512 support - yet another performance boost for AMD Epyc and Intel Sapphire Rapids
-- [ ] Limited Nvidia GPU support (CUDA or Tensor Cores)
+- [ ] Nvidia GPUs support (CUDA or Tensor Cores)
 
 ## V3 Roadmap - Fall'23
 
@@ -51,19 +51,19 @@ We hope using Golang instead of *soo-powerful* but *too-low-level* language will
 - [ ] Speed up execution on GPU cards and clusters
 - [ ] FP16 and BF16 math if hardware support is there
 - [ ] INT4 and GPTQ quantization 
-- [ ] Limited AMD Radeon GPU support
+- [ ] AMD Radeon GPUs support with OpenCL
 
 ## How to Run?
 
-First, you need to obtain original LLaMA models and convert them into GGML-format, or just download already baked one:
+First, obtain and convert original LLaMA models on your own, or just download ready-to-rock ones:
 
 **LLaMA-7B:** [llama-7b-fp32.bin](https://nogpu.com/llama-7b-fp32.bin)
 
 **LLaMA-13B:** [llama-7b-fp32.bin](https://nogpu.com/llama-7b-fp32.bin)
 
-Both models store FP32 weights, so one needs at least 32Gb of regular RAM (not VRAM or GPU RAM) for LLaMA-7B or at least 64Gb for LLaMA-13B.
+Both models store FP32 weights, so you'll needs at least 32Gb of RAM (not VRAM or GPU RAM) for LLaMA-7B. Double to 64Gb for LLaMA-13B.
 
-Next, you should build app binary from sources (see instructions below), or again, just download already built one:
+Next, build app binary from sources (see instructions below), or just download already built one:
 
 **Windows:** [llama-go-v1.4.0.exe](./builds/llama-go-v1.4.0.exe)
 
@@ -71,7 +71,7 @@ Next, you should build app binary from sources (see instructions below), or agai
 
 **Linux:** [llama-go-v1.4.0-linux](./builds/llama-go-v1.4.0-linux)
 
-So now you have both executable binary and model, go try it for yourself!
+So now you have both executable and model, go try it for yourself:
 
 ```shell
 llama-go-v1.4.0-macos \
@@ -101,7 +101,7 @@ llama-go-v1.4.0-macos \
 
 ## Going Production
 
-LLaMA.go embeds standalone HTTP server exposing REST API to GPT engine. To enable it, run app with special flags:
+LLaMA.go embeds standalone HTTP server exposing REST API. To enable it, run app with special flags:
 
 ```shell
 llama-go-v1.4.0-macos \
@@ -142,7 +142,7 @@ Send POST request (with Postman) to your server address with JSON containing uni
 
 ## Check job status
 
-Send GET request (with Postman or browser) to  URL: http://host:port/jobs/status/:id
+Send GET request (with Postman or browser) to URL like http://host:port/jobs/status/:id
 
 ```shell
 GET http://localhost:8080/jobs/status/5fb8ebd0-e0c9-4759-8f7d-35590f6c9fcb
@@ -150,7 +150,7 @@ GET http://localhost:8080/jobs/status/5fb8ebd0-e0c9-4759-8f7d-35590f6c9fcb
 
 ## Get the results
 
-Send GET request (with Postman or browser) to  URL: http://host:port/jobs/:id
+Send GET request (with Postman or browser) to  URL like http://host:port/jobs/:id
 
 ```shell
 GET http://localhost:8080/jobs/5fb8ebd0-e0c9-4759-8f7d-35590f6c9fcb
@@ -179,7 +179,7 @@ go tidy
 go vendor
 ```
 
-And now we are ready to build the binary from the source code:
+Now we are ready to build the binary from the source code:
 
 ```shell
 go build -o llama-go-v1.exe -ldflags "-s -w" main.go
