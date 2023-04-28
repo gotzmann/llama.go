@@ -1,5 +1,6 @@
 TARGET = llama
-VERSION = $(shell cat VERSION)
+# $(shell cat VERSION)
+VERSION = v1.4.0
 OS = linux
 ARCH = amd64
 PACKAGE = github.com/gotzmann/$(TARGET)
@@ -139,4 +140,10 @@ fp16:
 
 pprof:
 	go tool pprof -pdf cpu.pprof > cpu.pdf
+
+.PHONY: builds
+builds:
+	GOOS=windows GOARCH=amd64 go build -o ./builds/llama-go-$(VERSION).exe -ldflags "-s -w" main.go
+	GOOS=darwin GOARCH=amd64 go build -o ./builds/llama-go-$(VERSION)-macos -ldflags "-s -w" main.go
+	GOOS=linux GOARCH=amd64 go build -o ./builds/llama-go-$(VERSION)-linux -ldflags "-s -w" main.go
 

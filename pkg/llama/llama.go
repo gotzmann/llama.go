@@ -13,9 +13,9 @@ import (
 	"time"
 	"unsafe"
 
+	//progressbar "github.com/schollz/progressbar/v3"
 	"github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
-	"github.com/schollz/progressbar/v3"
 	"github.com/x448/float16"
 	"golang.org/x/exp/slices"
 
@@ -81,28 +81,35 @@ type pair struct {
 
 // Context is the context of the model.
 type Context struct {
-	Model *Model
-	Vocab *ml.Vocab
-
-	// decode output (2-dimensional array: [n_tokens][n_vocab])
-	Logits    []float32
-	LogitsAll bool
-
-	// input embedding (1-dimensional array: [n_embd])
-	Embedding []float32
-
+	kvSelf    KVCache   // key-value store for the self attention
+	Logits    []float32 // decode output 2D array [tokensCount][vocabSize]
+	Embedding []float32 // input embedding 1D array [embdSize]
 	MLContext *ml.Context
 }
 
 // NewContext creates a new context.
-func NewContext(params ModelParams) *Context {
+func NewContext(model *Model, params *ModelParams) *Context {
+	dt := ml.TYPE_F32
+	size := model.hparams.embdSize * model.hparams.layersCount * params.CtxSize
 	return &Context{
-		Model:     NewModel(params),
-		Vocab:     ml.NewVocab(0),
-		Logits:    make([]float32, 0, 0),
-		Embedding: make([]float32, 0, 0),
-		MLContext: ml.NewContext(),
+		kvSelf: KVCache{
+			K: ml.NewTensor1D(nil, dt, size), // Fixed OK
+			V: ml.NewTensor1D(nil, dt, size), // Fixed OK
+		},
+		Logits:    make([]float32, model.hparams.vocabSize, model.hparams.vocabSize),
+		Embedding: make([]float32, 0, 0), // FIXME: vocab.Size ?
+		MLContext: ml.NewContext(params.MaxThreads, params.UseAVX, params.UseNEON),
 	}
+}
+
+func (ctx *Context) ReleaseContext() {
+	// not sure if it makes sense to nil explicitly
+	ctx.kvSelf.K = nil
+	ctx.kvSelf.V = nil
+	ctx.Logits = nil
+	ctx.Embedding = nil
+	// close sync channel and stop compute workers
+	ctx.MLContext.ReleaseContext()
 }
 
 // ContextParams are the parameters for the context.
@@ -174,31 +181,25 @@ type KVCache struct {
 type Model struct {
 	Type    ModelType
 	ctx     *ml.Context
-	hparams HParams
+	hparams *HParams
 
 	tokEmbeddings *ml.Tensor
 	norm          *ml.Tensor
 	output        *ml.Tensor
 
 	layers []Layer
-	kvSelf KVCache // key + value cache for the self attention
 
-	loadedCount uint32
-	tensors     map[string]*ml.Tensor
+	tensors map[string]*ml.Tensor
 }
 
 // NewModel creates a new model with default hyperparameters.
-func NewModel(params ModelParams) *Model {
+func NewModel(params *ModelParams) *Model {
 	return &Model{
-		hparams: HParams{
+		hparams: &HParams{
 			ctxSize: params.CtxSize,
 		},
 		layers:  make([]Layer, 0),
 		tensors: make(map[string]*ml.Tensor),
-		kvSelf: KVCache{
-			K: &ml.Tensor{},
-			V: &ml.Tensor{},
-		},
 	}
 }
 
@@ -207,11 +208,17 @@ func NewModel(params ModelParams) *Model {
 // tokens = new batch of tokens to process
 // pastCount = the context size so far
 // params = all other parameters like max threads allowed, etc
-func Eval(lctx *Context, tokens []uint32, pastCount uint32, params ModelParams) error {
+func Eval(
+	lctx *Context,
+	vocab *ml.Vocab,
+	model *Model,
+	tokens []uint32,
+	pastCount uint32,
+	params *ModelParams,
+) error {
 
 	N := uint32(len(tokens))
-	model := lctx.Model
-	kvSelf := model.kvSelf
+	kvSelf := lctx.kvSelf
 
 	embdSize := model.hparams.embdSize
 	layersCount := model.hparams.layersCount
@@ -222,12 +229,10 @@ func Eval(lctx *Context, tokens []uint32, pastCount uint32, params ModelParams) 
 
 	ctx0 := lctx.MLContext
 
-	// for big prompts, if BLAS is enabled, it is better to use only one thread
-	// otherwise, the threads are spin-lock waiting for the BLAS calls and are degrading the performance
 	graph := &ml.Graph{
-		MaxThreads: params.MaxThreads,
-		UseNEON:    params.UseNEON,
-		UseAVX:     params.UseAVX,
+		//MaxThreads: params.MaxThreads,
+		//UseNEON:    params.UseNEON,
+		//UseAVX:     params.UseAVX,
 	}
 
 	// Initialize the embd tensor with the tokensFloat32 data
@@ -378,9 +383,6 @@ func Eval(lctx *Context, tokens []uint32, pastCount uint32, params ModelParams) 
 	// lm_head
 	inpL = ml.MulMat(ctx0, model.output, inpL)
 
-	// logits -> probs
-	// COMMENTED inpL = ggml_soft_max(ctx0, inpL);
-
 	// run the computation
 	ml.BuildForwardExpand(graph, inpL)
 
@@ -388,35 +390,14 @@ func Eval(lctx *Context, tokens []uint32, pastCount uint32, params ModelParams) 
 
 	// --- extract logits
 
-	//fmt.Printf("\n\n=== INPL 09 === [%d,%d,%d,%d] ===\n", inpL.NE[0], inpL.NE[1], inpL.NE[2], inpL.NE[3]) // DEBUG
-	//for ii := 0; ii < 12; ii++ {
-	//	fmt.Printf("%.4f  ", inpL.Data[ii])
-	//}
-
-	if lctx.LogitsAll {
-		fmt.Print("\n[HALT] Not Expected: lctx.LogitsAll == true")
-		os.Exit(1)
-
-		/*
-			// Copy inpL.Data to lctx.Logits
-			for i := uint32(0); i < vocabSize*N; i++ {
-				if i >= uint32(len(lctx.Logits)) || i >= uint32(len(inpL.Data)) {
-					fmt.Println("Error: Index out of bounds during Logits copy")
-					os.Exit(1)
-				}
-				lctx.Logits[i] = inpL.Data[i]
-			}
-		*/
-	} else {
-		// Copy only the relevant part of inpL.Data to lctx.Logits
-		for i := uint32(0); i < vocabSize; i++ {
-			srcIndex := vocabSize*(N-1) + i
-			if i >= uint32(len(lctx.Logits)) || srcIndex >= uint32(len(inpL.Data)) {
-				fmt.Println("Error: Index out of bounds during Logits copy")
-				os.Exit(1)
-			}
-			lctx.Logits[i] = inpL.Data[srcIndex]
+	// Copy only the relevant part of inpL.Data to lctx.Logits
+	for i := uint32(0); i < vocabSize; i++ {
+		srcIndex := vocabSize*(N-1) + i
+		if i >= uint32(len(lctx.Logits)) || srcIndex >= uint32(len(inpL.Data)) {
+			fmt.Println("Error: Index out of bounds during Logits copy")
+			os.Exit(1)
 		}
+		lctx.Logits[i] = inpL.Data[srcIndex]
 	}
 
 	if ml.DEBUG {
@@ -472,8 +453,8 @@ func printTensor(tensor *ml.Tensor, name string) {
 //   - consider only the top K tokens
 //   - from them, consider only the top tokens with cumulative probability > P
 func SampleTopPTopK(
-	lctx *Context,
-	lastNTokens *ring.Ring,
+	logits []float32,
+	lastNTokens *ring.Ring, // TODO: Use custom performant container
 	lastNTokensSize uint32, // TODO: Remove
 	topK uint32,
 	topP float32,
@@ -481,8 +462,7 @@ func SampleTopPTopK(
 	repeatPenalty float32,
 ) uint32 {
 
-	logitsCount := lctx.Model.hparams.vocabSize
-	logits := lctx.Logits
+	logitsCount := uint32(len(logits))
 
 	if ml.DEBUG {
 		fmt.Printf("\n\n>>> SampleTopPTopK <<<\n")
@@ -494,12 +474,6 @@ func SampleTopPTopK(
 		for i := int(len(logits)) - 1; i >= int(len(logits))-8; i-- {
 			fmt.Printf("%.4f ", logits[i])
 		}
-		/*
-			fmt.Printf("\n=== LAST N TOKENS | %d ===\n", len(lastNTokens))
-			for i := 0; i < int(lastNTokensSize); i++ {
-				fmt.Printf("%d ", lastNTokens[i])
-			}
-		*/
 		extractedTokens := ExtractTokens(lastNTokens.Move(-int(lastNTokensSize)), int(lastNTokensSize))
 		fmt.Printf("\n=== LAST N TOKENS | %d ===\n", len(extractedTokens))
 		for i := 0; i < int(lastNTokensSize); i++ {
@@ -523,33 +497,32 @@ func SampleTopPTopK(
 
 	logitsID := make([]pair, 0, logitsCount)
 
-	{
-		scale := float32(1.0 / temp)
-		for i := uint32(0); i < logitsCount; i++ {
+	scale := float32(1.0 / temp)
+	for i := uint32(0); i < logitsCount; i++ {
 
-			// Repetition penalty from ctrl paper (https://arxiv.org/abs/1909.05858)
-			// Credit https://github.com/facebookresearch/llama/compare/main...shawwn:llama:main
+		// Repetition penalty from ctrl paper (https://arxiv.org/abs/1909.05858)
+		// Credit https://github.com/facebookresearch/llama/compare/main...shawwn:llama:main
 
-			// Check if the i-th token is present in the last_n_tokens ring buffer
-			tokenExists := false
-			lastNTokens.Do(func(p interface{}) {
-				if p.(uint32) == i {
-					tokenExists = true
-				}
-			})
-
-			// If lastNTokens already contains i-th token, append it with repeat penalty
-			if tokenExists {
-				// If score < 0, then repetition penalty has to be multiplied to reduce the previous token probability
-				if logits[i] < 0.0 {
-					logitsID = append(logitsID, pair{logits[i] * scale * repeatPenalty, i})
-				} else {
-					logitsID = append(logitsID, pair{logits[i] * scale / repeatPenalty, i})
-				}
-				// Else append pair to logitsID, scaling probability
-			} else {
-				logitsID = append(logitsID, pair{logits[i] * scale, i})
+		// Check if the i-th token is present in the last_n_tokens ring buffer
+		tokenExists := false
+		// TODO: Ompimize [ 32,000 * 1024 ~ 100 ms ] loop with better data structure for lastNTokens
+		lastNTokens.Do(func(p interface{}) {
+			if p.(uint32) == i {
+				tokenExists = true
 			}
+		})
+
+		// If lastNTokens already contains i-th token, append it with repeat penalty
+		if tokenExists {
+			// If score < 0, then repetition penalty has to be multiplied to reduce the previous token probability
+			if logits[i] < 0.0 {
+				logitsID = append(logitsID, pair{logits[i] * scale * repeatPenalty, i})
+			} else {
+				logitsID = append(logitsID, pair{logits[i] * scale / repeatPenalty, i})
+			}
+			// Else append pair to logitsID, scaling probability
+		} else {
+			logitsID = append(logitsID, pair{logits[i] * scale, i})
 		}
 	}
 
@@ -735,11 +708,12 @@ func SampleTopPTopK(
 
 // LoadModel loads a model's weights from a file
 // See convert-pth-to-ggml.py for details on format
-func LoadModel(fileName string, params ModelParams, silent bool) (*Context, error) {
+// func LoadModel(fileName string, params ModelParams, silent bool) (*Context, error) {
+func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *Model, error) {
 
 	file, err := os.Open(fileName)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer file.Close()
 
@@ -749,22 +723,20 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 
 	if magic == LLAMA_FILE_MAGIC_UNVERSIONED || magic == LLAMA_FILE_MAGIC_OLD {
 		fmt.Printf("\n[ERROR] Invalid model file '%s'! Too old, regenerate!", fileName)
-		return nil, fmt.Errorf("invalid model file")
+		return nil, nil, fmt.Errorf("invalid model file")
 	}
 
 	if magic != LLAMA_FILE_MAGIC {
 		fmt.Printf("\n[ERROR] Invalid model file '%s'! Wrong MAGIC in header", fileName)
-		return nil, fmt.Errorf("invalid model file")
+		return nil, nil, fmt.Errorf("invalid model file")
 	}
 
 	version := readInt(file)
 
 	if version != LLAMA_FILE_VERSION {
 		fmt.Printf("\n[ERROR] Invalid model file '%s'! Unsupported version", fileName)
-		return nil, fmt.Errorf("invalid model file")
+		return nil, nil, fmt.Errorf("invalid model file")
 	}
-
-	lctx := NewContext(params) // creates new ML context and mem allocator as well
 
 	// --- load hparams
 
@@ -773,11 +745,10 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 	multSize := readInt(file)    // multiple_of
 	headsCount := readInt(file)  // n_heads
 	layersCount := readInt(file) // n_layers
-	rotCount := readInt(file)    // rot = dim // n_heads [obsolete]
+	rotCount := readInt(file)    // [obsolete] rot = dim // n_heads
 	f16 := readInt(file)         // ftype
 
-	ctx := lctx.MLContext
-	model := lctx.Model
+	model := NewModel(params)
 
 	model.hparams.vocabSize = vocabSize
 	model.hparams.embdSize = embdSize
@@ -789,19 +760,7 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 
 	ffSize := ((2*(4*embdSize)/3 + multSize - 1) / multSize) * multSize
 
-	// --- init cache
-	//KVCacheInit(&lctx.Model.hparams, &lctx.Model.kvSelf, ml.TYPE_F32)
-	dt := ml.TYPE_F32
-	size := embdSize * layersCount * params.CtxSize
-	lctx.Model.kvSelf.K = ml.NewTensor1D(ctx, dt, size) // Fixed OK
-	lctx.Model.kvSelf.V = ml.NewTensor1D(ctx, dt, size) // Fixed OK
-
-	// NB! Do not try to resize / relocate secondary pointers
-	lctx.Vocab = ml.NewVocab(vocabSize)
-	vocab := lctx.Vocab
-
-	// FIXME Reserve extra space for tokensCount (N) = 8 (as with LogitsAll == true)
-	lctx.Logits = make([]float32, vocabSize, vocabSize)
+	vocab := ml.NewVocab(vocabSize)
 
 	if ml.DEBUG {
 		fmt.Printf("\nvocab  = %d", vocabSize)
@@ -819,28 +778,29 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 	if !silent && runtime.GOOS == "windows" {
 		Colorize("[magenta][ INIT ][white] Loading vocab...")
 	}
-
-	vocabBar := progressbar.NewOptions(
-		int(vocabSize),
-		progressbar.OptionFullWidth(),
-		//progressbar.OptionSetWidth(40),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionSetPredictTime(false),
-		progressbar.OptionSetElapsedTime(false),
-		progressbar.OptionSetDescription("[light_magenta][ INIT ][light_blue] Loading model vocab...  [light_cyan]"),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[light_magenta]▒[reset]",
-			SaucerHead:    "[white]▒[reset]",
-			SaucerPadding: "[dark_gray]▒[reset]",
-			BarStart:      "[dark_gray]║[reset]",
-			BarEnd:        "[dark_gray]║[reset]",
-		}))
-
+	/*
+	       // https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
+	   	vocabBar := progressbar.NewOptions(
+	   		int(vocabSize),
+	   		progressbar.OptionFullWidth(),
+	   		//progressbar.OptionSetWidth(40),
+	   		progressbar.OptionEnableColorCodes(true),
+	   		progressbar.OptionSetPredictTime(false),
+	   		progressbar.OptionSetElapsedTime(false),
+	   		progressbar.OptionSetDescription("[light_magenta][ INIT ][light_blue] Loading model vocab...  [light_cyan]"),
+	   		progressbar.OptionSetTheme(progressbar.Theme{
+	   			Saucer:        "[light_magenta]▒[reset]",
+	   			SaucerHead:    "[white]▒[reset]",
+	   			SaucerPadding: "[dark_gray]▒[reset]",
+	   			BarStart:      "[dark_gray]║[reset]",
+	   			BarEnd:        "[dark_gray]║[reset]",
+	   		}))
+	*/
 	for i := uint32(0); i < vocabSize; i++ {
 
-		if !silent && runtime.GOOS != "windows" && i%100 == 0 {
-			vocabBar.Set(int(i))
-		}
+		//if !silent && runtime.GOOS != "windows" && i%100 == 0 {
+		//	vocabBar.Set(int(i))
+		//}
 
 		length := readInt(file)
 		token := readString(file, length)
@@ -850,17 +810,17 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 		vocab.ID2Token[i] = ml.TokenScore{Token: token, Score: score}
 	}
 
-	if !silent && runtime.GOOS != "windows" {
-		vocabBar.Finish()
-		fmt.Printf("\n")
-	}
+	//if !silent && runtime.GOOS != "windows" {
+	//	vocabBar.Finish()
+	//	fmt.Printf("\n")
+	//}
 
 	// --- prepare memory for the weights
 	{
-		model.tokEmbeddings = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize) // Fixed OK
+		model.tokEmbeddings = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize) // Fixed OK
 
-		model.norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize)                        // Fixed OK
-		model.output = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize) // Fixed OK
+		model.norm = ml.NewTensor1D(nil, ml.TYPE_F32, embdSize)                        // Fixed OK
+		model.output = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, vocabSize) // Fixed OK
 
 		// map by name
 		model.tensors["tok_embeddings.weight"] = model.tokEmbeddings
@@ -870,20 +830,19 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 
 		model.layers = make([]Layer, layersCount)
 		for i := uint32(0); i < layersCount; i++ {
-			//auto & layer = model.layers[i];
 
-			model.layers[i].attentionNorm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize) // Fixed OK
+			model.layers[i].attentionNorm = ml.NewTensor1D(nil, ml.TYPE_F32, embdSize) // Fixed OK
 
-			model.layers[i].wq = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
-			model.layers[i].wk = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
-			model.layers[i].wv = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
-			model.layers[i].wo = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
+			model.layers[i].wq = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
+			model.layers[i].wk = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
+			model.layers[i].wv = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
+			model.layers[i].wo = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, embdSize) // Fixed OK
 
-			model.layers[i].ffn_norm = ml.NewTensor1D(ctx, ml.TYPE_F32, embdSize)
+			model.layers[i].ffn_norm = ml.NewTensor1D(nil, ml.TYPE_F32, embdSize)
 
-			model.layers[i].w1 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, ffSize) // Fixed OK
-			model.layers[i].w2 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, ffSize, embdSize) // Fixed OK
-			model.layers[i].w3 = ml.NewTensor2D(ctx, ml.TYPE_F32 /*wtype*/, embdSize, ffSize) // Fixed OK
+			model.layers[i].w1 = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, ffSize) // Fixed OK
+			model.layers[i].w2 = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, ffSize, embdSize) // Fixed OK
+			model.layers[i].w3 = ml.NewTensor2D(nil, ml.TYPE_F32 /*wtype*/, embdSize, ffSize) // Fixed OK
 
 			// map by name
 			prefix := fmt.Sprintf("layers.%d.", i)
@@ -903,25 +862,27 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 		}
 	}
 
-	if !silent && runtime.GOOS == "windows" {
-		Colorize("\n[magenta][ INIT ][white] Loading model - please wait ...")
+	if !silent /* && runtime.GOOS == "windows" */ {
+		//Colorize("[magenta][ INIT ][white] Loading model - please wait ...")
+		Colorize("[light_magenta][ INIT ][light_blue] Loading model, please wait ")
 	}
-
-	// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
-	bar := progressbar.NewOptions(int(layersCount*9),
-		progressbar.OptionFullWidth(),
-		//progressbar.OptionSetWidth(40),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionSetPredictTime(false),
-		progressbar.OptionSetElapsedTime(false),
-		progressbar.OptionSetDescription("[light_magenta][ INIT ][light_blue] Loading model weights...[light_cyan]"),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[light_magenta]▒[reset]",
-			SaucerHead:    "[white]▒[reset]",
-			SaucerPadding: "[dark_gray]▒[reset]",
-			BarStart:      "[dark_gray]║[reset]",
-			BarEnd:        "[dark_gray]║[reset]",
-		}))
+	/*
+		// https://pkg.go.dev/github.com/schollz/progressbar/v3#Option
+		bar := progressbar.NewOptions(int(layersCount*9),
+			progressbar.OptionFullWidth(),
+			//progressbar.OptionSetWidth(40),
+			progressbar.OptionEnableColorCodes(true),
+			progressbar.OptionSetPredictTime(false),
+			progressbar.OptionSetElapsedTime(false),
+			progressbar.OptionSetDescription("[light_magenta][ INIT ][light_blue] Loading model weights...[light_cyan]"),
+			progressbar.OptionSetTheme(progressbar.Theme{
+				Saucer:        "[light_magenta]▒[reset]",
+				SaucerHead:    "[white]▒[reset]",
+				SaucerPadding: "[dark_gray]▒[reset]",
+				BarStart:      "[dark_gray]║[reset]",
+				BarEnd:        "[dark_gray]║[reset]",
+			}))
+	*/
 
 	// --- load weights
 	var tensorsCount uint32
@@ -961,13 +922,14 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 
 		// --- All tensors in file are aligned for 32 bytes
 
+		// TODO: Align with one modulo operation
 		alignment := int64(32)
 		offset, _ := file.Seek(0, io.SeekCurrent)
 		for ; offset%alignment != 0; offset++ {
 		}
 		_, err = file.Seek(offset, io.SeekStart)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		// --- Read tensor into memory
@@ -996,18 +958,21 @@ func LoadModel(fileName string, params ModelParams, silent bool) (*Context, erro
 			os.Exit(0)
 		}
 
+		// TODO: Implement just simple dots increasing count for Windows
 		tensorsCount++
-		model.loadedCount++
-		if !silent && runtime.GOOS != "windows" {
-			bar.Add(1)
+		if !silent && tensorsCount%10 == 0 {
+			Colorize("[light_blue].")
 		}
+		// if !silent && runtime.GOOS != "windows" {
+		// bar.Add(1)
+		// }
 	}
 
-	if !silent && runtime.GOOS != "windows" {
-		bar.Finish()
-	}
+	// if !silent && runtime.GOOS != "windows" {
+	// bar.Finish()
+	// }
 
-	return lctx, nil
+	return vocab, model, nil
 }
 
 // max returns the maximum of two float32 values
