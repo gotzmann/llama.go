@@ -4,32 +4,33 @@
 
 ## Motivation
 
-We dream of a world where fellow ML hackers are grokking with **REALLY BIG GPT** models in their homelabs without having GPU clusters consuming a shit tons of **$$$**.
+We dream of a world where fellow ML hackers are grokking **REALLY BIG GPT** models in their homelabs without having GPU clusters consuming a shit tons of **$$$**.
 
 The code of the project is based on the legendary **[ggml.cpp](https://github.com/ggerganov/llama.cpp)** framework of Georgi Gerganov written in C++ with the same attitude to performance and elegance.
 
-We hope Golang instead of *soo-powerful* but *too-low-level* language will allow much greater adoption.
+We hope using Golang instead of *soo-powerful* but *too-low-level* language will allow much greater adoption.
 
 ## V0 Roadmap
 
-- [x] Run tensor math in pure Golang - based on C++ source
+- [x] Tensor math in pure Golang
 - [x] Implement LLaMA neural net architecture and model loading
-- [x] Run smaller LLaMA-7B model
-- [x] Be sure Go inference works EXACT SAME way as C++
-- [x] Let Go shine! Enable multi-threading and boost performance
+- [x] Test with smaller LLaMA-7B model
+- [x] Be sure Go inference works exactly same way as C++
+- [x] Let Go shine! Enable multi-threading and messaging to boost performance
 
 ## V1 Roadmap - Spring'23
 
 - [x] Cross-patform compatibility with Mac, Linux and Windows
 - [x] Release first stable version for ML hackers - v1.0
-- [x] Support bigger LLaMA models: 13B, 30B, 65B - v1.1
+- [x] Enable bigger LLaMA models: 13B, 30B, 65B - v1.1
 - [x] ARM NEON support on Apple Silicon (modern Macs) and ARM servers - v1.2
 - [x] Performance boost with x64 AVX2 support for Intel and AMD - v1.2
-- [x] RAM and GC optimizations - v1.3
-- [x] Server Mode (embedded REST API) for use in real projects - v1.4
-- [x] Download model weights from the Internet - v1.4
-- [ ] INT8 quantization to allow x4 bigger models fit the same memory
-- [ ] Support for popular models of LLaMA family: Vicuna, Alpaca, etc
+- [x] Better memory use and GC optimizations - v1.3
+- [x] Introduce Server Mode (embedded REST API) for use in real projects - v1.4
+- [x] Release converted models for free access over the Internet - v1.4
+- [ ] INT8 quantization to allow x4 bigger models fit same memory
+- [ ] Benchmark LLaMA.go against some mainstream Python / C++ frameworks
+- [ ] Enable some popular models of LLaMA family: Vicuna, Alpaca, etc
 - [ ] Speed-up AVX2 with memory aligned tensors
 - [ ] Extensive logging for production monitoring
 - [ ] Interactive mode for real-time chat with GPT
@@ -38,17 +39,19 @@ We hope Golang instead of *soo-powerful* but *too-low-level* language will allow
 
 - [ ] Automatic CPU / GPU features detection
 - [ ] Implement metrics for RAM and CPU usage
-- [ ] Support popular open models: BLOOM, Anthropic, etc.
-- [ ] AVX512 support - yet another performance boost for AMD Epyc
+- [ ] Standalone GUI or web interface for better access to framework
+- [ ] Support popular open models: Open Assistant, StableLM, BLOOM, Anthropic, etc.
+- [ ] AVX512 support - yet another performance boost for AMD Epyc and Intel Sapphire Rapids
 - [ ] Limited Nvidia GPU support (CUDA or Tensor Cores)
 
 ## V3 Roadmap - Fall'23
 
 - [ ] Allow plugins and external APIs for complex projects
-- [ ] Training capabilities - not inference only
-- [ ] Speed execution on GPU cluster
-- [ ] FP16 and BF16 support when hardware support there
+- [ ] Allow model training and fine-tuning
+- [ ] Speed up execution on GPU cards and clusters
+- [ ] FP16 and BF16 math if hardware support is there
 - [ ] INT4 and GPTQ quantization 
+- [ ] Limited AMD Radeon GPU support
 
 ## How to Run?
 
@@ -76,7 +79,7 @@ llama-go-v1.4.0-macos \
     --prompt "Why Golang is so popular?" \
 ```
 
-## Useful CLI parameters:
+## Useful command line flags:
 
 ```shell
 --prompt   Text prompt from user to feed the model input
@@ -98,36 +101,37 @@ llama-go-v1.4.0-macos \
 
 ## Going Production
 
-LLaMA.go embeds standalone HTTP server exposing REST API to place jobs and look for results. Start it with command like this:
+LLaMA.go embeds standalone HTTP server exposing REST API to GPT engine. To enable it, run app with special flags:
 
 ```shell
 llama-go-v1.4.0-macos \
     --model ~/models/llama-7b-fp32.bin \
-    --server
-    --host 127.0.0.1
-    --port 8080
-    --pods 4
+    --server \
+    --host 127.0.0.1 \
+    --port 8080 \
+    --pods 4 \
     --threads 4
-    --avx
 ```
 
-Depending on how many CPU cores you have, how many requests you need to process in parallel, how fast you'd like to get jobs done, choose **pods** and **threads** parameters wisely.
+Depending on the model size, how many CPU cores available there, how many requests you want to process in parallel, how fast you'd like to get answers, choose **pods** and **threads** parameters wisely.
 
-**Pods** basically means how many parallel instances of inference you'd like to run in parallel?
+**Pods** is a number of inference instances that might run in parallel.
 
-And **threads** set how many cores will be used to do tensor math within one pod.
+**Threads** parameter sets how many cores will be used for tensor math within a pod.
 
-So for example, if you have machine with 16 hardware cores capable run 32 hyper-threading executions in parallel, you might end up with something like that: 
+So for example if you have machine with 16 hardware cores capable running 32 hyper-threads in parallel, you might end up with something like that: 
 
---pods 4 --threads 8
+```shell
+--server --pods 4 --threads 8
+```
 
-When there no capacity for arriving request, it will be placed into the queue and started when there will be free pod available.
+When there is no free pod to handle arriving request, it will be placed into the waiting queue and started when some pod gets job finished.
 
 # REST API examples
 
 ## Place new job
 
-Send POST request to you server with JSON containing unique UUID v4 and text prompt:
+Send POST request (with Postman) to your server address with JSON containing unique UUID v4 and prompt:
 
 ```json
 {
@@ -136,19 +140,25 @@ Send POST request to you server with JSON containing unique UUID v4 and text pro
 }
 ```
 
-## Check current status
+## Check job status
 
-```json
-http://localhost:8080/jobs/status/5fb8ebd0-e0c9-4759-8f7d-35590f6c9fcb
+Send GET request (with Postman or browser) to  URL: http://host:port/jobs/status/:id
+
+```shell
+GET http://localhost:8080/jobs/status/5fb8ebd0-e0c9-4759-8f7d-35590f6c9fcb
 ```
 
 ## Get the results
 
-http://localhost:8080/jobs/5fb8ebd0-e0c9-4759-8f7d-35590f6c9fcb
+Send GET request (with Postman or browser) to  URL: http://host:port/jobs/:id
 
-## How to build by myself?
+```shell
+GET http://localhost:8080/jobs/5fb8ebd0-e0c9-4759-8f7d-35590f6c9fcb
+```
 
-First, install Golang and git (you'll need to download installers in case of Windows). 
+# How to build
+
+First, install **Golang** and **git** (you'll need to download installers in case of Windows). 
 
 ```shell
 brew install git
@@ -162,26 +172,24 @@ git clone https://github.com/gotzmann/llama.go.git
 cd llama.go
 ```
 
-Some magic with external packages:
+Some Go magic to install external dependencies:
 
 ```
 go tidy
 go vendor
 ```
 
-And finally run binary from the source! Do not forget about command-line flags:
+And now we are ready to build the binary from the source code:
 
 ```shell
-go run main.go \
-    --model ~/models/llama-7b-fp32.bin \
-    --prompt "Why Golang is so popular?"
+go build -o llama-go-v1.exe -ldflags "-s -w" main.go
 ```
 
 ## FAQ
 
-**1) Where might I get original LLaMA model files?**
+**1) From where I might obtain original LLaMA models?**
 
-Contact Meta directly or look around for some torrent alternatives
+Contact Meta directly or just look around for some torrent alternatives.
 
 **2) How to convert original LLaMA files into supported format?** 
 
