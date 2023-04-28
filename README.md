@@ -59,7 +59,7 @@ First, obtain and convert original LLaMA models on your own, or just download re
 
 **LLaMA-7B:** [llama-7b-fp32.bin](https://nogpu.com/llama-7b-fp32.bin)
 
-**LLaMA-13B:** [llama-7b-fp32.bin](https://nogpu.com/llama-7b-fp32.bin)
+**LLaMA-13B:** [llama-13b-fp32.bin](https://nogpu.com/llama-13b-fp32.bin)
 
 Both models store FP32 weights, so you'll needs at least 32Gb of RAM (not VRAM or GPU RAM) for LLaMA-7B. Double to 64Gb for LLaMA-13B.
 
