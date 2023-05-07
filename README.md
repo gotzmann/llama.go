@@ -175,8 +175,8 @@ cd llama.go
 Some Go magic to install external dependencies:
 
 ```
-go tidy
-go vendor
+go mod tidy
+go mod vendor
 ```
 
 Now we are ready to build the binary from the source code:

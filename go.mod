@@ -5,13 +5,10 @@ go 1.20
 require (
 	github.com/gofiber/fiber/v2 v2.44.0
 	github.com/google/uuid v1.3.0
-	github.com/gotzmann/llama.go/llama v0.0.0-20230412160549-c20730f209a3
-	github.com/gotzmann/llama.go/ml v0.0.0-20230412160549-c20730f209a3
 	github.com/jessevdk/go-flags v1.5.0
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
 	github.com/pkg/profile v1.7.0
-	github.com/schollz/progressbar/v3 v3.13.1
 	github.com/x448/float16 v0.8.4
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 )
@@ -32,5 +29,4 @@ require (
 	github.com/valyala/fasthttp v1.45.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
 	golang.org/x/sys v0.7.0 // indirect
-	golang.org/x/term v0.6.0 // indirect
 )
