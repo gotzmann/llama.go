@@ -782,25 +782,12 @@ func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 	}
 }
 
-// ggml_permute
+// Permute permutes a tensor, e.g., 1,2,3,4 -> 2,3,4,1
 func Permute(ctx *Context, a *Tensor, axis0, axis1, axis2, axis3 uint32) *Tensor {
-
-	////ASSERT(axis0 >= 0 && axis0 < MAX_DIMS);
-	////ASSERT(axis1 >= 0 && axis1 < MAX_DIMS);
-	////ASSERT(axis2 >= 0 && axis2 < MAX_DIMS);
-	////ASSERT(axis3 >= 0 && axis3 < MAX_DIMS);
-
-	////ASSERT(axis0 != axis1);
-	////ASSERT(axis0 != axis2);
-	////ASSERT(axis0 != axis3);
-	////ASSERT(axis1 != axis2);
-	////ASSERT(axis1 != axis3);
-	////ASSERT(axis2 != axis3);
 
 	isNode := false
 
 	if a.grad != nil {
-		////ASSERT(false); // TODO: implement backward
 		isNode = true
 		fmt.Printf("\n[STOP] Permute error")
 		os.Exit(1)
@@ -821,15 +808,8 @@ func Permute(ctx *Context, a *Tensor, axis0, axis1, axis2, axis3 uint32) *Tensor
 	nb[axis2] = a.NB[2]
 	nb[axis3] = a.NB[3]
 
-	result.NE[0] = ne[0]
-	result.NE[1] = ne[1]
-	result.NE[2] = ne[2]
-	result.NE[3] = ne[3]
-
-	result.NB[0] = nb[0]
-	result.NB[1] = nb[1]
-	result.NB[2] = nb[2]
-	result.NB[3] = nb[3]
+	copy(result.NE[:], ne[:])
+	copy(result.NB[:], nb[:])
 
 	result.op = OP_PERMUTE
 	result.src0 = a
@@ -844,32 +824,30 @@ func Permute(ctx *Context, a *Tensor, axis0, axis1, axis2, axis3 uint32) *Tensor
 	return result
 }
 
-// ggml_rope
+// Rope function
 func Rope(ctx *Context, a *Tensor, past, dims, mode uint32) *Tensor {
-	////ASSERT(n_past >= 0);
-
-	isNode := false
-
-	if a.grad != nil {
-		////ASSERT(false); // TODO: implement backward
-		isNode = true
-		fmt.Printf("\n[STOP] Rope error")
+	// Check if the input tensor has gradients
+	isNode := a.grad != nil
+	if isNode {
+		fmt.Printf("\n[STOP] Rope error: Backward pass not implemented yet")
 		os.Exit(1)
 	}
 
-	// TODO: when implement backward, fix this:
-	//struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
+	// Create a new tensor for the result
 	result := ViewTensor(ctx, a)
 
+	// Create a 1D tensor to store past, dims, and mode
 	b := NewTensor1D(ctx, TYPE_I32, 3)
 	b.Data[0] = float32(past)
 	b.Data[1] = float32(dims)
 	b.Data[2] = float32(mode)
 
+	// Set the operation and sources for the result tensor
 	result.op = OP_ROPE
 	result.src0 = a
 	result.src1 = b
 
+	// If the input tensor has gradients, duplicate the result tensor for the gradients
 	if isNode {
 		result.grad = DupTensor(ctx, result)
 	} else {
