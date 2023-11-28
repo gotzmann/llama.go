@@ -2,6 +2,10 @@
 
 ![](./assets/images/terminal.png?raw=true)
 
+## Want LLM Inference with Golang in Production?
+
+Please check out my related project **[LLaMAZoo](https://github.com/gotzmann/llamazoo)**
+
 ## Motivation
 
 We dream of a world where fellow ML hackers are grokking **REALLY BIG GPT** models in their homelabs without having GPU clusters consuming a shit tons of **$$$**.
@@ -28,15 +32,18 @@ We hope using Golang instead of *soo-powerful* but *too-low-level* language will
 - [x] Better memory use and GC optimizations - v1.3
 - [x] Introduce Server Mode (embedded REST API) for use in real projects - v1.4
 - [x] Release converted models for free access over the Internet - v1.4
+
+## V2 Roadmap - Winter'23
+
+- [ ] Support LLaMA V2 7B / 13B models architecture
+- [ ] Implement LLaMA V2 34B / 70B Qrouped Query Attention
+- [ ] Support modern GGUF V3 model format
 - [ ] INT8 quantization to allow x4 bigger models fit same memory
 - [ ] Benchmark LLaMA.go against some mainstream Python / C++ frameworks
 - [ ] Enable some popular models of LLaMA family: Vicuna, Alpaca, etc
 - [ ] Speed-up AVX2 with memory aligned tensors
 - [ ] Extensive logging for production monitoring
 - [ ] Interactive mode for real-time chat with GPT
-
-## V2 Roadmap - Summer'23
-
 - [ ] Automatic CPU / GPU features detection
 - [ ] Implement metrics for RAM and CPU usage
 - [ ] Standalone GUI or web interface for better access to framework
@@ -44,7 +51,7 @@ We hope using Golang instead of *soo-powerful* but *too-low-level* language will
 - [ ] AVX512 support - yet another performance boost for AMD Epyc and Intel Sapphire Rapids
 - [ ] Nvidia GPUs support (CUDA or Tensor Cores)
 
-## V3 Roadmap - Fall'23
+## V3 Roadmap - Spring'23
 
 - [ ] Allow plugins and external APIs for complex projects
 - [ ] Allow model training and fine-tuning
