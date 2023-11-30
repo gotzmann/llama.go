@@ -1,5 +1,3 @@
-# LLaMA.go
-
 ![](./assets/images/terminal.png?raw=true)
 
 ## Looking for LLM Debug and Inference with Golang?
