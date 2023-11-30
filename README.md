@@ -2,9 +2,9 @@
 
 ![](./assets/images/terminal.png?raw=true)
 
-## Want LLM Inference with Golang in Production?
+## Looking for LLM Debug and Inference with Golang?
 
-Please check out my related project **[LLaMAZoo](https://github.com/gotzmann/llamazoo)**
+Please check out my related project **[Large Model Collider](https://github.com/gotzmann/collider)**
 
 ## Motivation
 
