@@ -49,7 +49,7 @@ We hope using Golang instead of *soo-powerful* but *too-low-level* language will
 - [ ] AVX512 support - yet another performance boost for AMD Epyc and Intel Sapphire Rapids
 - [ ] Nvidia GPUs support (CUDA or Tensor Cores)
 
-## V3 Roadmap - Spring'23
+## V3 Roadmap - Spring'24
 
 - [ ] Allow plugins and external APIs for complex projects
 - [ ] Allow model training and fine-tuning
