@@ -2,9 +2,7 @@
 
 ## FINALLY - GOOD NEWS!
 
-I've started to work on reimplementation of the library here:
-
-**[FastTensors](https://github.com/gotzmann/fast)**
+I've started to work on reimplementation of the library here: **[FastTensors](https://github.com/gotzmann/fast)**
 
 Please star it if you'd like to see GGML-compatible implementation in pure Go.
 
