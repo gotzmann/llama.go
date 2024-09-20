@@ -1,8 +1,16 @@
 ![](./assets/images/terminal.png?raw=true)
 
+## FINALLY - GOOD NEWS!
+
+I've started to work on reimplementation of the library here:
+
+**[FastTensors](https://github.com/gotzmann/fast)**
+
+Please star it if you'd like to see GGML-compatible implementation in pure Go.
+
 ## Looking for LLM Debug and Inference with Golang?
 
-Please check out my related project **[Large Model Collider](https://github.com/gotzmann/collider)**
+Please check out my related project **[Booster](https://github.com/gotzmann/booster)**
 
 ## Motivation
 
